@@ -98,6 +98,25 @@
   .setup p{color:var(--mut); font-size:14px; line-height:1.5}
   .setup .wide-btn{background:var(--amber); color:#09090b; font-weight:700}
 
+  .cal{margin-top:12px}
+  .cal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px}
+  .cal-title{font-weight:600; text-transform:capitalize}
+  .cal-nav{padding:6px 12px; color:var(--mut); font-size:20px; line-height:1}
+  .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px}
+  .cal-dow{font-size:10px; color:var(--dim); text-align:center; padding-bottom:2px}
+  .cal-day{aspect-ratio:1; border-radius:10px; border:1px solid transparent;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-size:13px; color:var(--mut); overflow:hidden}
+  .cal-day.rest{background:rgba(52,211,153,.09)}
+  .cal-day.has{color:var(--text)}
+  .cal-day.sel{border-color:var(--amber)}
+  .cal-day.today .n{color:var(--amber2); font-weight:800}
+  .cal-day .t{font-size:8px; color:var(--amber2); line-height:1.1; margin-top:2px;
+    max-width:95%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .cal-day .dotm{width:4px; height:4px; border-radius:50%; background:var(--amber); margin-top:3px}
+  .cal-legend{display:flex; gap:14px; font-size:10px; color:var(--dim); margin-top:8px}
+  .cal-legend i{display:inline-block; width:8px; height:8px; border-radius:3px; margin-right:4px; vertical-align:-1px}
+
   .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%);
     background:var(--card2); border:1px solid var(--border2); color:var(--text);
     padding:10px 18px; border-radius:99px; font-size:13px; opacity:0; transition:opacity .25s; pointer-events:none; white-space:nowrap; z-index:50}
@@ -150,7 +169,8 @@ const DEFAULT_TEMPLATES = [
 ];
 let data = load();
 let curDate = toKey(new Date());
-let ui = { settings:false, savingTpl:false };
+let ui = { settings:false, savingTpl:false, calendar:false };
+let calMonth = null; // "YYYY-MM"
 
 function load(){
   try{
@@ -280,6 +300,44 @@ function importXlsx(file){
 const app=document.getElementById("app");
 const ICON_DUMBBELL='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.4 14.4 9.6 9.6"/><path d="M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.829l6.364-6.364a2 2 0 1 1 2.829 2.829l-1.768 1.767a2 2 0 1 1 2.828 2.829z"/><path d="m21.5 21.5-1.4-1.4"/><path d="M3.9 3.9 2.5 2.5"/><path d="M6.404 12.768a2 2 0 1 1-2.829-2.829l1.768-1.767a2 2 0 1 1-2.828-2.829l2.828-2.828a2 2 0 1 1 2.829 2.828l1.767-1.768a2 2 0 1 1 2.829 2.829z"/></svg>';
 
+function calHtml(){
+  const [y,m]=calMonth.split("-").map(Number);
+  const first=new Date(y,m-1,1);
+  const daysIn=new Date(y,m,0).getDate();
+  const lead=(first.getDay()+6)%7; // Monday-first
+  const today=toKey(new Date());
+  const monthName=first.toLocaleDateString("ru-RU",{month:"long",year:"numeric"});
+  let h='<div class="card cal">'
+    +'<div class="cal-head">'
+    +'<button class="cal-nav" data-act="calPrev">‹</button>'
+    +'<div class="cal-title">'+esc(monthName)+'</div>'
+    +'<button class="cal-nav" data-act="calNext">›</button></div>'
+    +'<div class="cal-grid">';
+  for(const d of ["пн","вт","ср","чт","пт","сб","вс"]) h+='<div class="cal-dow">'+d+'</div>';
+  for(let i=0;i<lead;i++) h+='<div></div>';
+  for(let d=1;d<=daysIn;d++){
+    const key=y+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+    const entry=data.log[key];
+    const hasSets=entry&&entry.exercises.some(e=>e.sets.length);
+    const c=cyclePos(key,data.settings.cycleStart);
+    let cls="cal-day";
+    if(c&&c.pos===2) cls+=" rest";
+    if(entry) cls+=" has";
+    if(key===curDate) cls+=" sel";
+    if(key===today) cls+=" today";
+    h+='<button class="'+cls+'" data-act="calGo" data-date="'+key+'">'
+      +'<span class="n num">'+d+'</span>'
+      +(entry&&entry.title?'<span class="t">'+esc(entry.title)+'</span>'
+        :hasSets||entry?'<span class="dotm"></span>':'')
+      +'</button>';
+  }
+  h+='</div><div class="cal-legend">'
+    +'<span><i style="background:rgba(52,211,153,.35)"></i>неделя отдыха</span>'
+    +'<span><i style="background:var(--amber)"></i>есть тренировка</span>'
+    +'</div></div>';
+  return h;
+}
+
 function render(){
   if(!data.settings.cycleStart){ renderSetup(); return; }
   const cycle=cyclePos(curDate,data.settings.cycleStart);
@@ -292,6 +350,7 @@ function render(){
   h+='<header>'
     +'<div class="hrow"><div class="logo">'+ICON_DUMBBELL+'Трекер</div>'
     +'<div class="hbtns">'
+    +'<button class="icon-btn" data-act="calToggle" title="Календарь">📅</button>'
     +'<button class="icon-btn" data-act="import" title="Импорт из Excel">⬆</button>'
     +'<button class="icon-btn" data-act="export" title="Скачать Excel">⬇</button>'
     +'<button class="icon-btn" data-act="settings" title="Настройки">⚙</button>'
@@ -300,6 +359,8 @@ function render(){
     +'<span class="dot" style="left:calc('+(cycle.day/21*100)+'% - 4px)"></span></div>'
     +'<div class="strip-labels"><span>раб. 1</span><span>раб. 2</span><span>отдых</span></div>'
     +'</header>';
+
+  if(ui.calendar) h+=calHtml();
 
   if(ui.settings){
     h+='<div class="card settings">'
@@ -418,6 +479,18 @@ function doAction(act,ds){
     case "next": curDate=addDays(curDate,1); render(); break;
     case "today": curDate=toKey(new Date()); render(); break;
     case "settings": ui.settings=!ui.settings; render(); break;
+    case "calToggle":
+      ui.calendar=!ui.calendar;
+      if(ui.calendar) calMonth=curDate.slice(0,7);
+      render(); break;
+    case "calPrev": case "calNext":{
+      const d=parseKey(calMonth+"-01");
+      d.setMonth(d.getMonth()+(act==="calNext"?1:-1));
+      calMonth=toKey(d).slice(0,7);
+      render(); break;
+    }
+    case "calGo":
+      curDate=ds.date; ui.calendar=false; render(); break;
     case "export": exportXlsx(); break;
     case "import": document.getElementById("importFile").click(); break;
     case "addEx":{
