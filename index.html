@@ -117,6 +117,14 @@
   .cal-legend{display:flex; gap:14px; font-size:10px; color:var(--dim); margin-top:8px}
   .cal-legend i{display:inline-block; width:8px; height:8px; border-radius:3px; margin-right:4px; vertical-align:-1px}
 
+  .chip.danger{color:var(--red); border-color:rgba(248,113,113,.35)}
+  .confirm{display:flex; align-items:center; gap:10px; justify-content:space-between;
+    background:rgba(248,113,113,.08); border:1px solid rgba(248,113,113,.3);
+    border-radius:14px; padding:10px 14px; margin-top:12px; font-size:13px}
+  .confirm .btns{display:flex; gap:8px; flex-shrink:0}
+  .btn-red{background:var(--red); color:#09090b; border-radius:10px; padding:7px 12px; font-weight:700; font-size:13px}
+  .btn-red:active{opacity:.85}
+
   .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%);
     background:var(--card2); border:1px solid var(--border2); color:var(--text);
     padding:10px 18px; border-radius:99px; font-size:13px; opacity:0; transition:opacity .25s; pointer-events:none; white-space:nowrap; z-index:50}
@@ -169,7 +177,7 @@ const DEFAULT_TEMPLATES = [
 ];
 let data = load();
 let curDate = toKey(new Date());
-let ui = { settings:false, savingTpl:false, calendar:false };
+let ui = { settings:false, savingTpl:false, calendar:false, confirmDel:false };
 let calMonth = null; // "YYYY-MM"
 
 function load(){
@@ -415,7 +423,14 @@ function render(){
   h+='<div class="chips">'
     +(hasPast?'<button class="chip" data-act="copyLast">⧉ Повторить прошлую тренировку</button>':'')
     +(day.exercises.length&&!ui.savingTpl?'<button class="chip" data-act="tplStart">🔖 Сохранить как шаблон</button>':'')
+    +((day.exercises.length||day.title)&&!ui.confirmDel?'<button class="chip danger" data-act="dayDelAsk">🗑 Очистить день</button>':'')
     +'</div>';
+
+  if(ui.confirmDel){
+    h+='<div class="confirm"><span>Удалить все записи за '+esc(fmtDate(curDate))+'?</span>'
+      +'<span class="btns"><button class="btn-red" data-act="dayDelYes">Удалить</button>'
+      +'<button class="btn-gray" data-act="dayDelNo">Отмена</button></span></div>';
+  }
 
   if(ui.savingTpl){
     h+='<div class="addex"><input placeholder="Название шаблона (напр. День А)" id="tplName" data-enter="tplSave" '
@@ -475,9 +490,16 @@ function doAction(act,ds){
       if(v){ data.settings.cycleStart=v; save(); render(); }
       break;
     }
-    case "prev": curDate=addDays(curDate,-1); render(); break;
-    case "next": curDate=addDays(curDate,1); render(); break;
-    case "today": curDate=toKey(new Date()); render(); break;
+    case "prev": curDate=addDays(curDate,-1); ui.confirmDel=false; render(); break;
+    case "next": curDate=addDays(curDate,1); ui.confirmDel=false; render(); break;
+    case "today": curDate=toKey(new Date()); ui.confirmDel=false; render(); break;
+    case "dayDelAsk": ui.confirmDel=true; render(); break;
+    case "dayDelNo": ui.confirmDel=false; render(); break;
+    case "dayDelYes":
+      delete data.log[curDate];
+      ui.confirmDel=false; save(); render();
+      toast("Записи за день удалены");
+      break;
     case "settings": ui.settings=!ui.settings; render(); break;
     case "calToggle":
       ui.calendar=!ui.calendar;
@@ -490,7 +512,7 @@ function doAction(act,ds){
       render(); break;
     }
     case "calGo":
-      curDate=ds.date; ui.calendar=false; render(); break;
+      curDate=ds.date; ui.calendar=false; ui.confirmDel=false; render(); break;
     case "export": exportXlsx(); break;
     case "import": document.getElementById("importFile").click(); break;
     case "addEx":{
