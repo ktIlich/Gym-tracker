@@ -281,15 +281,17 @@
     function csDel(k){ return new Promise(function(res){ if(!cs) return res(false); try{ cs.removeItem(k,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
     function csKeys(){ return new Promise(function(res){ if(!cs) return res(null); try{ cs.getKeys(function(e,k){ res(e?null:(k||[])); }); }catch(err){ res(null); } }); }
 
-    function persistDay(k){ saveCache(); if(data.log[k]) csSet("w:"+k, JSON.stringify(data.log[k])); else csDel("w:"+k); }
-    function persistCfg(){ data.cfg.up=Date.now(); saveCache(); csSet("cfg", JSON.stringify(data.cfg)); }
-    function persistTpl(t){ t.up=Date.now(); saveCache(); csSet("tpl:"+t.id, JSON.stringify(t)); }
-    function unpersistTpl(id){ saveCache(); csDel("tpl:"+id); }
+    let warnedCloud=false;
+    function csSetWarn(k,v){ csSet(k,v).then(function(ok){ if(cs&&!ok&&!warnedCloud){ warnedCloud=true; toast("⚠️ Запись в облако не прошла ("+k+")"); } }); }
+    function persistDay(k){ saveCache(); if(data.log[k]) csSetWarn("w_"+k, JSON.stringify(data.log[k])); else csDel("w_"+k); }
+    function persistCfg(){ data.cfg.up=Date.now(); saveCache(); csSetWarn("cfg", JSON.stringify(data.cfg)); }
+    function persistTpl(t){ t.up=Date.now(); saveCache(); csSetWarn("tpl_"+t.id, JSON.stringify(t)); }
+    function unpersistTpl(id){ saveCache(); csDel("tpl_"+id); }
 
     async function cloudPushAll(){
         await csSet("cfg", JSON.stringify(data.cfg));
-        for(const t of data.templates) await csSet("tpl:"+t.id, JSON.stringify(t));
-        for(const k of Object.keys(data.log)) await csSet("w:"+k, JSON.stringify(data.log[k]));
+        for(const t of data.templates) await csSet("tpl_"+t.id, JSON.stringify(t));
+        for(const k of Object.keys(data.log)) await csSet("w_"+k, JSON.stringify(data.log[k]));
     }
     let syncState={ last:null, count:null, busy:false };
     async function cloudLoad(){
@@ -306,8 +308,8 @@
                 try{
                     const o=JSON.parse(v);
                     if(k==="cfg") cloud.cfg=o;
-                    else if(k.indexOf("tpl:")===0) cloud.templates.push(o);
-                    else if(k.indexOf("w:")===0) cloud.log[k.slice(2)]=o;
+                    else if(k.indexOf("tpl_")===0) cloud.templates.push(o);
+                    else if(k.indexOf("w_")===0) cloud.log[k.slice(2)]=o;
                 }catch(e){}
             }
             // слияние по меткам времени .up: новее — побеждает; чего нет в облаке — доливаем
@@ -318,12 +320,12 @@
             merged.cfg=normalizeData({cfg:merged.cfg}).cfg;
             for(const k of Object.keys(data.log)){
                 const loc=data.log[k], cld=merged.log[k];
-                if(!cld||(loc.up||0)>(cld.up||0)){ merged.log[k]=loc; push.push(["w:"+k,JSON.stringify(loc)]); }
+                if(!cld||(loc.up||0)>(cld.up||0)){ merged.log[k]=loc; push.push(["w_"+k,JSON.stringify(loc)]); }
             }
             for(const t of data.templates){
                 const i=merged.templates.findIndex(function(c){return c.id===t.id;});
-                if(i<0){ merged.templates.push(t); push.push(["tpl:"+t.id,JSON.stringify(t)]); }
-                else if((t.up||0)>(merged.templates[i].up||0)){ merged.templates[i]=t; push.push(["tpl:"+t.id,JSON.stringify(t)]); }
+                if(i<0){ merged.templates.push(t); push.push(["tpl_"+t.id,JSON.stringify(t)]); }
+                else if((t.up||0)>(merged.templates[i].up||0)){ merged.templates[i]=t; push.push(["tpl_"+t.id,JSON.stringify(t)]); }
             }
             data=merged;
             syncState.last=new Date(); syncState.count=keys.length;
@@ -441,7 +443,7 @@
                 }
                 saveCache(); render();
                 toast("Импортировано: дней — "+days.length+", подходов — "+nSets);
-                for(const dk of days) await csSet("w:"+dk, JSON.stringify(data.log[dk]));
+                for(const dk of days) await csSet("w_"+dk, JSON.stringify(data.log[dk]));
             }catch(err){ console.error(err); toast("Не удалось прочитать файл"); }
         };
         reader.readAsArrayBuffer(file);
