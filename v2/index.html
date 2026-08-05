@@ -35,6 +35,11 @@
             border:1px solid var(--border); border-radius:12px; padding:9px 12px; outline:none; width:100%}
         input:focus{border-color:var(--btn)}
         input::placeholder{color:var(--dim); opacity:.7}
+        textarea{font-family:inherit; font-size:14px; color:var(--text); background:var(--card);
+            border:1px solid var(--border); border-radius:12px; padding:10px 12px; outline:none; width:100%;
+            min-height:140px; resize:vertical; line-height:1.5}
+        textarea:focus{border-color:var(--btn)}
+        textarea::placeholder{color:var(--dim); opacity:.7}
         .num{font-variant-numeric:tabular-nums}
 
         header{position:sticky; top:0; z-index:10; background:var(--bg);
@@ -226,7 +231,7 @@
     }
     let data=emptyData();
     let curDate=toKey(new Date());
-    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0 };
+    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null };
     let calMonth=curDate.slice(0,7);
     let lastDel=null;
 
@@ -362,6 +367,31 @@
         if(!day.exercises.length && !(day.title||"").trim()) delete data.log[curDate];
         else data.log[curDate]=day;
         persistDay(curDate); render();
+    }
+
+    // ============ шаблоны из текста ============
+    // Строка с "3х8-12" → упражнение (имя до плана); строка без плана → название нового шаблона
+    const PLAN_RE=/(\d+)\s*[хx×*]\s*(\d+)\s*(?:[-–—]\s*(\d+))?/i;
+    const DATE_RE=/\d{1,2}[.\/]\d{1,2}(?:[.\/]\d{2,4})?/g;
+    function parseTemplatesText(text){
+        const out=[]; let cur=null;
+        for(let line of String(text||"").split(/\r?\n/)){
+            line=line.trim(); if(!line) continue;
+            const m=line.match(PLAN_RE);
+            if(m){
+                let name=line.slice(0,m.index).replace(/^\s*\d+[.)]\s*/,"").replace(/[\s,;:—–-]+$/,"").trim();
+                if(!name) continue; // строка из одних цифр (результаты) — пропускаем
+                const plan=m[1]+"х"+m[2]+(m[3]?"-"+m[3]:"");
+                if(!cur){ cur={name:"",exercises:[]}; out.push(cur); }
+                cur.exercises.push(name+" ("+plan+")");
+            } else {
+                const title=line.replace(DATE_RE,"").replace(/^\s*\d+[.)]\s*/,"").replace(/[\s,;:—–-]+$/,"").trim();
+                cur={name:title,exercises:[]}; out.push(cur);
+            }
+        }
+        const res=out.filter(function(t){return t.exercises.length;});
+        res.forEach(function(t,i){ if(!t.name) t.name="Шаблон "+(i+1); });
+        return res;
     }
 
     // последние результаты по типу недели (для строк «Рабочая … / Отдых …»)
@@ -565,7 +595,27 @@
 
     function tplPage(){
         let h='<div class="sec-label" style="margin-top:16px">Шаблоны тренировок</div>';
-        if(!data.templates.length) h+='<div class="card" style="color:var(--mut)">Шаблонов нет. Откройте день с упражнениями и нажмите «Сохранить как шаблон».</div>';
+
+        if(ui.tplParsed){
+            h+='<div class="sec-label">Распознано — проверь названия</div>';
+            ui.tplParsed.forEach(function(t,i){
+                h+='<div class="card"><input id="pn-'+i+'" value="'+esc(t.name)+'" placeholder="Название шаблона">'
+                    +'<div class="note">'+t.exercises.map(esc).join("<br>")+'</div></div>';
+            });
+            h+='<button class="wide-btn primary" data-act="tplTextSave">Сохранить ('+ui.tplParsed.length+')</button>'
+                +'<button class="wide-btn" data-act="tplTextCancel">Отмена</button>';
+            return h;
+        }
+        if(ui.tplFromText){
+            h+='<div class="card"><div class="lbl">По строке на упражнение; строка без цифр подходов — название нового шаблона. Результаты (55х10) отбросятся сами.</div>'
+                +'<textarea id="tplText" placeholder="Жимовая'+"\n"+'1. Жим лёжа 3х8-12'+"\n"+'2. Сведения 2х10-15"></textarea>'
+                +'<button class="wide-btn primary" data-act="tplTextParse" style="margin-top:12px">Распознать</button>'
+                +'<button class="wide-btn" data-act="tplTextCancel">Отмена</button></div>';
+            return h;
+        }
+
+        h+='<button class="wide-btn" data-act="tplFromText" style="margin-top:0">📋 Создать шаблоны из текста</button>';
+        if(!data.templates.length) h+='<div class="card" style="color:var(--mut)">Шаблонов нет. Вставьте программу текстом или откройте день с упражнениями и нажмите «Сохранить как шаблон».</div>';
         for(const t of data.templates){
             h+='<div class="card tpl-item"><div class="tpl-name">'+esc(t.name)+'</div>'
                 +'<div class="tpl-sub">'+(t.title?esc(t.title)+' · ':'')+t.exercises.length+' упражн.</div>';
@@ -634,12 +684,23 @@
     }
 
     function renderSetup(){
-        app.innerHTML='<div class="setup"><div class="card">'
-            +'<div style="font-weight:800; font-size:17px; margin-bottom:10px">🏋️ Gym Tracker</div>'
-            +'<p>Цикл по умолчанию: 2 рабочие недели, потом 1 неделя отдыха (поменять можно в настройках). Укажи дату начала первой рабочей недели.</p>'
-            +'<input type="date" id="startInput" value="'+toKey(new Date())+'" style="margin:10px 0 14px">'
-            +'<button class="wide-btn primary" data-act="start">Начать</button></div></div>';
         document.getElementById("tabbar").style.display="none";
+        if(ui.setupStep!==2){
+            app.innerHTML='<div class="setup"><div class="card">'
+                +'<div style="font-weight:800; font-size:17px; margin-bottom:10px">🏋️ Gym Tracker</div>'
+                +'<p>Цикл по умолчанию: 2 рабочие недели, потом 1 неделя отдыха (поменять можно в настройках). Укажи дату начала первой рабочей недели.</p>'
+                +'<input type="date" id="startInput" value="'+(ui.setupDate||toKey(new Date()))+'" style="margin:10px 0 14px">'
+                +'<button class="wide-btn primary" data-act="setupNext">Далее</button></div></div>';
+        } else {
+            app.innerHTML='<div class="setup"><div class="card">'
+                +'<div style="font-weight:800; font-size:17px; margin-bottom:10px">Свои шаблоны</div>'
+                +'<p>Вставь программу текстом — по строке на упражнение, например:<br>'
+                +'<span style="color:var(--dim)">Жимовая<br>1. Жим лёжа 3х8-12<br>2. Сведения 2х10-15</span><br>'
+                +'Строка без цифр подходов — название нового шаблона. Можно вставить несколько дней сразу.</p>'
+                +'<textarea id="setupText" placeholder="Вставь сюда тренировки из заметок…"></textarea>'
+                +'<button class="wide-btn primary" data-act="setupParse" style="margin-top:12px">Создать шаблоны</button>'
+                +'<button class="wide-btn" data-act="setupSkip">Пропустить</button></div></div>';
+        }
     }
 
     function render(){
@@ -662,7 +723,7 @@
     });
     document.getElementById("tabbar").addEventListener("click",function(e){
         const b=e.target.closest("button[data-tab]"); if(!b) return;
-        ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null; ui.wipeStep=0;
+        ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null; ui.wipeStep=0; ui.tplFromText=false; ui.tplParsed=null;
         if(ui.tab==="cal") calMonth=curDate.slice(0,7);
         hap("light"); render();
     });
@@ -704,9 +765,51 @@
     function doAction(act,ds){
         const day=getDay();
         switch(act){
-            case "start":{
+            case "setupNext":{
                 const v=document.getElementById("startInput").value;
-                if(v){ data.cfg.cycle.anchorDate=v; persistCfg(); render(); }
+                if(!v) return;
+                ui.setupDate=v; ui.setupStep=2; renderSetup();
+                break;
+            }
+            case "setupSkip":
+                data.cfg.cycle.anchorDate=ui.setupDate; ui.setupStep=1;
+                persistCfg(); render();
+                break;
+            case "setupParse":{
+                const parsed=parseTemplatesText(document.getElementById("setupText").value);
+                if(!parsed.length){ toast("Не нашёл упражнений — нужен формат «Жим 3х8-12»"); return; }
+                data.templates=[]; // свои шаблоны вместо дефолтных
+                let nEx=0;
+                for(const p of parsed){
+                    const t={id:uid(),name:p.name,title:p.name,exercises:p.exercises};
+                    data.templates.push(t); persistTpl(t); nEx+=p.exercises.length;
+                }
+                data.cfg.cycle.anchorDate=ui.setupDate; ui.setupStep=1;
+                persistCfg(); render();
+                hap("ok"); toast("Шаблонов: "+parsed.length+", упражнений: "+nEx);
+                break;
+            }
+            case "tplFromText": ui.tplFromText=true; render(); break;
+            case "tplTextCancel": ui.tplFromText=false; ui.tplParsed=null; render(); break;
+            case "tplTextParse":{
+                const parsed=parseTemplatesText(document.getElementById("tplText").value);
+                if(!parsed.length){ toast("Не нашёл упражнений — нужен формат «Жим 3х8-12»"); return; }
+                ui.tplParsed=parsed; render();
+                break;
+            }
+            case "tplTextSave":{
+                let nEx=0;
+                ui.tplParsed.forEach(function(p,i){
+                    const inp=document.getElementById("pn-"+i);
+                    const name=(inp&&inp.value.trim())||p.name;
+                    const old=data.templates.find(function(t){return t.name===name;});
+                    if(old){ data.templates=data.templates.filter(function(t){return t.id!==old.id;}); unpersistTpl(old.id); }
+                    const t={id:uid(),name:name,title:name,exercises:p.exercises};
+                    data.templates.push(t); persistTpl(t); nEx+=p.exercises.length;
+                });
+                const n=ui.tplParsed.length;
+                ui.tplParsed=null; ui.tplFromText=false; render();
+                hap("ok"); toast("Шаблонов: "+n+", упражнений: "+nEx);
                 break;
             }
             case "prev": curDate=addDays(curDate,-1); ui.confirmDel=false; render(); break;
