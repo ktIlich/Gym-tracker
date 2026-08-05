@@ -107,6 +107,7 @@
             background:var(--card2); border-radius:12px; padding:12px; font-size:14px; margin-top:10px; min-height:var(--touch)}
         .wide-btn:active{opacity:.7}
         .wide-btn.primary{background:var(--btn); color:var(--btn-text); font-weight:700}
+        .wide-btn.danger{color:var(--red); border:1px solid rgba(248,113,113,.35); background:transparent}
         .note{font-size:12px; color:var(--dim); margin-top:10px; line-height:1.45}
         .switch-row{display:flex; align-items:center; justify-content:space-between; min-height:var(--touch); margin-top:6px}
         .switch{position:relative; width:50px; height:30px; flex-shrink:0}
@@ -225,7 +226,7 @@
     }
     let data=emptyData();
     let curDate=toKey(new Date());
-    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null };
+    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0 };
     let calMonth=curDate.slice(0,7);
     let lastDel=null;
 
@@ -614,6 +615,21 @@
             +'<button class="wide-btn" data-act="export">⬇ Скачать Excel</button>'
             +'<button class="wide-btn" data-act="import">⬆ Импорт из Excel-файла</button>'
             +'<div class="note">'+syncNote+'</div></div>';
+
+        h+='<div class="sec-label">Опасная зона</div><div class="card">';
+        if(ui.wipeStep===1){
+            h+='<div class="confirm" style="margin-top:0"><span>Удалить ВСЕ данные — тренировки, шаблоны, настройки, включая облако Telegram (все устройства)?</span>'
+                +'<span class="btns"><button class="btn-red" data-act="wipe2">Продолжить</button>'
+                +'<button class="btn-gray" data-act="wipeNo">Отмена</button></span></div>';
+        } else if(ui.wipeStep===2){
+            h+='<div class="confirm" style="margin-top:0"><span><b>Последнее подтверждение.</b> Действие необратимо — восстановить получится только из Excel-файла.</span>'
+                +'<span class="btns"><button class="btn-red" data-act="wipeYes">Удалить всё</button>'
+                +'<button class="btn-gray" data-act="wipeNo">Отмена</button></span></div>';
+        } else {
+            h+='<button class="wide-btn danger" data-act="wipe1" style="margin-top:0">🗑 Удалить все данные</button>'
+                +'<div class="note">Перед удалением стоит нажать «Скачать Excel» — это единственная резервная копия.</div>';
+        }
+        h+='</div>';
         return h;
     }
 
@@ -646,7 +662,7 @@
     });
     document.getElementById("tabbar").addEventListener("click",function(e){
         const b=e.target.closest("button[data-tab]"); if(!b) return;
-        ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null;
+        ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null; ui.wipeStep=0;
         if(ui.tab==="cal") calMonth=curDate.slice(0,7);
         hap("light"); render();
     });
@@ -737,6 +753,24 @@
             }
             case "syncNow":
                 cloudLoad().then(function(){ toast(syncState.last?"Синхронизировано · записей: "+syncState.count:"Не удалось связаться с облаком"); });
+                break;
+
+            case "wipe1": ui.wipeStep=1; render(); break;
+            case "wipe2": ui.wipeStep=2; render(); break;
+            case "wipeNo": ui.wipeStep=0; render(); break;
+            case "wipeYes":
+                (async function(){
+                    ui.wipeStep=0;
+                    const keys=await csKeys();
+                    if(keys) for(const k of keys) await csDel(k);
+                    try{ localStorage.removeItem(CACHE_KEY); }catch(e){}
+                    data=emptyData();
+                    data.templates=DEFAULT_TEMPLATES.map(function(t){return {id:uid(),name:t.name,title:t.title,exercises:t.exercises.slice()};});
+                    syncState.last=null; syncState.count=null; warnedCloud=false;
+                    curDate=toKey(new Date()); ui.tab="day";
+                    saveCache(); render();
+                    hap("ok"); toast("Все данные удалены");
+                })();
                 break;
 
             case "addSet":{
