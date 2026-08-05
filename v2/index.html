@@ -66,8 +66,11 @@
         .ex-head{display:flex; justify-content:space-between; gap:8px; align-items:flex-start}
         .ex-name{font-weight:600; line-height:1.25; font-size:16px}
         .ex-last{font-size:12px; color:var(--dim); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-        .del{color:var(--dim); padding:8px; margin:-6px -8px 0 0; min-width:var(--touch); min-height:var(--touch); display:flex; align-items:center; justify-content:center}
-        .del:active{color:var(--red)}
+        .del-ex{width:var(--touch); height:var(--touch); flex-shrink:0; margin:-4px -4px 0 0;
+            display:flex; align-items:center; justify-content:center;
+            color:var(--mut); background:var(--card2); border:1px solid var(--border); border-radius:12px}
+        .del-ex:active{color:var(--red); border-color:rgba(248,113,113,.5); background:rgba(248,113,113,.12)}
+        .del-ex svg{width:19px; height:19px}
 
         .sets{margin-top:6px}
         .set{display:flex; align-items:center; gap:10px; border-top:1px solid var(--border); min-height:var(--touch)}
@@ -210,7 +213,16 @@
                 "Жим ногами, стандартная постановка (2х8-12)","Болгарские приседания (2х10-15)","Разгибания сидя (2х10-15)",
                 "Голень стоя (3х10-20)","Задняя дельта Пек-Дек (3х12)","Задняя дельта гантели в наклоне (2х15)"]}
     ];
-    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, compact:false }, templates:[], log:{} }; }
+    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true} }, templates:[], log:{} }; }
+    function normalizeData(d){
+        const base=emptyData();
+        d.cfg=Object.assign(base.cfg, d.cfg||{});
+        d.cfg.cycle=Object.assign(base.cfg.cycle, d.cfg.cycle||{});
+        d.cfg.view=Object.assign({lastWork:true,lastRest:true}, d.cfg.view||{});
+        if(d.cfg.compact){ d.cfg.view.lastWork=false; d.cfg.view.lastRest=false; delete d.cfg.compact; }
+        d.templates=d.templates||[]; d.log=d.log||{};
+        return d;
+    }
     let data=emptyData();
     let curDate=toKey(new Date());
     let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null };
@@ -262,7 +274,7 @@
 
     // ============ storage: localStorage cache + Telegram CloudStorage ============
     function saveCache(){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(data)); }catch(e){} }
-    function loadCache(){ try{ const r=localStorage.getItem(CACHE_KEY); if(r){ data=Object.assign(emptyData(), JSON.parse(r)); return true; } }catch(e){} return false; }
+    function loadCache(){ try{ const r=localStorage.getItem(CACHE_KEY); if(r){ data=normalizeData(JSON.parse(r)); return true; } }catch(e){} return false; }
 
     function csGetItems(keys){ return new Promise(function(res){ if(!cs||!keys.length) return res({}); cs.getItems(keys,function(e,v){ res(e?{}:(v||{})); }); }); }
     function csSet(k,v){ return new Promise(function(res){ if(!cs) return res(false); try{ cs.setItem(k,v,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
@@ -270,8 +282,8 @@
     function csKeys(){ return new Promise(function(res){ if(!cs) return res(null); try{ cs.getKeys(function(e,k){ res(e?null:(k||[])); }); }catch(err){ res(null); } }); }
 
     function persistDay(k){ saveCache(); if(data.log[k]) csSet("w:"+k, JSON.stringify(data.log[k])); else csDel("w:"+k); }
-    function persistCfg(){ saveCache(); csSet("cfg", JSON.stringify(data.cfg)); }
-    function persistTpl(t){ saveCache(); csSet("tpl:"+t.id, JSON.stringify(t)); }
+    function persistCfg(){ data.cfg.up=Date.now(); saveCache(); csSet("cfg", JSON.stringify(data.cfg)); }
+    function persistTpl(t){ t.up=Date.now(); saveCache(); csSet("tpl:"+t.id, JSON.stringify(t)); }
     function unpersistTpl(id){ saveCache(); csDel("tpl:"+id); }
 
     async function cloudPushAll(){
@@ -279,31 +291,48 @@
         for(const t of data.templates) await csSet("tpl:"+t.id, JSON.stringify(t));
         for(const k of Object.keys(data.log)) await csSet("w:"+k, JSON.stringify(data.log[k]));
     }
+    let syncState={ last:null, count:null, busy:false };
     async function cloudLoad(){
-        if(!cs) return;
-        const keys=await csKeys();
-        if(keys===null) return;
-        if(!keys.length){ await cloudPushAll(); return; } // облако пустое — заливаем локальное
-        const items=await csGetItems(keys);
-        const cloud=emptyData();
-        for(const k of keys){
-            const v=items[k]; if(!v) continue;
-            try{
-                const o=JSON.parse(v);
-                if(k==="cfg") cloud.cfg=Object.assign(emptyData().cfg,o);
-                else if(k.indexOf("tpl:")===0) cloud.templates.push(o);
-                else if(k.indexOf("w:")===0) cloud.log[k.slice(2)]=o;
-            }catch(e){}
-        }
-        // облако — источник истины; локальные записи, которых нет в облаке, доливаем наверх
-        const localOnlyDays=Object.keys(data.log).filter(function(k){ return !cloud.log[k]; });
-        const localOnlyTpls=data.templates.filter(function(t){ return !cloud.templates.some(function(c){return c.id===t.id;}); });
-        for(const k of localOnlyDays){ cloud.log[k]=data.log[k]; }
-        for(const t of localOnlyTpls){ cloud.templates.push(t); }
-        data=cloud; saveCache(); render();
-        for(const k of localOnlyDays) await csSet("w:"+k, JSON.stringify(data.log[k]));
-        for(const t of localOnlyTpls) await csSet("tpl:"+t.id, JSON.stringify(t));
+        if(!cs||syncState.busy) return;
+        syncState.busy=true;
+        try{
+            const keys=await csKeys();
+            if(keys===null){ syncState.busy=false; return; }
+            if(!keys.length){ await cloudPushAll(); syncState.last=new Date(); syncState.count=1+data.templates.length+Object.keys(data.log).length; syncState.busy=false; render(); return; }
+            const items=await csGetItems(keys);
+            const cloud=emptyData();
+            for(const k of keys){
+                const v=items[k]; if(!v) continue;
+                try{
+                    const o=JSON.parse(v);
+                    if(k==="cfg") cloud.cfg=o;
+                    else if(k.indexOf("tpl:")===0) cloud.templates.push(o);
+                    else if(k.indexOf("w:")===0) cloud.log[k.slice(2)]=o;
+                }catch(e){}
+            }
+            // слияние по меткам времени .up: новее — побеждает; чего нет в облаке — доливаем
+            const before=JSON.stringify(data);
+            const push=[];
+            const merged=normalizeData({ cfg:cloud.cfg, templates:cloud.templates.slice(), log:cloud.log });
+            if((data.cfg.up||0)>(merged.cfg.up||0)){ merged.cfg=data.cfg; push.push(["cfg",JSON.stringify(data.cfg)]); }
+            merged.cfg=normalizeData({cfg:merged.cfg}).cfg;
+            for(const k of Object.keys(data.log)){
+                const loc=data.log[k], cld=merged.log[k];
+                if(!cld||(loc.up||0)>(cld.up||0)){ merged.log[k]=loc; push.push(["w:"+k,JSON.stringify(loc)]); }
+            }
+            for(const t of data.templates){
+                const i=merged.templates.findIndex(function(c){return c.id===t.id;});
+                if(i<0){ merged.templates.push(t); push.push(["tpl:"+t.id,JSON.stringify(t)]); }
+                else if((t.up||0)>(merged.templates[i].up||0)){ merged.templates[i]=t; push.push(["tpl:"+t.id,JSON.stringify(t)]); }
+            }
+            data=merged;
+            syncState.last=new Date(); syncState.count=keys.length;
+            if(JSON.stringify(data)!==before){ saveCache(); render(); }
+            else if(ui.tab==="set") render(); // обновить строку статуса
+            for(const p of push) await csSet(p[0],p[1]);
+        }finally{ syncState.busy=false; }
     }
+    document.addEventListener("visibilitychange",function(){ if(!document.hidden) cloudLoad(); });
 
     // миграция из v1 (localStorage того же домена — сработает при открытии v2 в Safari)
     function migrateOld(){
@@ -326,6 +355,7 @@
     function setDay(day){
         const wi=weekInfo(curDate);
         if(wi) day.weekType=wi.isRest?"rest":"work";
+        day.up=Date.now();
         if(!day.exercises.length && !(day.title||"").trim()) delete data.log[curDate];
         else data.log[curDate]=day;
         persistDay(curDate); render();
@@ -419,6 +449,7 @@
 
     // ============ render ============
     const app=document.getElementById("app");
+    const ICON_TRASH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 
     function headerHtml(){
         const c=data.cfg.cycle, wi=weekInfo(curDate);
@@ -448,11 +479,9 @@
             const lw=lastByType(ex.name,"work"), lr=lastByType(ex.name,"rest");
             const showRest=lr&&(!lw||lr.date>lw.date);
             h+='<div class="card"><div class="ex-head"><div style="min-width:0"><div class="ex-name">'+esc(ex.name)+'</div>';
-            if(!data.cfg.compact){
-                if(lw) h+='<div class="ex-last">Рабочая '+fmtShort(lw.date)+': '+esc(lw.str)+'</div>';
-                if(showRest) h+='<div class="ex-last">Отдых '+fmtShort(lr.date)+': '+esc(lr.str)+'</div>';
-            }
-            h+='</div><button class="del" data-act="delEx" data-id="'+ex.id+'">🗑</button></div>';
+            if(data.cfg.view.lastWork&&lw) h+='<div class="ex-last">Рабочая '+fmtShort(lw.date)+': '+esc(lw.str)+'</div>';
+            if(data.cfg.view.lastRest&&showRest) h+='<div class="ex-last">Отдых '+fmtShort(lr.date)+': '+esc(lr.str)+'</div>';
+            h+='</div><button class="del-ex" data-act="delEx" data-id="'+ex.id+'" title="Удалить упражнение">'+ICON_TRASH+'</button></div>';
             if(ex.sets.length){
                 h+='<div class="sets">';
                 ex.sets.forEach(function(s,i){
@@ -563,17 +592,26 @@
             +'<input type="date" value="'+esc(c.anchorDate||"")+'" data-chg="anchorDate"></div>'
             +'<div class="note">Смена настроек пересчитает календарь, но уже записанные тренировки сохранят свой тип недели.</div></div>';
 
-        h+='<div class="sec-label">Вид</div><div class="card">'
-            +'<div class="switch-row"><span>Компактный режим<br><span class="note" style="margin-top:2px">скрыть прошлые результаты и подсказки</span></span>'
-            +'<label class="switch"><input type="checkbox" '+(data.cfg.compact?'checked':'')+' data-chg="compact"><i></i></label></div></div>';
+        const v=data.cfg.view;
+        h+='<div class="sec-label">Вид · что показывать в карточках</div><div class="card">'
+            +'<div class="switch-row"><span>Прошлые результаты (рабочая неделя)</span>'
+            +'<label class="switch"><input type="checkbox" '+(v.lastWork?'checked':'')+' data-chg="viewLastWork"><i></i></label></div>'
+            +'<div class="switch-row"><span>Результаты недели отдыха</span>'
+            +'<label class="switch"><input type="checkbox" '+(v.lastRest?'checked':'')+' data-chg="viewLastRest"><i></i></label></div>'
+            +'<div class="note">Дальше здесь появятся отдельные тумблеры для разминки и рекомендаций.</div></div>';
 
+        let syncNote;
+        if(cs){
+            syncNote='☁️ Синхронизация через Telegram включена.';
+            if(syncState.last) syncNote+=' Последняя: '+syncState.last.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})+', записей в облаке: '+syncState.count+'.';
+        } else {
+            syncNote='Режим браузера: данные хранятся локально, синхронизации нет. Откройте аппку внутри Telegram (кнопка меню у бота). Для переноса из старой версии: там «Скачать Excel», здесь «Импорт».';
+        }
         h+='<div class="sec-label">Данные</div><div class="card">'
+            +(cs?'<button class="wide-btn" data-act="syncNow">🔄 Синхронизировать сейчас</button>':'')
             +'<button class="wide-btn" data-act="export">⬇ Скачать Excel</button>'
             +'<button class="wide-btn" data-act="import">⬆ Импорт из Excel-файла</button>'
-            +'<div class="note">'+(cs
-                ?'☁️ Синхронизация через Telegram включена — данные доступны на всех ваших устройствах.'
-                :'Режим браузера: данные хранятся локально. Откройте аппку внутри Telegram, чтобы включить синхронизацию. Для переноса из старой версии: там «Скачать Excel», здесь «Импорт».')
-            +'</div></div>';
+            +'<div class="note">'+syncNote+'</div></div>';
         return h;
     }
 
@@ -618,7 +656,8 @@
         if(chg==="anchorDate"&&e.target.value){ c.anchorDate=e.target.value; persistCfg(); render(); return; }
         if(chg==="workWeeks"){ c.workWeeks=Math.min(8,Math.max(1,parseInt(e.target.value,10)||2)); persistCfg(); render(); return; }
         if(chg==="restWeeks"){ c.restWeeks=Math.min(4,Math.max(1,parseInt(e.target.value,10)||1)); persistCfg(); render(); return; }
-        if(chg==="compact"){ data.cfg.compact=e.target.checked; persistCfg(); render(); return; }
+        if(chg==="viewLastWork"){ data.cfg.view.lastWork=e.target.checked; persistCfg(); render(); return; }
+        if(chg==="viewLastRest"){ data.cfg.view.lastRest=e.target.checked; persistCfg(); render(); return; }
     });
     app.addEventListener("keydown",function(e){
         if(e.key!=="Enter") return;
@@ -681,9 +720,22 @@
                 day.exercises.push({id:uid(),name:name,sets:[]});
                 hap("light"); setDay(day); break;
             }
-            case "delEx":
-                day.exercises=day.exercises.filter(function(x){return x.id!==ds.id;});
-                hap("medium"); setDay(day); break;
+            case "delEx":{
+                const i=day.exercises.findIndex(function(x){return x.id===ds.id;}); if(i<0) return;
+                const removed=day.exercises[i], remDate=curDate;
+                day.exercises.splice(i,1);
+                hap("medium"); setDay(day);
+                toast("«"+removed.name.slice(0,24)+(removed.name.length>24?"…":"")+"» удалено","Вернуть",function(){
+                    const d2=data.log[remDate]||{title:"",exercises:[]};
+                    d2.exercises.splice(Math.min(i,d2.exercises.length),0,removed);
+                    data.log[remDate]=d2; d2.up=Date.now();
+                    persistDay(remDate); render();
+                });
+                break;
+            }
+            case "syncNow":
+                cloudLoad().then(function(){ toast(syncState.last?"Синхронизировано · записей: "+syncState.count:"Не удалось связаться с облаком"); });
+                break;
 
             case "addSet":{
                 const wEl=document.getElementById("w-"+ds.id), rEl=document.getElementById("r-"+ds.id);
@@ -713,8 +765,10 @@
                     let ex2=d2.exercises.find(function(x){return x.id===lastDel.exId;});
                     if(!ex2) return;
                     ex2.sets.splice(Math.min(lastDel.i,ex2.sets.length),0,lastDel.set);
-                    data.log[lastDel.date]=d2; lastDel=null;
-                    persistDay(curDate); render();
+                    d2.up=Date.now();
+                    data.log[lastDel.date]=d2;
+                    const dd=lastDel.date; lastDel=null;
+                    persistDay(dd); render();
                 });
                 break;
             }
