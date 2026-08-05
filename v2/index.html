@@ -23,6 +23,7 @@
             --green:#34d399; --red:#f87171;
             --rest-bg: rgba(52,211,153,.10);
             --touch:44px;
+            --accent:#ff9f0a; --accent-bg:rgba(255,159,10,.14);
         }
         *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
         html,body{margin:0}
@@ -189,6 +190,9 @@
         .toast.show{opacity:1; pointer-events:auto}
         .toast button{color:var(--link); font-weight:700; font-size:13px; padding:2px 4px}
         .ver{text-align:center; font-size:10px; color:var(--dim); opacity:.55; margin-top:28px}
+        .rec-badge{display:inline-flex; align-items:center; background:var(--accent-bg); color:var(--accent); font-weight:600; border-radius:6px; padding:2px 8px; font-size:13px; font-variant-numeric:tabular-nums; flex-shrink:0}
+        .rec-btn{display:inline-flex; align-items:center; background:var(--accent-bg); color:var(--accent); font-weight:600; border-radius:10px; padding:4px 12px; font-size:13px; min-height:40px; font-variant-numeric:tabular-nums; margin-top:4px; cursor:pointer}
+        .rec-btn:active{opacity:.8}
         .set-inp{width:auto; text-align:center; padding:5px 6px; font-size:15px; font-weight:600; background:transparent; border-color:transparent; min-width:0; border-radius:8px}
         .set-inp:focus{background:var(--card2); border-color:var(--btn)}
         .set-inp::-webkit-inner-spin-button,.set-inp::-webkit-outer-spin-button{-webkit-appearance:none}
@@ -209,7 +213,7 @@
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none"></button></div>
 <script>
     "use strict";
-    const APP_VERSION="2.3.0"; // фаза 2.3: суперсеты в дне, редактирование подходов, валидация
+    const APP_VERSION="2.4.0"; // фаза 4: рекомендации, деволоад, разминка
     // ============ Telegram ============
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     let cs = null;
@@ -243,12 +247,12 @@
                 "Жим ногами, стандартная постановка (2х8-12)","Болгарские приседания (2х10-15)","Разгибания сидя (2х10-15)",
                 "Голень стоя (3х10-20)","Задняя дельта Пек-Дек (3х12)","Задняя дельта гантели в наклоне (2х15)"]}
     ];
-    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true} }, templates:[], log:{} }; }
+    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true,viewRec:true,viewWarmup:true}, defaultWeightStep:null, warmupCount:4, warmupPercent:35 }, templates:[], log:{} }; }
     function normalizeData(d){
         const base=emptyData();
         d.cfg=Object.assign(base.cfg, d.cfg||{});
         d.cfg.cycle=Object.assign(base.cfg.cycle, d.cfg.cycle||{});
-        d.cfg.view=Object.assign({lastWork:true,lastRest:true}, d.cfg.view||{});
+        d.cfg.view=Object.assign({lastWork:true,lastRest:true,viewRec:true,viewWarmup:true}, d.cfg.view||{});
         if(d.cfg.compact){ d.cfg.view.lastWork=false; d.cfg.view.lastRest=false; delete d.cfg.compact; }
         d.templates=(d.templates||[]).map(normalizeTpl); d.log=d.log||{};
         return d;
@@ -462,6 +466,71 @@
         }
         return null;
     }
+    function lastSetsByType(name,type){
+        const low=name.toLowerCase();
+        const dates=Object.keys(data.log).filter(function(k){return k<curDate;}).sort().reverse();
+        for(const k of dates){
+            if(dayWeekType(k)!==type) continue;
+            const hit=(data.log[k].exercises||[]).find(function(e){return e.name.toLowerCase()===low&&e.sets.length;});
+            if(hit) return hit.sets;
+        }
+        return null;
+    }
+    function repRange(exName){
+        const base=exName.split(" · ")[0];
+        const p=splitPlan(base);
+        if(!p.plan) return null;
+        const m=p.plan.match(/\d+\s*[хx×*]\s*(\d+)\s*(?:[-–—]\s*(\d+))?/i);
+        if(!m) return null;
+        const low=parseInt(m[1],10), top=m[2]?parseInt(m[2],10):low;
+        return {low,top};
+    }
+    function weightStep(w,exStep){
+        if(exStep!=null) return exStep;
+        const ds=data.cfg.defaultWeightStep;
+        if(ds!=null&&ds>0) return ds;
+        const raw=w*0.11;
+        if(raw>=3.75) return 5;
+        if(raw>=1.75) return 2.5;
+        return 1;
+    }
+    function lastSetsAny(name){
+        const low=name.toLowerCase();
+        const dates=Object.keys(data.log).filter(function(k){return k<curDate;}).sort().reverse();
+        for(const k of dates){
+            const hit=(data.log[k].exercises||[]).find(function(e){return e.name.toLowerCase()===low&&e.sets.length;});
+            if(hit) return hit.sets;
+        }
+        return null;
+    }
+    function calcRec(exName,isRest){
+        const workSets=lastSetsByType(exName,"work");
+        if(!workSets||!workSets.length) return null;
+        const range=repRange(exName);
+        if(!range) return null;
+        // For deload: use most recent session if its weight >= last work week weight
+        // (prevents rest-week lighter loads from dragging down deload, but uses better rest results)
+        let baseSets=workSets;
+        if(isRest){
+            const recentSets=lastSetsAny(exName);
+            if(recentSets&&recentSets.length){
+                const wb=workSets.reduce(function(b,s){return s.w>b.w||(s.w===b.w&&s.r>b.r)?s:b;});
+                const rb=recentSets.reduce(function(b,s){return s.w>b.w||(s.w===b.w&&s.r>b.r)?s:b;});
+                if(rb.w>=wb.w) baseSets=recentSets;
+            }
+        }
+        const base=baseSets.reduce(function(b,s){return s.w>b.w||(s.w===b.w&&s.r>b.r)?s:b;});
+        const step=weightStep(base.w,null);
+        const {low,top}=range;
+        const r2=function(v){return Math.round(v*100)/100;};
+        if(isRest){
+            if(base.r>=top) return {w:base.w, r:Math.max(1,base.r-(top<=12?4:5))};
+            return {w:Math.max(0,r2(base.w-step)), r:8};
+        }
+        if(base.r>=top) return {w:r2(base.w+step), r:low};
+        const inc=(top-base.r)>=3?2:1;
+        return {w:base.w, r:Math.min(base.r+inc,top)};
+    }
 
     // ============ Excel ============
     function exportXlsx(){
@@ -552,12 +621,36 @@
             +'</div><div class="strip-labels">'+labels+'</div></header>';
     }
 
-    function exCardHtml(ex){
+    function exCardHtml(ex, exIdx, isRest){
         const lw=lastByType(ex.name,"work"), lr=lastByType(ex.name,"rest");
         const showRest=lr&&(!lw||lr.date>lw.date);
-        let h='<div class="card"><div class="ex-head"><div style="min-width:0"><div class="ex-name">'+esc(ex.name)+'</div>';
+        const showRec=data.cfg.view.viewRec;
+        const showWarmup=data.cfg.view.viewWarmup&&exIdx<(data.cfg.warmupCount||0);
+        const rec=(showRec||showWarmup)?calcRec(ex.name,!!isRest):null;
+        let warmup=null;
+        if(showWarmup){
+            let rw=rec?rec.w:null;
+            if(!rw){
+                const ws=lastSetsByType(ex.name,"work");
+                if(ws&&ws.length){ const b=ws.reduce(function(a,s){return s.w>a.w||(s.w===a.w&&s.r>a.r)?s:a;}); rw=b.w; }
+            }
+            if(rw>0){
+                const stp=weightStep(rw,null);
+                const pct=(data.cfg.warmupPercent||35)/100;
+                const w=Math.floor(rw*(1-pct)/stp)*stp;
+                if(w>0) warmup={w,r:8};
+            }
+        }
+        let h='<div class="card"><div class="ex-head"><div style="min-width:0">';
+        h+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+            +'<div class="ex-name">'+esc(ex.name)+'</div>';
+        if(showRec&&rec&&isRest) h+='<span class="rec-badge">→ '+fmtW(rec.w)+'×'+rec.r+'</span>';
+        h+='</div>';
+        if(showRec&&rec&&!isRest)
+            h+='<button class="rec-btn" data-act="applyRec" data-id="'+ex.id+'" data-w="'+rec.w+'" data-r="'+rec.r+'">Реком.: '+fmtW(rec.w)+'×'+rec.r+'</button>';
         if(data.cfg.view.lastWork&&lw) h+='<div class="ex-last">Рабочая '+fmtShort(lw.date)+': '+esc(lw.str)+'</div>';
         if(data.cfg.view.lastRest&&showRest) h+='<div class="ex-last">Отдых '+fmtShort(lr.date)+': '+esc(lr.str)+'</div>';
+        if(warmup) h+='<div class="ex-last">Разминка: '+fmtW(warmup.w)+'×'+warmup.r+'</div>';
         h+='</div><button class="del-ex" data-act="delEx" data-id="'+ex.id+'" title="Удалить упражнение">'+ICON_TRASH+'</button></div>';
         if(ex.sets.length){
             h+='<div class="sets">';
@@ -604,11 +697,11 @@
             const isSS=ex.ss&&(grpEnd-exIdx)>1;
             if(isSS){
                 h+='<div class="day-ss"><div class="et-btitle">Суперсет</div>';
-                for(let j=exIdx;j<grpEnd;j++) h+=exCardHtml(exs[j]);
+                for(let j=exIdx;j<grpEnd;j++) h+=exCardHtml(exs[j],j,isRest);
                 h+='</div>';
                 exIdx=grpEnd;
             } else {
-                h+=exCardHtml(ex);
+                h+=exCardHtml(ex,exIdx,isRest);
                 exIdx++;
             }
         }
@@ -773,7 +866,20 @@
             +'<label class="switch"><input type="checkbox" '+(v.lastWork?'checked':'')+' data-chg="viewLastWork"><i></i></label></div>'
             +'<div class="switch-row"><span>Результаты недели отдыха</span>'
             +'<label class="switch"><input type="checkbox" '+(v.lastRest?'checked':'')+' data-chg="viewLastRest"><i></i></label></div>'
-            +'<div class="note">Дальше здесь появятся отдельные тумблеры для разминки и рекомендаций.</div></div>';
+            +'<div class="switch-row"><span>Рекомендации по весу</span>'
+            +'<label class="switch"><input type="checkbox" '+(v.viewRec?'checked':'')+' data-chg="viewRec"><i></i></label></div>'
+            +'<div class="switch-row"><span>Разминочный вес</span>'
+            +'<label class="switch"><input type="checkbox" '+(v.viewWarmup?'checked':'')+' data-chg="viewWarmup"><i></i></label></div>'
+            +'</div>';
+
+        h+='<div class="sec-label">Веса и разминка</div><div class="card">'
+            +'<div class="row"><div class="lbl">Шаг прибавки веса (пусто — авто)</div>'
+            +'<input type="number" inputmode="decimal" min="0" placeholder="авто (1 / 2.5 / 5)" value="'+esc(data.cfg.defaultWeightStep!=null?String(data.cfg.defaultWeightStep):"")+'" data-chg="defaultWeightStep"></div>'
+            +'<div class="row2" style="margin-top:10px"><div><div class="lbl">Разминка: первых упражн.</div>'
+            +'<input type="number" inputmode="numeric" min="0" value="'+(data.cfg.warmupCount||0)+'" data-chg="warmupCount"></div>'
+            +'<div><div class="lbl">Снижение веса, %</div>'
+            +'<input type="number" inputmode="numeric" min="20" max="50" value="'+(data.cfg.warmupPercent||35)+'" data-chg="warmupPercent"></div></div>'
+            +'<div class="note">Разминка отображается для первых N упражнений при наличии истории и плана.</div></div>';
 
         let syncNote;
         if(cs){
@@ -895,6 +1001,11 @@
         if(chg==="restWeeks"){ c.restWeeks=Math.min(4,Math.max(1,parseInt(e.target.value,10)||1)); persistCfg(); render(); return; }
         if(chg==="viewLastWork"){ data.cfg.view.lastWork=e.target.checked; persistCfg(); render(); return; }
         if(chg==="viewLastRest"){ data.cfg.view.lastRest=e.target.checked; persistCfg(); render(); return; }
+        if(chg==="viewRec"){ data.cfg.view.viewRec=e.target.checked; persistCfg(); render(); return; }
+        if(chg==="viewWarmup"){ data.cfg.view.viewWarmup=e.target.checked; persistCfg(); render(); return; }
+        if(chg==="defaultWeightStep"){ const sv=parseFloat(e.target.value); data.cfg.defaultWeightStep=(isNaN(sv)||sv<=0)?null:sv; persistCfg(); render(); return; }
+        if(chg==="warmupCount"){ data.cfg.warmupCount=Math.max(0,parseInt(e.target.value,10)||0); persistCfg(); render(); return; }
+        if(chg==="warmupPercent"){ data.cfg.warmupPercent=Math.min(50,Math.max(20,parseInt(e.target.value,10)||35)); persistCfg(); render(); return; }
     });
     app.addEventListener("keydown",function(e){
         if(e.key!=="Enter") return;
@@ -1063,6 +1174,13 @@
             }
             case "calGo": curDate=ds.date; ui.tab="day"; ui.confirmDel=false; hap("light"); render(); break;
 
+            case "applyRec":{
+                const wEl=document.getElementById("w-"+ds.id);
+                const rEl=document.getElementById("r-"+ds.id);
+                if(wEl) wEl.value=ds.w;
+                if(rEl) rEl.value=ds.r;
+                hap("light"); break;
+            }
             case "export": exportXlsx(); break;
             case "import": document.getElementById("importFile").click(); break;
 
