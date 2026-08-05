@@ -189,6 +189,12 @@
         .toast.show{opacity:1; pointer-events:auto}
         .toast button{color:var(--link); font-weight:700; font-size:13px; padding:2px 4px}
         .ver{text-align:center; font-size:10px; color:var(--dim); opacity:.55; margin-top:28px}
+        .set-inp{width:auto; text-align:center; padding:5px 6px; font-size:15px; font-weight:600; background:transparent; border-color:transparent; min-width:0; border-radius:8px}
+        .set-inp:focus{background:var(--card2); border-color:var(--btn)}
+        .set-inp::-webkit-inner-spin-button,.set-inp::-webkit-outer-spin-button{-webkit-appearance:none}
+        .day-ss{border-left:3px solid var(--btn); padding-left:8px; margin-top:12px}
+        .day-ss>.et-btitle{display:block; margin-bottom:2px}
+        .day-ss>.card{margin-top:8px}
     </style>
 </head>
 <body>
@@ -203,7 +209,7 @@
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none"></button></div>
 <script>
     "use strict";
-    const APP_VERSION="2.2.0"; // фаза 2: редактор шаблонов, суперсеты, варианты
+    const APP_VERSION="2.3.0"; // фаза 2.3: суперсеты в дне, редактирование подходов, валидация
     // ============ Telegram ============
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     let cs = null;
@@ -546,6 +552,35 @@
             +'</div><div class="strip-labels">'+labels+'</div></header>';
     }
 
+    function exCardHtml(ex){
+        const lw=lastByType(ex.name,"work"), lr=lastByType(ex.name,"rest");
+        const showRest=lr&&(!lw||lr.date>lw.date);
+        let h='<div class="card"><div class="ex-head"><div style="min-width:0"><div class="ex-name">'+esc(ex.name)+'</div>';
+        if(data.cfg.view.lastWork&&lw) h+='<div class="ex-last">Рабочая '+fmtShort(lw.date)+': '+esc(lw.str)+'</div>';
+        if(data.cfg.view.lastRest&&showRest) h+='<div class="ex-last">Отдых '+fmtShort(lr.date)+': '+esc(lr.str)+'</div>';
+        h+='</div><button class="del-ex" data-act="delEx" data-id="'+ex.id+'" title="Удалить упражнение">'+ICON_TRASH+'</button></div>';
+        if(ex.sets.length){
+            h+='<div class="sets">';
+            ex.sets.forEach(function(s,i){
+                h+='<div class="set"><span class="idx num">'+(i+1)+'</span>'
+                    +'<span style="flex:1;display:flex;align-items:center;gap:4px">'
+                    +'<input type="number" class="set-inp num" inputmode="decimal" min="0" style="flex:1;min-width:0" value="'+s.w+'" data-set="w" data-id="'+ex.id+'" data-i="'+i+'">'
+                    +'<span class="unit">кг</span><span class="x">×</span>'
+                    +'<input type="number" class="set-inp num" inputmode="numeric" min="1" style="width:52px;flex-shrink:0" value="'+s.r+'" data-set="r" data-id="'+ex.id+'" data-i="'+i+'">'
+                    +'</span>'
+                    +'<button class="del-set" data-act="delSet" data-id="'+ex.id+'" data-i="'+i+'">✕</button></div>';
+            });
+            h+='</div>';
+        }
+        h+='<div class="addset">'
+            +'<input type="number" inputmode="decimal" placeholder="кг" min="0" id="w-'+ex.id+'">'
+            +'<input type="number" inputmode="numeric" placeholder="повт." min="1" id="r-'+ex.id+'" data-enter="addSet" data-id="'+ex.id+'">'
+            +'<button class="btn-main" data-act="addSet" data-id="'+ex.id+'">＋</button>'
+            +(ex.sets.length?'<button class="btn-gray" data-act="repSet" data-id="'+ex.id+'" title="Повторить последний подход">⧉</button>':'')
+            +'</div></div>';
+        return h;
+    }
+
     function dayPage(){
         const day=getDay(), wi=weekInfo(curDate);
         const isRest=wi&&wi.isRest, today=toKey(new Date());
@@ -560,28 +595,22 @@
         h+='<div class="subtitle-row"><input value="'+esc(day.title||"")+'" data-chg="title" placeholder="Что качаем? (грудь, спина, ноги…)" maxlength="40"></div>';
         if(isRest&&!day.exercises.length) h+='<div class="rest-hint">Неделя отдыха — лёгкие веса, восстановление 💤</div>';
 
-        for(const ex of day.exercises){
-            const lw=lastByType(ex.name,"work"), lr=lastByType(ex.name,"rest");
-            const showRest=lr&&(!lw||lr.date>lw.date);
-            h+='<div class="card"><div class="ex-head"><div style="min-width:0"><div class="ex-name">'+esc(ex.name)+'</div>';
-            if(data.cfg.view.lastWork&&lw) h+='<div class="ex-last">Рабочая '+fmtShort(lw.date)+': '+esc(lw.str)+'</div>';
-            if(data.cfg.view.lastRest&&showRest) h+='<div class="ex-last">Отдых '+fmtShort(lr.date)+': '+esc(lr.str)+'</div>';
-            h+='</div><button class="del-ex" data-act="delEx" data-id="'+ex.id+'" title="Удалить упражнение">'+ICON_TRASH+'</button></div>';
-            if(ex.sets.length){
-                h+='<div class="sets">';
-                ex.sets.forEach(function(s,i){
-                    h+='<div class="set"><span class="idx num">'+(i+1)+'</span>'
-                        +'<span class="val num">'+fmtW(s.w)+' <span class="unit">кг</span><span class="x">×</span>'+s.r+'</span>'
-                        +'<button class="del-set" data-act="delSet" data-id="'+ex.id+'" data-i="'+i+'">✕</button></div>';
-                });
+        const exs=day.exercises;
+        let exIdx=0;
+        while(exIdx<exs.length){
+            const ex=exs[exIdx];
+            let grpEnd=exIdx+1;
+            if(ex.ss){ while(grpEnd<exs.length&&exs[grpEnd].ss===ex.ss) grpEnd++; }
+            const isSS=ex.ss&&(grpEnd-exIdx)>1;
+            if(isSS){
+                h+='<div class="day-ss"><div class="et-btitle">Суперсет</div>';
+                for(let j=exIdx;j<grpEnd;j++) h+=exCardHtml(exs[j]);
                 h+='</div>';
+                exIdx=grpEnd;
+            } else {
+                h+=exCardHtml(ex);
+                exIdx++;
             }
-            h+='<div class="addset">'
-                +'<input type="number" inputmode="decimal" placeholder="кг" id="w-'+ex.id+'">'
-                +'<input type="number" inputmode="numeric" placeholder="повт." id="r-'+ex.id+'" data-enter="addSet" data-id="'+ex.id+'">'
-                +'<button class="btn-main" data-act="addSet" data-id="'+ex.id+'">＋</button>'
-                +(ex.sets.length?'<button class="btn-gray" data-act="repSet" data-id="'+ex.id+'" title="Повторить последний подход">⧉</button>':'')
-                +'</div></div>';
         }
 
         h+='<div class="addex"><input placeholder="Новое упражнение…" id="newEx" data-enter="addEx">'
@@ -669,7 +698,7 @@
                     +(ss&&i<b.items.length-1?'<button class="mini-btn" data-act="etItemDown" data-k="'+k+'" data-i="'+i+'">↓</button>':'')
                     +'<button class="mini-btn warn" data-act="etDelItem" data-k="'+k+'" data-i="'+i+'" style="margin-left:auto">✕</button>'
                     +'</div>';
-                if(it._v||it.vars)
+                if(it._v===true||(it._v!==false&&!!it.vars))
                     h+='<div class="et-vars"><input value="'+esc((it.vars||[]).join(", "))+'" placeholder="варианты через запятую" data-et="vars" data-k="'+k+'" data-i="'+i+'">'
                         +'кажд.<input class="alt" type="number" inputmode="numeric" min="1" value="'+(it.alt||1)+'" data-et="alt" data-k="'+k+'" data-i="'+i+'">тр.</div>';
                 h+='</div>';
@@ -822,6 +851,31 @@
         hap("light"); render();
     });
     app.addEventListener("change",function(e){
+        const setField=e.target.dataset.set;
+        if(setField==="w"||setField==="r"){
+            const d=getDay();
+            const ex=d.exercises.find(function(x){return x.id===e.target.dataset.id;});
+            if(!ex) return;
+            const i=+e.target.dataset.i;
+            if(i<0||i>=ex.sets.length) return;
+            const s=ex.sets[i];
+            if(setField==="w"){
+                const v=parseFloat(String(e.target.value).replace(",","."));
+                if(isNaN(v)||v<0){ e.target.value=s.w; return; }
+                s.w=v;
+            } else {
+                const v=parseInt(e.target.value,10);
+                if(isNaN(v)||v<=0){ e.target.value=s.r; return; }
+                s.r=v;
+            }
+            const wi=weekInfo(curDate);
+            if(wi) d.weekType=wi.isRest?"rest":"work";
+            d.up=Date.now();
+            if(!d.exercises.length&&!(d.title||"").trim()) delete data.log[curDate];
+            else data.log[curDate]=d;
+            persistDay(curDate);
+            return;
+        }
         const et=e.target.dataset.et;
         if(et&&ui.editTpl){
             const it=ui.editTpl.blocks[+e.target.dataset.k].items[+e.target.dataset.i];
@@ -855,16 +909,22 @@
     function applyTemplate(t){
         const day=getDay();
         if(!day.title&&(t.title||t.name)) day.title=t.title||t.name;
-        for(const b of t.blocks) for(const it of b.items){
-            if(!it.name) continue;
-            const fam=fullEx(it);
-            let nm=fam;
-            if(it.vars&&it.vars.length){
-                const step=Math.max(1,it.alt||1);
-                nm=fam+" · "+it.vars[Math.floor(countFamily(fam)/step)%it.vars.length];
+        for(const b of t.blocks){
+            const ssId=b.type==="superset"?uid():null;
+            for(const it of b.items){
+                if(!it.name) continue;
+                const fam=fullEx(it);
+                let nm=fam;
+                if(it.vars&&it.vars.length){
+                    const step=Math.max(1,it.alt||1);
+                    nm=fam+" · "+it.vars[Math.floor(countFamily(fam)/step)%it.vars.length];
+                }
+                if(!day.exercises.some(function(x){return x.name.toLowerCase()===nm.toLowerCase();})){
+                    const ex={id:uid(),name:nm,sets:[]};
+                    if(ssId) ex.ss=ssId;
+                    day.exercises.push(ex);
+                }
             }
-            if(!day.exercises.some(function(x){return x.name.toLowerCase()===nm.toLowerCase();}))
-                day.exercises.push({id:uid(),name:nm,sets:[]});
         }
         setDay(day);
     }
@@ -942,7 +1002,8 @@
             }
             case "etVarsToggle":{
                 const it=ui.editTpl.blocks[+ds.k].items[+ds.i];
-                if(it.vars){ delete it.vars; delete it.alt; } else it._v=!it._v;
+                const showing=it._v===true||(it._v!==false&&!!it.vars);
+                it._v=!showing;
                 render(); break;
             }
             case "etSave":{
@@ -1050,7 +1111,7 @@
                 const wEl=document.getElementById("w-"+ds.id), rEl=document.getElementById("r-"+ds.id);
                 const w=parseFloat(String(wEl.value).replace(",","."));
                 const r=parseInt(rEl.value,10);
-                if(isNaN(w)||isNaN(r)||r<=0) return;
+                if(isNaN(w)||w<0||isNaN(r)||r<=0) return;
                 const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex) return;
                 ex.sets.push({w:w,r:r});
                 hap("light"); setDay(day);
