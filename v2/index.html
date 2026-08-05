@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Gym Tracker</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root{
+            /* Палитра из темы Telegram, fallback — тёмная как в v1 (для браузера) */
+            --bg:   var(--tg-theme-bg-color, #09090b);
+            --card: var(--tg-theme-secondary-bg-color, #18181b);
+            --text: var(--tg-theme-text-color, #f4f4f5);
+            --mut:  var(--tg-theme-hint-color, #a1a1aa);
+            --btn:  var(--tg-theme-button-color, #f59e0b);
+            --btn-text: var(--tg-theme-button-text-color, #09090b);
+            --link: var(--tg-theme-link-color, #fbbf24);
+            /* Нейтральные к теме служебные цвета */
+            --border: rgba(128,128,128,.22);
+            --card2:  rgba(128,128,128,.14);
+            --dim:    var(--mut);
+            --green:#34d399; --red:#f87171;
+            --rest-bg: rgba(52,211,153,.10);
+            --touch:44px;
+        }
+        *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+        html,body{margin:0}
+        body{background:var(--bg); color:var(--text);
+            font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; font-size:15px;
+            padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+        #app{max-width:480px; margin:0 auto; padding:0 14px 24px}
+        button{font-family:inherit; font-size:inherit; border:none; background:none; color:inherit; cursor:pointer; padding:0}
+        input{font-family:inherit; font-size:15px; color:var(--text); background:var(--card);
+            border:1px solid var(--border); border-radius:12px; padding:9px 12px; outline:none; width:100%}
+        input:focus{border-color:var(--btn)}
+        input::placeholder{color:var(--dim); opacity:.7}
+        .num{font-variant-numeric:tabular-nums}
+
+        header{position:sticky; top:0; z-index:10; background:var(--bg);
+            border-bottom:1px solid var(--border); margin:0 -14px; padding:10px 14px 6px}
+        .strip{display:flex; gap:4px; height:8px; border-radius:99px; overflow:hidden; position:relative}
+        .strip>i{flex:1}
+        .s-work{background:color-mix(in srgb, var(--btn) 35%, transparent)}
+        .s-rest{background:rgba(52,211,153,.35)}
+        .dot{position:absolute; top:0; width:8px; height:8px; border-radius:50%; background:var(--text); box-shadow:0 0 4px rgba(0,0,0,.5)}
+        .strip-labels{display:flex; justify-content:space-between; font-size:10px; color:var(--dim); margin-top:4px}
+
+        .datenav{display:flex; align-items:center; justify-content:space-between; margin-top:12px}
+        .datenav .nav{padding:6px 10px; color:var(--mut); font-size:24px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
+        .dmain{text-align:center}
+        .dtitle{font-weight:600; text-transform:capitalize; font-size:16px}
+        .badge{font-size:12px; font-weight:600; margin-top:1px}
+        .b-work{color:var(--link)} .b-rest{color:var(--green)}
+        .today-link{font-size:11px; color:var(--dim); text-decoration:underline; margin-top:2px}
+
+        .subtitle-row{margin:10px 0 2px}
+        .subtitle-row input{background:transparent; border:1px dashed var(--border); text-align:center;
+            font-weight:600; font-size:16px; border-radius:14px}
+        .subtitle-row input:focus{border-style:solid}
+
+        .rest-hint{text-align:center; color:var(--green); font-size:14px;
+            background:var(--rest-bg); border:1px solid rgba(52,211,153,.25); border-radius:14px; padding:12px; margin-top:12px}
+
+        .card{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:12px 14px; margin-top:12px}
+        .ex-head{display:flex; justify-content:space-between; gap:8px; align-items:flex-start}
+        .ex-name{font-weight:600; line-height:1.25; font-size:16px}
+        .ex-last{font-size:12px; color:var(--dim); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+        .del{color:var(--dim); padding:8px; margin:-6px -8px 0 0; min-width:var(--touch); min-height:var(--touch); display:flex; align-items:center; justify-content:center}
+        .del:active{color:var(--red)}
+
+        .sets{margin-top:6px}
+        .set{display:flex; align-items:center; gap:10px; border-top:1px solid var(--border); min-height:var(--touch)}
+        .set:first-child{border-top:none}
+        .set .idx{width:18px; font-size:12px; color:var(--dim)}
+        .set .val{flex:1; font-weight:600; font-size:16px}
+        .set .unit{color:var(--dim); font-weight:400; font-size:13px}
+        .set .x{color:var(--dim); margin:0 6px; opacity:.6}
+        .del-set{width:40px; height:40px; display:flex; align-items:center; justify-content:center;
+            color:var(--red); background:rgba(248,113,113,.12); border-radius:12px; font-size:16px; flex-shrink:0}
+        .del-set:active{background:rgba(248,113,113,.28)}
+
+        .addset{display:flex; gap:8px; margin-top:10px}
+        .addset input{width:80px; padding:10px; font-size:16px; background:var(--card2); border-color:transparent; text-align:center}
+        .btn-main{background:var(--btn); color:var(--btn-text); border-radius:12px; padding:0 14px; font-weight:700;
+            display:flex; align-items:center; min-height:var(--touch); font-size:18px}
+        .btn-main:active{opacity:.85}
+        .btn-gray{background:var(--card2); color:var(--mut); border-radius:12px; padding:0 13px; display:flex; align-items:center; min-height:var(--touch)}
+        .btn-gray:active{opacity:.7}
+
+        .addex{display:flex; gap:8px; margin-top:12px}
+        .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px}
+        .chip{display:flex; align-items:center; gap:6px; font-size:13px; color:var(--mut);
+            background:var(--card); border:1px solid var(--border); border-radius:99px; padding:9px 14px; min-height:40px}
+        .chip:active{background:var(--card2)}
+        .chip.danger{color:var(--red); border-color:rgba(248,113,113,.35)}
+        .sec-label{font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.08em; margin:20px 0 4px}
+
+        .row{margin-top:12px}
+        .lbl{font-size:13px; color:var(--mut); margin-bottom:6px}
+        .row2{display:flex; gap:10px}
+        .row2>div{flex:1}
+        .wide-btn{width:100%; display:flex; justify-content:center; align-items:center; gap:8px;
+            background:var(--card2); border-radius:12px; padding:12px; font-size:14px; margin-top:10px; min-height:var(--touch)}
+        .wide-btn:active{opacity:.7}
+        .wide-btn.primary{background:var(--btn); color:var(--btn-text); font-weight:700}
+        .note{font-size:12px; color:var(--dim); margin-top:10px; line-height:1.45}
+        .switch-row{display:flex; align-items:center; justify-content:space-between; min-height:var(--touch); margin-top:6px}
+        .switch{position:relative; width:50px; height:30px; flex-shrink:0}
+        .switch input{position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; z-index:2}
+        .switch i{position:absolute; inset:0; background:var(--card2); border-radius:99px; transition:background .15s}
+        .switch i::after{content:""; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%;
+            background:var(--text); opacity:.85; transition:transform .15s}
+        .switch input:checked + i{background:var(--btn)}
+        .switch input:checked + i::after{transform:translateX(20px); background:var(--btn-text); opacity:1}
+
+        .setup{min-height:80vh; display:flex; align-items:center; justify-content:center}
+        .setup .card{max-width:340px; width:100%; padding:22px}
+        .setup p{color:var(--mut); font-size:14px; line-height:1.5}
+
+        .cal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px}
+        .cal-title{font-weight:600; text-transform:capitalize}
+        .cal-nav{padding:6px 14px; color:var(--mut); font-size:22px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
+        .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px}
+        .cal-dow{font-size:10px; color:var(--dim); text-align:center; padding-bottom:2px}
+        .cal-day{aspect-ratio:1; border-radius:10px; border:1px solid transparent;
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            font-size:13px; color:var(--mut); overflow:hidden}
+        .cal-day.rest{background:var(--rest-bg)}
+        .cal-day.has{color:var(--text)}
+        .cal-day.sel{border-color:var(--btn)}
+        .cal-day.today .n{color:var(--link); font-weight:800}
+        .cal-day .t{font-size:8px; color:var(--link); line-height:1.1; margin-top:2px;
+            max-width:95%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+        .cal-day .dotm{width:4px; height:4px; border-radius:50%; background:var(--btn); margin-top:3px}
+        .cal-legend{display:flex; gap:14px; font-size:10px; color:var(--dim); margin-top:8px}
+        .cal-legend i{display:inline-block; width:8px; height:8px; border-radius:3px; margin-right:4px; vertical-align:-1px}
+
+        .confirm{display:flex; align-items:center; gap:10px; justify-content:space-between;
+            background:rgba(248,113,113,.08); border:1px solid rgba(248,113,113,.3);
+            border-radius:14px; padding:10px 14px; margin-top:12px; font-size:13px}
+        .confirm .btns{display:flex; gap:8px; flex-shrink:0}
+        .btn-red{background:var(--red); color:#09090b; border-radius:10px; padding:9px 12px; font-weight:700; font-size:13px}
+        .btn-red:active{opacity:.85}
+
+        .tpl-item .tpl-name{font-weight:600; font-size:16px}
+        .tpl-item .tpl-sub{font-size:12px; color:var(--dim); margin-top:2px}
+        .tpl-item .tpl-btns{display:flex; gap:8px; margin-top:10px}
+        .tpl-item .tpl-btns button{flex:1; justify-content:center; font-size:14px}
+
+        .tabbar{position:fixed; left:0; right:0; bottom:0; z-index:20;
+            background:var(--bg); border-top:1px solid var(--border);
+            display:flex; padding:4px 6px calc(4px + env(safe-area-inset-bottom));}
+        .tabbar button{flex:1; display:flex; flex-direction:column; align-items:center; gap:1px;
+            padding:6px 0; color:var(--dim); font-size:10px; border-radius:12px; min-height:52px}
+        .tabbar button .ti{font-size:21px; line-height:1.2}
+        .tabbar button.on{color:var(--btn)}
+
+        .toast{position:fixed; left:50%; bottom:calc(76px + env(safe-area-inset-bottom)); transform:translateX(-50%);
+            background:var(--card); border:1px solid var(--border); color:var(--text);
+            padding:10px 16px; border-radius:99px; font-size:13px; opacity:0; transition:opacity .2s;
+            pointer-events:none; white-space:nowrap; z-index:50; display:flex; gap:12px; align-items:center;
+            box-shadow:0 4px 16px rgba(0,0,0,.25)}
+        .toast.show{opacity:1; pointer-events:auto}
+        .toast button{color:var(--link); font-weight:700; font-size:13px; padding:2px 4px}
+    </style>
+</head>
+<body>
+<div id="app"></div>
+<nav class="tabbar" id="tabbar">
+    <button data-tab="day"><span class="ti">🏋️</span>Сегодня</button>
+    <button data-tab="cal"><span class="ti">📅</span>Календарь</button>
+    <button data-tab="tpl"><span class="ti">🔖</span>Шаблоны</button>
+    <button data-tab="set"><span class="ti">⚙️</span>Настройки</button>
+</nav>
+<input type="file" id="importFile" accept=".xlsx,.xls" style="display:none">
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none"></button></div>
+<script>
+    "use strict";
+    // ============ Telegram ============
+    const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    let cs = null;
+    try{
+        if(tg){ tg.ready(); tg.expand();
+            if(tg.isVersionAtLeast && tg.isVersionAtLeast("6.9") && tg.CloudStorage) cs = tg.CloudStorage;
+            if(tg.isVersionAtLeast && tg.isVersionAtLeast("7.7") && tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+            document.documentElement.style.colorScheme = tg.colorScheme || "dark";
+        } else document.documentElement.style.colorScheme = "dark";
+    }catch(e){}
+    function hap(kind){ try{ if(tg && tg.HapticFeedback){
+        if(kind==="ok") tg.HapticFeedback.notificationOccurred("success");
+        else tg.HapticFeedback.impactOccurred(kind);
+    }}catch(e){} }
+
+    // ============ state ============
+    const CACHE_KEY="gt2:cache", OLD_KEY="gym-tracker-v1";
+    const DEFAULT_TEMPLATES=[
+        { name:"Жимовая (пн)", title:"Жимовая", exercises:[
+                "Отведения в Пек-Дек на заднюю дельту (3х12-20)","Жим штанги лёжа под углом в Смите (3х8-12)",
+                "Жим гантелями лёжа под углом (2х8-12)","Сведения в кроссовере (2х10-15)",
+                "Отведения в тренажёре на плечи (3х10-15)","Отведения по 1 руке с нижнего блока (2х10-15)",
+                "Жим Смит / гантели на плечи (2х10)","Разгибания в блоке с прямой рукоятью (4х10-15)","Пресс (4х12-20)"]},
+        { name:"Тяговая (ср)", title:"Тяговая", exercises:[
+                "Пуловер в кроссовере (2х10-15)","Вертикальная тяга широким хватом (3х8-12)","Тяга Т-грифа (2х8-12)",
+                "Вертикальная тяга средним параллельным хватом (3х12-15)","Горизонтальная тяга сидя широким хватом (2х10-15)",
+                "Гиперэкстензия (3х12)","Сгибания с гантелями стоя по 1 руке (2х8-15)","Молотки, свободный вес или блок (2х8-15)",
+                "Гиперэкстензия, акцент разгибатели и поясница (3х12-15)"]},
+        { name:"Ноги (пт)", title:"Ноги", exercises:[
+                "Сгибания голени сидя или стоя (2х8-12)","Сведения ног сидя (2х10-15)","Приседания в гакк-машине (2х8-12)",
+                "Жим ногами, стандартная постановка (2х8-12)","Болгарские приседания (2х10-15)","Разгибания сидя (2х10-15)",
+                "Голень стоя (3х10-20)","Задняя дельта Пек-Дек (3х12)","Задняя дельта гантели в наклоне (2х15)"]}
+    ];
+    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, compact:false }, templates:[], log:{} }; }
+    let data=emptyData();
+    let curDate=toKey(new Date());
+    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null };
+    let calMonth=curDate.slice(0,7);
+    let lastDel=null;
+
+    // ============ helpers ============
+    function toKey(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+    function parseKey(k){ const p=k.split("-").map(Number); return new Date(p[0],p[1]-1,p[2]); }
+    function addDays(k,n){ const d=parseKey(k); d.setDate(d.getDate()+n); return toKey(d); }
+    function fmtDate(k){ return parseKey(k).toLocaleDateString("ru-RU",{weekday:"short",day:"numeric",month:"long"}); }
+    function fmtShort(k){ return k.slice(8,10)+"."+k.slice(5,7); }
+    function uid(){ return Math.random().toString(36).slice(2,9); }
+    function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];}); }
+    function fmtW(w){ return (Math.round(w*100)/100).toString().replace(".",","); }
+
+    function weekInfo(dateKey){
+        const c=data.cfg.cycle;
+        if(!c.anchorDate) return null;
+        const total=c.workWeeks+c.restWeeks, cycleLen=total*7;
+        const diff=Math.round((parseKey(dateKey)-parseKey(c.anchorDate))/86400000);
+        const week=Math.floor(diff/7);
+        const pos=((week%total)+total)%total;
+        const day=((diff%cycleLen)+cycleLen)%cycleLen;
+        return { pos:pos, day:day, cycleLen:cycleLen, isRest:pos>=c.workWeeks };
+    }
+    function weekLabel(wi){
+        if(!wi) return "";
+        const c=data.cfg.cycle;
+        if(wi.isRest) return c.restWeeks>1 ? "Отдых · неделя "+(wi.pos-c.workWeeks+1) : "Отдых";
+        return "Рабочая · неделя "+(wi.pos+1);
+    }
+    function dayWeekType(k){
+        const d=data.log[k];
+        if(d && d.weekType) return d.weekType;
+        const wi=weekInfo(k);
+        return wi ? (wi.isRest?"rest":"work") : null;
+    }
+
+    let toastTimer;
+    function toast(msg,btnLabel,btnFn){
+        const t=document.getElementById("toast"), m=document.getElementById("toastMsg"), b=document.getElementById("toastBtn");
+        m.textContent=msg;
+        if(btnLabel){ b.style.display=""; b.textContent=btnLabel; b.onclick=function(){ t.classList.remove("show"); btnFn(); }; }
+        else { b.style.display="none"; b.onclick=null; }
+        t.classList.add("show");
+        clearTimeout(toastTimer); toastTimer=setTimeout(function(){t.classList.remove("show");},3500);
+    }
+
+    // ============ storage: localStorage cache + Telegram CloudStorage ============
+    function saveCache(){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(data)); }catch(e){} }
+    function loadCache(){ try{ const r=localStorage.getItem(CACHE_KEY); if(r){ data=Object.assign(emptyData(), JSON.parse(r)); return true; } }catch(e){} return false; }
+
+    function csGetItems(keys){ return new Promise(function(res){ if(!cs||!keys.length) return res({}); cs.getItems(keys,function(e,v){ res(e?{}:(v||{})); }); }); }
+    function csSet(k,v){ return new Promise(function(res){ if(!cs) return res(false); try{ cs.setItem(k,v,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
+    function csDel(k){ return new Promise(function(res){ if(!cs) return res(false); try{ cs.removeItem(k,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
+    function csKeys(){ return new Promise(function(res){ if(!cs) return res(null); try{ cs.getKeys(function(e,k){ res(e?null:(k||[])); }); }catch(err){ res(null); } }); }
+
+    function persistDay(k){ saveCache(); if(data.log[k]) csSet("w:"+k, JSON.stringify(data.log[k])); else csDel("w:"+k); }
+    function persistCfg(){ saveCache(); csSet("cfg", JSON.stringify(data.cfg)); }
+    function persistTpl(t){ saveCache(); csSet("tpl:"+t.id, JSON.stringify(t)); }
+    function unpersistTpl(id){ saveCache(); csDel("tpl:"+id); }
+
+    async function cloudPushAll(){
+        await csSet("cfg", JSON.stringify(data.cfg));
+        for(const t of data.templates) await csSet("tpl:"+t.id, JSON.stringify(t));
+        for(const k of Object.keys(data.log)) await csSet("w:"+k, JSON.stringify(data.log[k]));
+    }
+    async function cloudLoad(){
+        if(!cs) return;
+        const keys=await csKeys();
+        if(keys===null) return;
+        if(!keys.length){ await cloudPushAll(); return; } // облако пустое — заливаем локальное
+        const items=await csGetItems(keys);
+        const cloud=emptyData();
+        for(const k of keys){
+            const v=items[k]; if(!v) continue;
+            try{
+                const o=JSON.parse(v);
+                if(k==="cfg") cloud.cfg=Object.assign(emptyData().cfg,o);
+                else if(k.indexOf("tpl:")===0) cloud.templates.push(o);
+                else if(k.indexOf("w:")===0) cloud.log[k.slice(2)]=o;
+            }catch(e){}
+        }
+        // облако — источник истины; локальные записи, которых нет в облаке, доливаем наверх
+        const localOnlyDays=Object.keys(data.log).filter(function(k){ return !cloud.log[k]; });
+        const localOnlyTpls=data.templates.filter(function(t){ return !cloud.templates.some(function(c){return c.id===t.id;}); });
+        for(const k of localOnlyDays){ cloud.log[k]=data.log[k]; }
+        for(const t of localOnlyTpls){ cloud.templates.push(t); }
+        data=cloud; saveCache(); render();
+        for(const k of localOnlyDays) await csSet("w:"+k, JSON.stringify(data.log[k]));
+        for(const t of localOnlyTpls) await csSet("tpl:"+t.id, JSON.stringify(t));
+    }
+
+    // миграция из v1 (localStorage того же домена — сработает при открытии v2 в Safari)
+    function migrateOld(){
+        try{
+            const raw=localStorage.getItem(OLD_KEY); if(!raw) return false;
+            const old=JSON.parse(raw);
+            data.cfg.cycle.anchorDate=(old.settings&&old.settings.cycleStart)||null;
+            data.templates=(old.templates||[]).map(function(t){ return {id:uid(),name:t.name,title:t.title||"",exercises:(t.exercises||[]).slice()}; });
+            data.log={};
+            for(const k of Object.keys(old.log||{})){
+                data.log[k]=old.log[k];
+                const wi=weekInfo(k); if(wi) data.log[k].weekType=wi.isRest?"rest":"work";
+            }
+            saveCache();
+            return true;
+        }catch(e){ return false; }
+    }
+
+    function getDay(){ return data.log[curDate] || {title:"",exercises:[]}; }
+    function setDay(day){
+        const wi=weekInfo(curDate);
+        if(wi) day.weekType=wi.isRest?"rest":"work";
+        if(!day.exercises.length && !(day.title||"").trim()) delete data.log[curDate];
+        else data.log[curDate]=day;
+        persistDay(curDate); render();
+    }
+
+    // последние результаты по типу недели (для строк «Рабочая … / Отдых …»)
+    function lastByType(name,type){
+        const dates=Object.keys(data.log).filter(function(k){return k<curDate;}).sort().reverse();
+        for(const k of dates){
+            if(dayWeekType(k)!==type) continue;
+            const hit=(data.log[k].exercises||[]).find(function(e){ return e.name.toLowerCase()===name.toLowerCase() && e.sets.length; });
+            if(hit) return { date:k, str:hit.sets.map(function(s){return fmtW(s.w)+"×"+s.r;}).join(", ") };
+        }
+        return null;
+    }
+
+    // ============ Excel ============
+    function exportXlsx(){
+        if(typeof XLSX==="undefined"){ toast("Нет интернета — библиотека Excel не загрузилась"); return; }
+        const rows=[["Дата","Тренировка","Неделя цикла","Упражнение","Подход","Вес, кг","Повторы"]];
+        for(const k of Object.keys(data.log).sort()){
+            const wi=weekInfo(k), day=data.log[k];
+            for(const ex of day.exercises)
+                ex.sets.forEach(function(s,i){ rows.push([k, day.title||"", wi?weekLabel(wi):"", ex.name, i+1, s.w, s.r]); });
+        }
+        const ws=XLSX.utils.aoa_to_sheet(rows);
+        ws["!cols"]=[{wch:12},{wch:14},{wch:18},{wch:28},{wch:8},{wch:9},{wch:9}];
+        const wb=XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb,ws,"Тренировки");
+        XLSX.writeFile(wb,"Тренировки.xlsx");
+    }
+    function normDate(v){
+        if(v instanceof Date && !isNaN(v)) return toKey(new Date(v.getTime()+12*3600000));
+        if(typeof v==="number"){ const d=new Date(Math.round((v-25569)*86400000)); return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")+"-"+String(d.getUTCDate()).padStart(2,"0"); }
+        if(typeof v==="string"){
+            const s=v.trim();
+            let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m) return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+            m=s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/); if(m) return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0");
+        }
+        return null;
+    }
+    function importXlsx(file){
+        if(typeof XLSX==="undefined"){ toast("Нет интернета — библиотека Excel не загрузилась"); return; }
+        const reader=new FileReader();
+        reader.onload=async function(e){
+            try{
+                const wb=XLSX.read(e.target.result,{type:"array",cellDates:true});
+                const ws=wb.Sheets[wb.SheetNames[0]];
+                const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true});
+                let hi=-1, col={};
+                for(let i=0;i<Math.min(rows.length,10);i++){
+                    const low=(rows[i]||[]).map(function(c){return String(c||"").toLowerCase();});
+                    const di=low.findIndex(function(c){return c.indexOf("дата")>=0;});
+                    if(di>=0){
+                        hi=i; col.date=di;
+                        col.title=low.findIndex(function(c){return c.indexOf("трениров")>=0;});
+                        col.ex=low.findIndex(function(c){return c.indexOf("упражн")>=0;});
+                        col.w=low.findIndex(function(c){return c.indexOf("вес")>=0;});
+                        col.r=low.findIndex(function(c){return c.indexOf("повтор")>=0;});
+                        break;
+                    }
+                }
+                if(hi<0||col.ex<0||col.w<0||col.r<0){ toast("Не нашёл нужные колонки в файле"); return; }
+                const imported={}; let nSets=0;
+                for(let i=hi+1;i<rows.length;i++){
+                    const row=rows[i]; if(!row) continue;
+                    const dk=normDate(row[col.date]); if(!dk) continue;
+                    const exName=String(row[col.ex]||"").trim(); if(!exName) continue;
+                    const w=parseFloat(String(row[col.w]).replace(",","."));
+                    const r=parseInt(row[col.r],10);
+                    if(isNaN(w)||isNaN(r)) continue;
+                    if(!imported[dk]) imported[dk]={title:"",exercises:[]};
+                    if(col.title>=0&&row[col.title]&&!imported[dk].title) imported[dk].title=String(row[col.title]).trim();
+                    let ex=imported[dk].exercises.find(function(x){return x.name.toLowerCase()===exName.toLowerCase();});
+                    if(!ex){ ex={id:uid(),name:exName,sets:[]}; imported[dk].exercises.push(ex); }
+                    ex.sets.push({w:w,r:r}); nSets++;
+                }
+                const days=Object.keys(imported);
+                if(!days.length){ toast("В файле не нашлось данных"); return; }
+                for(const dk of days){
+                    const wi=weekInfo(dk); if(wi) imported[dk].weekType=wi.isRest?"rest":"work";
+                    data.log[dk]=imported[dk];
+                }
+                saveCache(); render();
+                toast("Импортировано: дней — "+days.length+", подходов — "+nSets);
+                for(const dk of days) await csSet("w:"+dk, JSON.stringify(data.log[dk]));
+            }catch(err){ console.error(err); toast("Не удалось прочитать файл"); }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // ============ render ============
+    const app=document.getElementById("app");
+
+    function headerHtml(){
+        const c=data.cfg.cycle, wi=weekInfo(curDate);
+        let segs="", labels="";
+        for(let i=0;i<c.workWeeks;i++){ segs+='<i class="s-work"></i>'; labels+='<span>раб. '+(i+1)+'</span>'; }
+        for(let i=0;i<c.restWeeks;i++){ segs+='<i class="s-rest"></i>'; labels+='<span>отдых'+(c.restWeeks>1?" "+(i+1):"")+'</span>'; }
+        return '<header><div class="strip">'+segs
+            +(wi?'<span class="dot" style="left:calc('+(wi.day/wi.cycleLen*100)+'% - 4px)"></span>':'')
+            +'</div><div class="strip-labels">'+labels+'</div></header>';
+    }
+
+    function dayPage(){
+        const day=getDay(), wi=weekInfo(curDate);
+        const isRest=wi&&wi.isRest, today=toKey(new Date());
+        const hasPast=Object.keys(data.log).some(function(k){return k<curDate;});
+        let h='';
+        h+='<div class="datenav">'
+            +'<button class="nav" data-act="prev">‹</button>'
+            +'<div class="dmain"><div class="dtitle">'+esc(fmtDate(curDate))+'</div>'
+            +'<div class="badge '+(isRest?'b-rest':'b-work')+'">'+weekLabel(wi)+'</div>'
+            +(curDate!==today?'<div><button class="today-link" data-act="today">к сегодня</button></div>':'')
+            +'</div><button class="nav" data-act="next">›</button></div>';
+        h+='<div class="subtitle-row"><input value="'+esc(day.title||"")+'" data-chg="title" placeholder="Что качаем? (грудь, спина, ноги…)" maxlength="40"></div>';
+        if(isRest&&!day.exercises.length) h+='<div class="rest-hint">Неделя отдыха — лёгкие веса, восстановление 💤</div>';
+
+        for(const ex of day.exercises){
+            const lw=lastByType(ex.name,"work"), lr=lastByType(ex.name,"rest");
+            const showRest=lr&&(!lw||lr.date>lw.date);
+            h+='<div class="card"><div class="ex-head"><div style="min-width:0"><div class="ex-name">'+esc(ex.name)+'</div>';
+            if(!data.cfg.compact){
+                if(lw) h+='<div class="ex-last">Рабочая '+fmtShort(lw.date)+': '+esc(lw.str)+'</div>';
+                if(showRest) h+='<div class="ex-last">Отдых '+fmtShort(lr.date)+': '+esc(lr.str)+'</div>';
+            }
+            h+='</div><button class="del" data-act="delEx" data-id="'+ex.id+'">🗑</button></div>';
+            if(ex.sets.length){
+                h+='<div class="sets">';
+                ex.sets.forEach(function(s,i){
+                    h+='<div class="set"><span class="idx num">'+(i+1)+'</span>'
+                        +'<span class="val num">'+fmtW(s.w)+' <span class="unit">кг</span><span class="x">×</span>'+s.r+'</span>'
+                        +'<button class="del-set" data-act="delSet" data-id="'+ex.id+'" data-i="'+i+'">✕</button></div>';
+                });
+                h+='</div>';
+            }
+            h+='<div class="addset">'
+                +'<input type="number" inputmode="decimal" placeholder="кг" id="w-'+ex.id+'">'
+                +'<input type="number" inputmode="numeric" placeholder="повт." id="r-'+ex.id+'" data-enter="addSet" data-id="'+ex.id+'">'
+                +'<button class="btn-main" data-act="addSet" data-id="'+ex.id+'">＋</button>'
+                +(ex.sets.length?'<button class="btn-gray" data-act="repSet" data-id="'+ex.id+'" title="Повторить последний подход">⧉</button>':'')
+                +'</div></div>';
+        }
+
+        h+='<div class="addex"><input placeholder="Новое упражнение…" id="newEx" data-enter="addEx">'
+            +'<button class="btn-main" data-act="addEx">＋</button></div>';
+        h+='<div class="chips">'
+            +(hasPast?'<button class="chip" data-act="copyLast">⧉ Повторить прошлую тренировку</button>':'')
+            +(day.exercises.length&&!ui.savingTpl?'<button class="chip" data-act="tplStart">🔖 Сохранить как шаблон</button>':'')
+            +((day.exercises.length||day.title)&&!ui.confirmDel?'<button class="chip danger" data-act="dayDelAsk">🗑 Очистить день</button>':'')
+            +'</div>';
+        if(ui.confirmDel)
+            h+='<div class="confirm"><span>Удалить все записи за '+esc(fmtDate(curDate))+'?</span>'
+                +'<span class="btns"><button class="btn-red" data-act="dayDelYes">Удалить</button>'
+                +'<button class="btn-gray" data-act="dayDelNo">Отмена</button></span></div>';
+        if(ui.savingTpl)
+            h+='<div class="addex"><input placeholder="Название шаблона (напр. День А)" id="tplName" data-enter="tplSave" value="'+esc(day.title||"")+'">'
+                +'<button class="btn-main" data-act="tplSave">✓</button>'
+                +'<button class="btn-gray" data-act="tplCancel">✕</button></div>';
+
+        const applicable=data.templates;
+        if(applicable.length){
+            h+='<div class="sec-label">Начать по шаблону</div><div class="chips">';
+            for(const t of applicable)
+                h+='<button class="chip" data-act="tplApply" data-id="'+t.id+'">'+esc(t.name)+'</button>';
+            h+='</div>';
+        }
+        return h;
+    }
+
+    function calPage(){
+        const parts=calMonth.split("-").map(Number), y=parts[0], m=parts[1];
+        const first=new Date(y,m-1,1);
+        const daysIn=new Date(y,m,0).getDate();
+        const lead=(first.getDay()+6)%7;
+        const today=toKey(new Date());
+        const monthName=first.toLocaleDateString("ru-RU",{month:"long",year:"numeric"});
+        let h='<div class="card"><div class="cal-head">'
+            +'<button class="cal-nav" data-act="calPrev">‹</button>'
+            +'<div class="cal-title">'+esc(monthName)+'</div>'
+            +'<button class="cal-nav" data-act="calNext">›</button></div><div class="cal-grid">';
+        for(const d of ["пн","вт","ср","чт","пт","сб","вс"]) h+='<div class="cal-dow">'+d+'</div>';
+        for(let i=0;i<lead;i++) h+='<div></div>';
+        for(let d=1;d<=daysIn;d++){
+            const key=y+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+            const entry=data.log[key];
+            const hasSets=entry&&entry.exercises.some(function(e){return e.sets.length;});
+            const wi=weekInfo(key);
+            let cls="cal-day";
+            if(wi&&wi.isRest) cls+=" rest";
+            if(entry) cls+=" has";
+            if(key===curDate) cls+=" sel";
+            if(key===today) cls+=" today";
+            h+='<button class="'+cls+'" data-act="calGo" data-date="'+key+'">'
+                +'<span class="n num">'+d+'</span>'
+                +(entry&&entry.title?'<span class="t">'+esc(entry.title)+'</span>':hasSets||entry?'<span class="dotm"></span>':'')
+                +'</button>';
+        }
+        h+='</div><div class="cal-legend">'
+            +'<span><i style="background:rgba(52,211,153,.35)"></i>неделя отдыха</span>'
+            +'<span><i style="background:var(--btn)"></i>есть тренировка</span>'
+            +'</div></div>';
+        return h;
+    }
+
+    function tplPage(){
+        let h='<div class="sec-label" style="margin-top:16px">Шаблоны тренировок</div>';
+        if(!data.templates.length) h+='<div class="card" style="color:var(--mut)">Шаблонов нет. Откройте день с упражнениями и нажмите «Сохранить как шаблон».</div>';
+        for(const t of data.templates){
+            h+='<div class="card tpl-item"><div class="tpl-name">'+esc(t.name)+'</div>'
+                +'<div class="tpl-sub">'+(t.title?esc(t.title)+' · ':'')+t.exercises.length+' упражн.</div>';
+            if(ui.tplDelId===t.id){
+                h+='<div class="confirm" style="margin-top:10px"><span>Удалить шаблон?</span>'
+                    +'<span class="btns"><button class="btn-red" data-act="tplDelYes" data-id="'+t.id+'">Удалить</button>'
+                    +'<button class="btn-gray" data-act="tplDelNo">Отмена</button></span></div>';
+            } else {
+                h+='<div class="tpl-btns">'
+                    +'<button class="btn-gray" data-act="tplApplyGo" data-id="'+t.id+'">Применить к '+fmtShort(curDate)+'</button>'
+                    +'<button class="btn-gray" style="flex:0 0 auto; color:var(--red)" data-act="tplDelAsk" data-id="'+t.id+'">✕</button></div>';
+            }
+            h+='</div>';
+        }
+        h+='<div class="note">Полный редактор шаблонов (изменение упражнений, суперсеты, порядок, варианты) — в следующем обновлении.</div>';
+        return h;
+    }
+
+    function setPage(){
+        const c=data.cfg.cycle;
+        let h='<div class="sec-label" style="margin-top:16px">Цикл</div><div class="card">'
+            +'<div class="row2"><div><div class="lbl">Рабочих недель</div>'
+            +'<input type="number" inputmode="numeric" min="1" max="8" value="'+c.workWeeks+'" data-chg="workWeeks"></div>'
+            +'<div><div class="lbl">Недель отдыха</div>'
+            +'<input type="number" inputmode="numeric" min="1" max="4" value="'+c.restWeeks+'" data-chg="restWeeks"></div></div>'
+            +'<div class="row"><div class="lbl">Начало первой рабочей недели</div>'
+            +'<input type="date" value="'+esc(c.anchorDate||"")+'" data-chg="anchorDate"></div>'
+            +'<div class="note">Смена настроек пересчитает календарь, но уже записанные тренировки сохранят свой тип недели.</div></div>';
+
+        h+='<div class="sec-label">Вид</div><div class="card">'
+            +'<div class="switch-row"><span>Компактный режим<br><span class="note" style="margin-top:2px">скрыть прошлые результаты и подсказки</span></span>'
+            +'<label class="switch"><input type="checkbox" '+(data.cfg.compact?'checked':'')+' data-chg="compact"><i></i></label></div></div>';
+
+        h+='<div class="sec-label">Данные</div><div class="card">'
+            +'<button class="wide-btn" data-act="export">⬇ Скачать Excel</button>'
+            +'<button class="wide-btn" data-act="import">⬆ Импорт из Excel-файла</button>'
+            +'<div class="note">'+(cs
+                ?'☁️ Синхронизация через Telegram включена — данные доступны на всех ваших устройствах.'
+                :'Режим браузера: данные хранятся локально. Откройте аппку внутри Telegram, чтобы включить синхронизацию. Для переноса из старой версии: там «Скачать Excel», здесь «Импорт».')
+            +'</div></div>';
+        return h;
+    }
+
+    function renderSetup(){
+        app.innerHTML='<div class="setup"><div class="card">'
+            +'<div style="font-weight:800; font-size:17px; margin-bottom:10px">🏋️ Gym Tracker</div>'
+            +'<p>Цикл по умолчанию: 2 рабочие недели, потом 1 неделя отдыха (поменять можно в настройках). Укажи дату начала первой рабочей недели.</p>'
+            +'<input type="date" id="startInput" value="'+toKey(new Date())+'" style="margin:10px 0 14px">'
+            +'<button class="wide-btn primary" data-act="start">Начать</button></div></div>';
+        document.getElementById("tabbar").style.display="none";
+    }
+
+    function render(){
+        if(!data.cfg.cycle.anchorDate){ renderSetup(); return; }
+        document.getElementById("tabbar").style.display="";
+        const tb=document.getElementById("tabbar");
+        for(const b of tb.querySelectorAll("button")) b.classList.toggle("on", b.dataset.tab===ui.tab);
+        let h=headerHtml();
+        if(ui.tab==="day") h+=dayPage();
+        else if(ui.tab==="cal") h+=calPage();
+        else if(ui.tab==="tpl") h+=tplPage();
+        else h+=setPage();
+        app.innerHTML=h;
+    }
+
+    // ============ actions ============
+    document.getElementById("importFile").addEventListener("change",function(){
+        if(this.files[0]) importXlsx(this.files[0]);
+        this.value="";
+    });
+    document.getElementById("tabbar").addEventListener("click",function(e){
+        const b=e.target.closest("button[data-tab]"); if(!b) return;
+        ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null;
+        if(ui.tab==="cal") calMonth=curDate.slice(0,7);
+        hap("light"); render();
+    });
+    app.addEventListener("change",function(e){
+        const chg=e.target.dataset.chg;
+        if(!chg) return;
+        const c=data.cfg.cycle;
+        if(chg==="title"){ const d=getDay(); d.title=e.target.value.trim(); setDay(d); return; }
+        if(chg==="anchorDate"&&e.target.value){ c.anchorDate=e.target.value; persistCfg(); render(); return; }
+        if(chg==="workWeeks"){ c.workWeeks=Math.min(8,Math.max(1,parseInt(e.target.value,10)||2)); persistCfg(); render(); return; }
+        if(chg==="restWeeks"){ c.restWeeks=Math.min(4,Math.max(1,parseInt(e.target.value,10)||1)); persistCfg(); render(); return; }
+        if(chg==="compact"){ data.cfg.compact=e.target.checked; persistCfg(); render(); return; }
+    });
+    app.addEventListener("keydown",function(e){
+        if(e.key!=="Enter") return;
+        const act=e.target.dataset.enter;
+        if(act) doAction(act,e.target.dataset);
+    });
+    app.addEventListener("click",function(e){
+        const btn=e.target.closest("[data-act]");
+        if(btn) doAction(btn.dataset.act,btn.dataset);
+    });
+
+    function applyTemplate(t){
+        const day=getDay();
+        if(!day.title&&t.title) day.title=t.title;
+        for(const n of t.exercises)
+            if(!day.exercises.some(function(x){return x.name.toLowerCase()===n.toLowerCase();}))
+                day.exercises.push({id:uid(),name:n,sets:[]});
+        setDay(day);
+    }
+    function deleteDay(){
+        delete data.log[curDate];
+        ui.confirmDel=false; persistDay(curDate); render();
+        toast("Записи за день удалены");
+    }
+
+    function doAction(act,ds){
+        const day=getDay();
+        switch(act){
+            case "start":{
+                const v=document.getElementById("startInput").value;
+                if(v){ data.cfg.cycle.anchorDate=v; persistCfg(); render(); }
+                break;
+            }
+            case "prev": curDate=addDays(curDate,-1); ui.confirmDel=false; render(); break;
+            case "next": curDate=addDays(curDate,1); ui.confirmDel=false; render(); break;
+            case "today": curDate=toKey(new Date()); ui.confirmDel=false; render(); break;
+
+            case "dayDelAsk":
+                if(tg&&tg.showConfirm){
+                    try{ tg.showConfirm("Удалить все записи за "+fmtDate(curDate)+"?",function(ok){ if(ok) deleteDay(); }); break; }catch(e){}
+                }
+                ui.confirmDel=true; render(); break;
+            case "dayDelNo": ui.confirmDel=false; render(); break;
+            case "dayDelYes": deleteDay(); break;
+
+            case "calPrev": case "calNext":{
+                const d=parseKey(calMonth+"-01");
+                d.setMonth(d.getMonth()+(act==="calNext"?1:-1));
+                calMonth=toKey(d).slice(0,7);
+                render(); break;
+            }
+            case "calGo": curDate=ds.date; ui.tab="day"; ui.confirmDel=false; hap("light"); render(); break;
+
+            case "export": exportXlsx(); break;
+            case "import": document.getElementById("importFile").click(); break;
+
+            case "addEx":{
+                const inp=document.getElementById("newEx");
+                const name=inp.value.trim(); if(!name) return;
+                day.exercises.push({id:uid(),name:name,sets:[]});
+                hap("light"); setDay(day); break;
+            }
+            case "delEx":
+                day.exercises=day.exercises.filter(function(x){return x.id!==ds.id;});
+                hap("medium"); setDay(day); break;
+
+            case "addSet":{
+                const wEl=document.getElementById("w-"+ds.id), rEl=document.getElementById("r-"+ds.id);
+                const w=parseFloat(String(wEl.value).replace(",","."));
+                const r=parseInt(rEl.value,10);
+                if(isNaN(w)||isNaN(r)||r<=0) return;
+                const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex) return;
+                ex.sets.push({w:w,r:r});
+                hap("light"); setDay(day);
+                const w2=document.getElementById("w-"+ds.id); if(w2) w2.value=w;
+                break;
+            }
+            case "repSet":{
+                const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex||!ex.sets.length) return;
+                ex.sets.push(Object.assign({},ex.sets[ex.sets.length-1]));
+                hap("light"); setDay(day); break;
+            }
+            case "delSet":{
+                const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex) return;
+                const i=Number(ds.i);
+                lastDel={date:curDate,exId:ds.id,i:i,set:ex.sets[i]};
+                ex.sets.splice(i,1);
+                hap("medium"); setDay(day);
+                toast("Подход удалён","Вернуть",function(){
+                    if(!lastDel) return;
+                    const d2=data.log[lastDel.date]||{title:"",exercises:[]};
+                    let ex2=d2.exercises.find(function(x){return x.id===lastDel.exId;});
+                    if(!ex2) return;
+                    ex2.sets.splice(Math.min(lastDel.i,ex2.sets.length),0,lastDel.set);
+                    data.log[lastDel.date]=d2; lastDel=null;
+                    persistDay(curDate); render();
+                });
+                break;
+            }
+            case "copyLast":{
+                const dates=Object.keys(data.log).filter(function(k){return k<curDate;}).sort().reverse();
+                if(!dates.length) return;
+                const prev=data.log[dates[0]];
+                if(!day.title&&prev.title) day.title=prev.title;
+                for(const p of prev.exercises)
+                    if(!day.exercises.some(function(x){return x.name.toLowerCase()===p.name.toLowerCase();}))
+                        day.exercises.push({id:uid(),name:p.name,sets:[]});
+                setDay(day); break;
+            }
+            case "tplStart": ui.savingTpl=true; render(); break;
+            case "tplCancel": ui.savingTpl=false; render(); break;
+            case "tplSave":{
+                const name=(document.getElementById("tplName").value||"").trim();
+                if(!name||!day.exercises.length) return;
+                const old=data.templates.find(function(t){return t.name===name;});
+                if(old){ data.templates=data.templates.filter(function(t){return t.id!==old.id;}); unpersistTpl(old.id); }
+                const t={id:uid(),name:name,title:day.title||"",exercises:day.exercises.map(function(x){return x.name;})};
+                data.templates.push(t);
+                ui.savingTpl=false; persistTpl(t); render();
+                hap("ok"); toast("Шаблон «"+name+"» сохранён");
+                break;
+            }
+            case "tplApply":{
+                const t=data.templates.find(function(x){return x.id===ds.id;}); if(t) applyTemplate(t);
+                break;
+            }
+            case "tplApplyGo":{
+                const t=data.templates.find(function(x){return x.id===ds.id;}); if(!t) return;
+                applyTemplate(t); ui.tab="day"; hap("ok"); render();
+                toast("Шаблон применён к "+fmtShort(curDate));
+                break;
+            }
+            case "tplDelAsk": ui.tplDelId=ds.id; render(); break;
+            case "tplDelNo": ui.tplDelId=null; render(); break;
+            case "tplDelYes":{
+                data.templates=data.templates.filter(function(t){return t.id!==ds.id;});
+                unpersistTpl(ds.id); ui.tplDelId=null; render();
+                toast("Шаблон удалён");
+                break;
+            }
+        }
+    }
+
+    // ============ init ============
+    (function init(){
+        const hadCache=loadCache();
+        if(!hadCache){
+            if(migrateOld()) toast("Данные перенесены из старой версии");
+            else { data.templates=DEFAULT_TEMPLATES.map(function(t){return {id:uid(),name:t.name,title:t.title,exercises:t.exercises.slice()};}); saveCache(); }
+        }
+        render();
+        cloudLoad(); // фоновая синхронизация с Telegram CloudStorage
+    })();
+</script>
+</body>
+</html>
