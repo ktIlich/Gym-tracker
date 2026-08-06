@@ -56,7 +56,7 @@
         .datenav .nav{padding:6px 10px; color:var(--mut); font-size:24px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
         .dmain{text-align:center}
         .dtitle{font-weight:600; text-transform:capitalize; font-size:16px}
-        .badge{font-size:12px; font-weight:600; margin-top:1px}
+        .badge{font-size:12px; font-weight:600; margin-top:1px; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:2px; min-height:0}
         .b-work{color:var(--link)} .b-rest{color:var(--green)}
         .today-link{font-size:11px; color:var(--dim); text-decoration:underline; margin-top:2px}
 
@@ -276,12 +276,13 @@
                 "Жим ногами, стандартная постановка (2х8-12)","Болгарские приседания (2х10-15)","Разгибания сидя (2х10-15)",
                 "Голень стоя (3х10-20)","Задняя дельта Пек-Дек (3х12)","Задняя дельта гантели в наклоне (2х15)"]}
     ];
-    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, defaultWeightStep:null, warmupCount:4, warmupPercent:35, restTimerSec:90, autoTimer:true, theme:"tg", accent:"#ff9f0a" }, templates:[], log:{} }; }
+    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, defaultWeightStep:null, warmupCount:4, warmupPercent:35, restTimerSec:90, autoTimer:true, theme:"tg", accent:"#ff9f0a", weekOverrides:{} }, templates:[], log:{} }; }
     function normalizeData(d){
         const base=emptyData();
         d.cfg=Object.assign(base.cfg, d.cfg||{});
         d.cfg.cycle=Object.assign(base.cfg.cycle, d.cfg.cycle||{});
         d.cfg.view=Object.assign({lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, d.cfg.view||{});
+        if(!d.cfg.weekOverrides) d.cfg.weekOverrides={};
         if(d.cfg.compact){ d.cfg.view.lastWork=false; d.cfg.view.lastRest=false; delete d.cfg.compact; }
         d.templates=(d.templates||[]).map(normalizeTpl); d.log=d.log||{};
         return d;
@@ -321,7 +322,7 @@
     }
     let data=emptyData();
     let curDate=toKey(new Date());
-    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null, editTpl:null, histEx:null, importText:false, importParsed:null, dayNoteOpen:false, exNoteOpen:{}, variantOpen:{} };
+    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null, editTpl:null, histEx:null, importText:false, importParsed:null, dayNoteOpen:false, exNoteOpen:{}, variantOpen:{}, weekTypeOpen:false };
     let calMonth=curDate.slice(0,7);
     let lastDel=null;
     let timerEnd=0, timerInterval=null;
@@ -337,14 +338,34 @@
     function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];}); }
     function fmtW(w){ return (Math.round(w*100)/100).toString().replace(".",","); }
 
+    function getMondayKey(dateKey){
+        const d=parseKey(dateKey);
+        const dow=(d.getDay()+6)%7; // Mon=0..Sun=6
+        return toKey(new Date(d.getTime()-dow*86400000));
+    }
     function weekInfo(dateKey){
         const c=data.cfg.cycle;
         if(!c.anchorDate) return null;
         const total=c.workWeeks+c.restWeeks, cycleLen=total*7;
-        const diff=Math.round((parseKey(dateKey)-parseKey(c.anchorDate))/86400000);
-        const week=Math.floor(diff/7);
-        const pos=((week%total)+total)%total;
-        const day=((diff%cycleLen)+cycleLen)%cycleLen;
+        const date=parseKey(dateKey);
+        const dayWithinWeek=(date.getDay()+6)%7;
+        const mondayDate=new Date(date.getTime()-dayWithinWeek*86400000);
+        const mondayKey=toKey(mondayDate);
+        // Find last override ≤ mondayKey
+        const overrides=c.weekOverrides||{};
+        const ovKeys=Object.keys(overrides).filter(function(k){return k<=mondayKey;}).sort();
+        let pos;
+        if(ovKeys.length){
+            const ovKey=ovKeys[ovKeys.length-1];
+            const ov=overrides[ovKey];
+            const weeksElapsed=Math.round((mondayDate.getTime()-parseKey(ovKey).getTime())/604800000);
+            const ovPos=ov.type==='work'?(ov.index||0):c.workWeeks+(ov.index||0);
+            pos=((ovPos+weeksElapsed)%total+total)%total;
+        } else {
+            const diff=Math.round((date.getTime()-parseKey(c.anchorDate).getTime())/86400000);
+            pos=((Math.floor(diff/7)%total)+total)%total;
+        }
+        const day=pos*7+dayWithinWeek;
         return { pos:pos, day:day, cycleLen:cycleLen, isRest:pos>=c.workWeeks };
     }
     function weekLabel(wi){
@@ -1064,13 +1085,24 @@
         const day=getDay(), wi=weekInfo(curDate);
         const isRest=wi&&wi.isRest, today=toKey(new Date());
         const hasPast=Object.keys(data.log).some(function(k){return k<curDate;});
+        const mondayKey=getMondayKey(curDate);
+        const isOverridden=!!(data.cfg.weekOverrides&&data.cfg.weekOverrides[mondayKey]);
         let h='';
         h+='<div class="datenav">'
             +'<button class="nav" data-act="prev">‹</button>'
             +'<div class="dmain"><button class="dtitle-btn" data-act="openCal">'+esc(fmtDate(curDate))+'</button>'
-            +'<div class="badge '+(isRest?'b-rest':'b-work')+'">'+weekLabel(wi)+'</div>'
+            +'<button class="badge '+(isRest?'b-rest':'b-work')+'" data-act="weekTypeToggle">'+weekLabel(wi)+(isOverridden?' ✎':'')+'</button>'
             +(curDate!==today?'<div><button class="today-link" data-act="today">к сегодня</button></div>':'')
             +'</div><button class="nav" data-act="next">›</button></div>';
+        if(ui.weekTypeOpen&&wi){
+            const c=data.cfg.cycle;
+            h+='<div class="variant-list card" style="margin-top:4px;padding:8px">';
+            for(let i=0;i<c.workWeeks;i++) h+='<button class="prog-ex-btn" data-act="setWeekType" data-type="work" data-index="'+i+'">Рабочая · неделя '+(i+1)+'</button>';
+            if(c.restWeeks===1) h+='<button class="prog-ex-btn" data-act="setWeekType" data-type="rest" data-index="0">Отдых</button>';
+            else for(let i=0;i<c.restWeeks;i++) h+='<button class="prog-ex-btn" data-act="setWeekType" data-type="rest" data-index="'+i+'">Отдых · неделя '+(i+1)+'</button>';
+            if(isOverridden) h+='<button class="prog-ex-btn" style="color:var(--mut)" data-act="setWeekType" data-type="reset">Сбросить (по циклу)</button>';
+            h+='</div>';
+        }
         h+='<div class="subtitle-row"><input value="'+esc(day.title||"")+'" data-chg="title" placeholder="Что качаем? (грудь, спина, ноги…)" maxlength="40"></div>';
         // Day note
         if(data.cfg.view.viewNotes){
@@ -1278,6 +1310,19 @@
             +'<div class="row"><div class="lbl">Начало первой рабочей недели</div>'
             +'<input type="date" value="'+esc(c.anchorDate||"")+'" data-chg="anchorDate"></div>'
             +'<div class="note">Смена настроек пересчитает календарь, но уже записанные тренировки сохранят свой тип недели.</div></div>';
+        const ovKeys=Object.keys(data.cfg.weekOverrides||{}).sort();
+        if(ovKeys.length){
+            h+='<div class="sec-label">Переопределения недель</div><div class="card">'
+                +'<div class="note" style="margin-bottom:6px">Каждое переопределение задаёт новую точку отсчёта для последующих недель.</div>';
+            for(const k of ovKeys){
+                const ov=data.cfg.weekOverrides[k];
+                const lbl=ov.type==='work'?'Рабочая · неделя '+((ov.index||0)+1):
+                    (c.restWeeks>1?'Отдых · неделя '+((ov.index||0)+1):'Отдых');
+                h+='<div class="switch-row"><span><b>'+esc(fmtShort(k))+'</b> — '+esc(lbl)+'</span>'
+                    +'<button class="btn-gray" style="min-width:44px;justify-content:center;font-size:16px" data-act="delWeekOverride" data-key="'+esc(k)+'">✕</button></div>';
+            }
+            h+='</div>';
+        }
 
         const v=data.cfg.view;
         h+='<div class="sec-label">Вид · что показывать в карточках</div><div class="card">'
@@ -1400,7 +1445,7 @@
     document.getElementById("tabbar").addEventListener("click",function(e){
         const b=e.target.closest("button[data-tab]"); if(!b) return;
         ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null; ui.wipeStep=0; ui.tplFromText=false; ui.tplParsed=null; ui.editTpl=null;
-        ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.dayNoteOpen=false;
+        ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.dayNoteOpen=false; ui.weekTypeOpen=false;
         if(ui.tab==="cal") calMonth=curDate.slice(0,7);
         hap("light"); render();
     });
@@ -1875,6 +1920,25 @@
             case "selectProg": progEx=(progEx===ds.name?null:ds.name); render(); break;
             case "progVariant": progEx=ds.name; render(); break;
             case "setAccent": data.cfg.accent=ds.accent; persistCfg(); applyTheme(); render(); break;
+            case "weekTypeToggle": ui.weekTypeOpen=!ui.weekTypeOpen; render(); break;
+            case "setWeekType":{
+                const mKey=getMondayKey(curDate);
+                if(!data.cfg.weekOverrides) data.cfg.weekOverrides={};
+                if(ds.type==='reset'){
+                    delete data.cfg.weekOverrides[mKey];
+                } else {
+                    data.cfg.weekOverrides[mKey]={type:ds.type,index:parseInt(ds.index,10)||0};
+                }
+                // Update weekType on existing day entry so recommendations stay correct
+                const d2=data.log[curDate];
+                if(d2){ const wi2=weekInfo(curDate); if(wi2) d2.weekType=wi2.isRest?"rest":"work"; d2.up=Date.now(); data.log[curDate]=d2; persistDay(curDate); }
+                persistCfg(); ui.weekTypeOpen=false;
+                toast(ds.type==='reset'?"Тип недели сброшен (по циклу)":"Неделя задана вручную");
+                render(); break;
+            }
+            case "delWeekOverride":
+                if(data.cfg.weekOverrides) delete data.cfg.weekOverrides[ds.key];
+                persistCfg(); render(); break;
         }
     }
 
