@@ -96,6 +96,7 @@
 
         .addset{display:flex; gap:6px; margin-top:10px}
         .addset input{width:58px; padding:10px 6px; font-size:14px; background:var(--card2); border-color:transparent; text-align:center}
+        .addset input::placeholder{text-align:center}
         .addset .btn-main{flex:1; justify-content:center}
         .addset-extras{display:flex; gap:6px; margin-top:10px; padding-top:10px; border-top:2px solid color-mix(in srgb, var(--btn) 45%, transparent)}
         .addset-extras>*{flex:1; justify-content:center}
@@ -183,8 +184,10 @@
         .et-item:first-of-type{border-top:none; padding-top:0; margin-top:6px}
         .et-row{display:flex; gap:6px; margin-top:6px; align-items:center}
         .et-row .plan{width:96px; text-align:center; flex-shrink:0}
+        .et-row .plan::placeholder{text-align:center}
         .et-vars{display:flex; gap:6px; margin-top:6px; align-items:center; font-size:13px; color:var(--mut)}
         .et-vars input.alt{width:52px; text-align:center; flex-shrink:0}
+        .et-vars input.alt::placeholder{text-align:center}
 
         .tabbar{position:fixed; left:0; right:0; bottom:0; z-index:20;
             background:var(--bg); border-top:1px solid var(--border);
@@ -208,6 +211,7 @@
         .rec-btn{display:inline-flex; align-items:center; background:var(--accent-bg); color:var(--accent); font-weight:600; border-radius:10px; padding:4px 12px; font-size:13px; min-height:40px; font-variant-numeric:tabular-nums; margin-top:4px; cursor:pointer}
         .rec-btn:active{opacity:.8}
         .set-inp{width:auto; text-align:center; padding:5px 6px; font-size:14px; font-weight:600; background:transparent; border-color:transparent; min-width:0; border-radius:8px}
+        .set-inp::placeholder{text-align:center}
         .set-inp:focus{background:var(--card2); border-color:var(--btn)}
         .set-inp::-webkit-inner-spin-button,.set-inp::-webkit-outer-spin-button{-webkit-appearance:none}
         .day-ss{border-left:3px solid var(--btn); padding-left:8px; margin-top:12px}
@@ -260,7 +264,7 @@
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none"></button></div>
 <script>
     "use strict";
-    const APP_VERSION="2.8.0"; // фаза 8: визуал, унификация иконок, правка предпросмотра импорта
+    const APP_VERSION="2.9.0"; // фаза 9: бэкапы и аналитика
     // ============ Telegram ============
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     let cs = null;
