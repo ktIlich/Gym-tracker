@@ -26,7 +26,7 @@
             --accent:#ff9f0a; --accent-bg:rgba(255,159,10,.14);
         }
         *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
-        html,body{margin:0}
+        html,body{margin:0; overflow-x:hidden; max-width:100%}
         body{background:var(--bg); color:var(--text);
             font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; font-size:15px;
             padding-bottom:calc(64px + env(safe-area-inset-bottom))}
@@ -238,8 +238,8 @@
         .chip.on{background:var(--btn); color:var(--btn-text); border-color:var(--btn)}
         .hist-back{color:var(--link); font-size:15px; padding:10px 0; display:inline-block; margin-top:8px}
         .hist-back svg.icon{width:16px; height:16px; vertical-align:-3px}
-        .hist-table{width:100%; border-collapse:collapse; font-size:13px}
-        .hist-table td{padding:5px 6px; border-bottom:1px solid var(--border)}
+        .hist-table{width:100%; border-collapse:collapse; font-size:13px; table-layout:fixed}
+        .hist-table td{padding:5px 6px; border-bottom:1px solid var(--border); overflow-wrap:break-word; word-break:break-word}
         .hist-table tr:last-child td{border-bottom:none}
         .import-preview{margin-top:8px}
         .import-day{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; margin-top:10px}
@@ -274,7 +274,7 @@
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none"></button></div>
 <script>
     "use strict";
-    const APP_VERSION="2.9.0"; // фаза 9: бэкапы и аналитика
+    const APP_VERSION="2.9.1"; // фиксы: разметка подхода, горизонтальный скролл, дробные веса в предпросмотре
     // ============ Telegram ============
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     let cs = null;
@@ -799,7 +799,7 @@
         const px=function(i){ return padL+(n>1?i/(n-1)*pw:pw/2); };
         const py=function(v){ const r=ymax-ymin||1; return padT+ph-(v-ymin)/r*ph; };
         const pts=points.map(function(d,i){return px(i)+','+py(d.v);}).join(' ');
-        let svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;overflow:visible" xmlns="http://www.w3.org/2000/svg">';
+        let svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;overflow:hidden" xmlns="http://www.w3.org/2000/svg">';
         for(const y of yticks){
             const ypx=Math.round(py(y));
             svg+='<line x1="'+padL+'" y1="'+ypx+'" x2="'+(W-padR)+'" y2="'+ypx+'" stroke="var(--border)" stroke-width="1"/>';
@@ -995,7 +995,7 @@
                 for(const c of s.cycles){
                     const chg=c.changePct==null?"—":(c.changePct>=0?"+":"")+c.changePct+"%";
                     const chgColor=c.changePct==null?"var(--mut)":(c.changePct>=0?"var(--green)":"var(--red)");
-                    h+='<tr><td style="white-space:nowrap">№'+c.idx+' · '+esc(fmtShort(c.start))+'–'+esc(fmtShort(c.end))+'</td>'
+                    h+='<tr><td>№'+c.idx+' · '+esc(fmtShort(c.start))+'–'+esc(fmtShort(c.end))+'</td>'
                         +'<td class="num" style="white-space:nowrap;color:var(--mut)">'+c.count+' трен.</td>'
                         +'<td class="num" style="white-space:nowrap">'+fmtTonnage(c.tonnage)+' кг</td>'
                         +'<td class="num" style="white-space:nowrap;color:'+chgColor+'">'+chg+'</td></tr>';
@@ -1124,13 +1124,12 @@
     function parseSetsStr(str){
         const s=String(str||"").trim();
         if(!s) return {sets:[], valid:true};
-        const parts=s.split(",").map(function(p){return p.trim();}).filter(Boolean);
+        const PAIR_RE=/(\d+(?:[.,]\d+)?)\s*[хx×*]\s*(\d+)/gi;
         const sets=[];
-        for(const p of parts){
-            const m=p.match(/^(\d+(?:[.,]\d+)?)\s*[хx×*]\s*(\d+)$/i);
-            if(!m) return {sets:[], valid:false};
-            sets.push({w:parseFloat(m[1].replace(",",".")), r:parseInt(m[2],10)});
-        }
+        let m;
+        while((m=PAIR_RE.exec(s))!==null) sets.push({w:parseFloat(m[1].replace(",",".")), r:parseInt(m[2],10)});
+        const rest=s.replace(/(\d+(?:[.,]\d+)?)\s*[хx×*]\s*(\d+)/gi,"").replace(/[\s,;]+/g,"");
+        if(rest) return {sets:[], valid:false};
         return {sets:sets, valid:true};
     }
     function setsToStr(sets){ return (sets||[]).map(function(s){return fmtW(s.w)+"х"+s.r;}).join(", "); }
@@ -1172,7 +1171,7 @@
                     +'<input value="'+esc(e.name)+'" placeholder="Название упражнения" data-chg="importExName" data-wi="'+wi+'" data-ei="'+ei+'"'+(nameErr?' style="border-color:var(--red)"':'')+'>'
                     +'<div style="display:flex;gap:6px;margin-top:6px">'
                     +'<input class="plan" value="'+esc(e.plan||'')+'" placeholder="3х8-12" data-chg="importExPlan" data-wi="'+wi+'" data-ei="'+ei+'" style="width:88px;flex-shrink:0">'
-                    +'<input value="'+esc(setsStr)+'" placeholder="40х10, 40х10" data-chg="importExSets" data-wi="'+wi+'" data-ei="'+ei+'" style="flex:1'+(e._setsError?';border-color:var(--red)':'')+'">'
+                    +'<input value="'+esc(setsStr)+'" placeholder="40х10, 40х10" data-chg="importExSets" data-wi="'+wi+'" data-ei="'+ei+'" style="flex:1;min-width:0'+(e._setsError?';border-color:var(--red)':'')+'">'
                     +'<button class="del-ex" data-act="importDelEx" data-wi="'+wi+'" data-ei="'+ei+'" title="Удалить упражнение"><i class="box">'+ICON_TRASH+'</i></button>'
                     +'</div></div>';
             });
@@ -1288,6 +1287,10 @@
     const ICON_CHEVRON_LEFT=svgIcon('<polyline points="15 18 9 12 15 6"/>');
     const ICON_CHEVRON_RIGHT=svgIcon('<polyline points="9 18 15 12 9 6"/>');
     const ICON_WARNING=svgIcon('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>');
+    const ICON_COPY=svgIcon('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>');
+    const ICON_PLUS=svgIcon('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>');
+    const ICON_CHECK=svgIcon('<polyline points="20 6 9 17 4 12"/>');
+    const ICON_CLOSE=svgIcon('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>');
 
     function headerHtml(){
         const c=data.cfg.cycle, wi=weekInfo(curDate);
@@ -1343,12 +1346,12 @@
             h+='<div class="sets">';
             ex.sets.forEach(function(s,i){
                 h+='<div class="set"><span class="idx num">'+(i+1)+'</span>'
-                    +'<span style="flex:1;display:flex;align-items:center;gap:4px">'
-                    +'<input type="number" class="set-inp num" inputmode="decimal" min="0" style="flex:1;min-width:0" value="'+s.w+'" data-set="w" data-id="'+ex.id+'" data-i="'+i+'">'
+                    +'<span style="flex:1;display:flex;align-items:center;gap:4px;justify-content:flex-start">'
+                    +'<input type="number" class="set-inp num" inputmode="decimal" min="0" style="width:68px;flex:0 0 auto" value="'+s.w+'" data-set="w" data-id="'+ex.id+'" data-i="'+i+'">'
                     +'<span class="unit">кг</span><span class="x">×</span>'
                     +'<input type="number" class="set-inp num" inputmode="numeric" min="1" style="width:52px;flex-shrink:0" value="'+s.r+'" data-set="r" data-id="'+ex.id+'" data-i="'+i+'">'
                     +'</span>'
-                    +'<button class="del-set" data-act="delSet" data-id="'+ex.id+'" data-i="'+i+'"><i class="box">✕</i></button></div>';
+                    +'<button class="del-set" data-act="delSet" data-id="'+ex.id+'" data-i="'+i+'"><i class="box">'+ICON_CLOSE+'</i></button></div>';
             });
             h+='</div>';
         }
@@ -1359,8 +1362,8 @@
         h+='<div class="addset">'
             +'<input type="number" inputmode="decimal" placeholder="кг" min="0" id="w-'+ex.id+'">'
             +'<input type="number" inputmode="numeric" placeholder="повт." min="1" id="r-'+ex.id+'" data-enter="addSet" data-id="'+ex.id+'">'
-            +'<button class="btn-main" data-act="addSet" data-id="'+ex.id+'">＋</button>'
-            +(ex.sets.length?'<button class="btn-gray" data-act="repSet" data-id="'+ex.id+'" title="Повторить последний подход">⧉</button>':'')
+            +'<button class="btn-main" data-act="addSet" data-id="'+ex.id+'">'+ICON_PLUS+'</button>'
+            +(ex.sets.length?'<button class="btn-gray" data-act="repSet" data-id="'+ex.id+'" title="Повторить последний подход">'+ICON_COPY+'</button>':'')
             +'</div>';
         h+='<div class="addset-extras">'
             +'<button class="timer-btn'+(timerActive?' active':'')+'" data-act="timerToggle">'+timerLbl+'</button>'
@@ -1376,8 +1379,8 @@
                 h+='<button class="prog-ex-btn" data-act="applyVariant" data-id="'+esc(ex.id)+'" data-variant="'+esc(v)+'" data-base="'+esc(exBase)+'">'+esc(v)+'</button>';
             }
             h+='<div style="display:flex;gap:6px;margin-top:6px">'
-                +'<input id="nv-'+ex.id+'" placeholder="Новый вариант…" style="flex:1">'
-                +'<button class="btn-gray" style="flex-shrink:0" data-act="newVariant" data-id="'+esc(ex.id)+'" data-base="'+esc(exBase)+'">＋</button>'
+                +'<input id="nv-'+ex.id+'" placeholder="Новый вариант…" style="flex:1;min-width:0">'
+                +'<button class="btn-gray" style="flex-shrink:0" data-act="newVariant" data-id="'+esc(ex.id)+'" data-base="'+esc(exBase)+'">'+ICON_PLUS+'</button>'
                 +'</div></div>';
         }
         if(exNoteOpen) h+='<textarea class="ex-note-area" data-chg="exNote" data-id="'+ex.id+'" placeholder="Заметка к упражнению…">'+esc(ex.note||'')+'</textarea>';
@@ -1412,7 +1415,7 @@
         if(data.cfg.view.viewNotes){
             if(ui.dayNoteOpen||day.note){
                 const notePreview=day.note?day.note.slice(0,40)+(day.note.length>40?'…':''):'';
-                h+='<button class="note-toggle" data-act="noteToggle">'+(ui.dayNoteOpen?'▾ Заметка':ICON_NOTE+' '+(notePreview||'Заметка'))+'</button>';
+                h+='<button class="note-toggle" data-act="noteToggle">'+(ui.dayNoteOpen?ICON_CHEVRON_DOWN+' Заметка':ICON_NOTE+' '+(notePreview||'Заметка'))+'</button>';
                 if(ui.dayNoteOpen) h+='<textarea class="day-note-area" data-chg="dayNote" placeholder="Заметка к тренировке…">'+esc(day.note||'')+'</textarea>';
             } else {
                 h+='<button class="note-toggle" data-act="noteToggle">'+ICON_NOTE+' Заметка</button>';
@@ -1428,7 +1431,7 @@
             const btxt=data.cfg.lastBackup?('Резервная копия не делалась '+nb+' '+ruPlural(nb,'день','дня','дней')):'Резервная копия ещё не делалась';
             h+='<div class="backup-banner"><span class="txt">'+btxt+'</span>'
                 +'<span class="btns"><button class="save-btn" data-act="bannerBackupOpen">Сохранить</button>'
-                +'<button class="close-btn" data-act="bannerBackupSnooze" title="Напомнить позже через 3 дня">✕</button></span></div>';
+                +'<button class="close-btn" data-act="bannerBackupSnooze" title="Напомнить позже через 3 дня">'+ICON_CLOSE+'</button></span></div>';
         }
 
         const exs=day.exercises;
@@ -1450,9 +1453,9 @@
         }
 
         h+='<div class="addex"><input placeholder="Новое упражнение…" id="newEx" data-enter="addEx">'
-            +'<button class="btn-main" data-act="addEx">＋</button></div>';
+            +'<button class="btn-main" data-act="addEx">'+ICON_PLUS+'</button></div>';
         h+='<div class="chips">'
-            +(hasPast?'<button class="chip" data-act="copyLast">⧉ Повторить прошлую тренировку</button>':'')
+            +(hasPast?'<button class="chip" data-act="copyLast">'+ICON_COPY+' Повторить прошлую тренировку</button>':'')
             +(day.exercises.length&&!ui.savingTpl?'<button class="chip" data-act="tplStart">'+ICON_BOOKMARK+' Сохранить как шаблон</button>':'')
             +((day.exercises.length||day.title)&&!ui.confirmDel?'<button class="chip danger" data-act="dayDelAsk">'+ICON_TRASH+' Очистить день</button>':'')
             +'</div>';
@@ -1462,8 +1465,8 @@
                 +'<button class="btn-gray" data-act="dayDelNo">Отмена</button></span></div>';
         if(ui.savingTpl)
             h+='<div class="addex"><input placeholder="Название шаблона (напр. День А)" id="tplName" data-enter="tplSave" value="'+esc(day.title||"")+'">'
-                +'<button class="btn-main" data-act="tplSave">✓</button>'
-                +'<button class="btn-gray" data-act="tplCancel">✕</button></div>';
+                +'<button class="btn-main" data-act="tplSave">'+ICON_CHECK+'</button>'
+                +'<button class="btn-gray" data-act="tplCancel">'+ICON_CLOSE+'</button></div>';
 
         const applicable=data.templates;
         if(applicable.length){
@@ -1532,7 +1535,7 @@
                     +'<button class="mini-btn" data-act="etVarsToggle" data-k="'+k+'" data-i="'+i+'">варианты'+(it.vars?' ('+it.vars.length+')':'')+'</button>'
                     +(ss&&i>0?'<button class="mini-btn" data-act="etItemUp" data-k="'+k+'" data-i="'+i+'">'+ICON_CHEVRON_UP+'</button>':'')
                     +(ss&&i<b.items.length-1?'<button class="mini-btn" data-act="etItemDown" data-k="'+k+'" data-i="'+i+'">'+ICON_CHEVRON_DOWN+'</button>':'')
-                    +'<button class="mini-btn warn" data-act="etDelItem" data-k="'+k+'" data-i="'+i+'" style="margin-left:auto">✕</button>'
+                    +'<button class="mini-btn warn" data-act="etDelItem" data-k="'+k+'" data-i="'+i+'" style="margin-left:auto">'+ICON_CLOSE+'</button>'
                     +'</div>';
                 if(it._v===true||(it._v!==false&&!!it.vars))
                     h+='<div class="et-vars"><input value="'+esc((it.vars||[]).join(", "))+'" placeholder="варианты через запятую" data-et="vars" data-k="'+k+'" data-i="'+i+'">'
@@ -1541,7 +1544,7 @@
             });
             h+='</div>';
         });
-        h+='<button class="wide-btn" data-act="etAddEx">＋ Добавить упражнение</button>'
+        h+='<button class="wide-btn" data-act="etAddEx">'+ICON_PLUS+' Добавить упражнение</button>'
             +'<button class="wide-btn primary" data-act="etSave">Сохранить шаблон</button>'
             +'<button class="wide-btn" data-act="etCancel">Отмена</button>';
         return h;
@@ -1555,13 +1558,13 @@
             h+='<div class="sec-label">Распознано — проверь названия</div>';
             ui.tplParsed.forEach(function(t,ti){
                 h+='<div class="card"><div style="display:flex;gap:8px;align-items:center">'
-                    +'<input value="'+esc(t.name)+'" placeholder="Название шаблона" data-chg="tplParsedName" data-ti="'+ti+'" style="flex:1">'
+                    +'<input value="'+esc(t.name)+'" placeholder="Название шаблона" data-chg="tplParsedName" data-ti="'+ti+'" style="flex:1;min-width:0">'
                     +(ui.tplParsed.length>1?'<button class="del-ex" data-act="tplParsedDelTpl" data-ti="'+ti+'" title="Удалить шаблон"><i class="box">'+ICON_TRASH+'</i></button>':'')
                     +'</div>';
                 t.exercises.forEach(function(it,ei){
                     const nameErr=!it.name||!it.name.trim();
                     h+='<div class="import-ex-row"><div style="display:flex;gap:6px">'
-                        +'<input value="'+esc(it.name)+'" placeholder="Название упражнения" data-chg="tplParsedExName" data-ti="'+ti+'" data-ei="'+ei+'" style="flex:2'+(nameErr?';border-color:var(--red)':'')+'">'
+                        +'<input value="'+esc(it.name)+'" placeholder="Название упражнения" data-chg="tplParsedExName" data-ti="'+ti+'" data-ei="'+ei+'" style="flex:2;min-width:0'+(nameErr?';border-color:var(--red)':'')+'">'
                         +'<input value="'+esc(it.plan)+'" placeholder="3х8-12" data-chg="tplParsedExPlan" data-ti="'+ti+'" data-ei="'+ei+'" style="width:88px;flex-shrink:0">'
                         +'<button class="del-ex" data-act="tplParsedDelEx" data-ti="'+ti+'" data-ei="'+ei+'" title="Удалить упражнение"><i class="box">'+ICON_TRASH+'</i></button>'
                         +'</div></div>';
@@ -1582,7 +1585,7 @@
             return h;
         }
 
-        h+='<button class="wide-btn" data-act="etNew" style="margin-top:0">＋ Новый шаблон</button>'
+        h+='<button class="wide-btn" data-act="etNew" style="margin-top:0">'+ICON_PLUS+' Новый шаблон</button>'
             +'<button class="wide-btn" data-act="tplFromText">'+ICON_CLIPBOARD+' Создать шаблоны из текста</button>';
         if(!data.templates.length) h+='<div class="card" style="color:var(--mut)">Шаблонов нет. Создайте новый, вставьте программу текстом или откройте день с упражнениями и нажмите «Сохранить как шаблон».</div>';
         for(const t of data.templates){
@@ -1597,7 +1600,7 @@
                 h+='<div class="tpl-btns">'
                     +'<button class="btn-gray" data-act="etEdit" data-id="'+t.id+'">'+ICON_PENCIL+' Изменить</button>'
                     +'<button class="btn-gray" data-act="tplApplyGo" data-id="'+t.id+'">Применить к '+fmtShort(curDate)+'</button>'
-                    +'<button class="btn-gray" style="flex:0 0 auto; color:var(--red)" data-act="tplDelAsk" data-id="'+t.id+'">✕</button></div>';
+                    +'<button class="btn-gray" style="flex:0 0 auto; color:var(--red)" data-act="tplDelAsk" data-id="'+t.id+'">'+ICON_CLOSE+'</button></div>';
             }
             h+='</div>';
         }
@@ -1705,7 +1708,7 @@
                 const lbl=ov.type==='work'?'Рабочая · неделя '+((ov.index||0)+1):
                     (c.restWeeks>1?'Отдых · неделя '+((ov.index||0)+1):'Отдых');
                 h+='<div class="switch-row"><span><b>'+esc(fmtShort(k))+'</b> — '+esc(lbl)+'</span>'
-                    +'<button class="btn-gray" style="min-width:44px;justify-content:center;font-size:16px" data-act="delWeekOverride" data-key="'+esc(k)+'">✕</button></div>';
+                    +'<button class="btn-gray" style="min-width:44px;justify-content:center;font-size:16px" data-act="delWeekOverride" data-key="'+esc(k)+'">'+ICON_CLOSE+'</button></div>';
             }
             h+='</div>';
         }
