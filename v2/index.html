@@ -241,7 +241,7 @@
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none"></button></div>
 <script>
     "use strict";
-    const APP_VERSION="2.6.0"; // фаза 6: экран графиков, вариации из дня, темы, прошлые заметки
+    const APP_VERSION="2.7.0"; // фаза 7: фиксы парсера/графика, ручной тип недели
     // ============ Telegram ============
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     let cs = null;
@@ -782,8 +782,14 @@
             const isFrac=(first.n%1)!==0;
             let planStr=null;
             const resultSets=[];
-            if(first.top!==null&&!isFrac){
+            const isPlanA=first.top!==null&&!isFrac; // диапазон: 3х8-12
+            const hasEnoughFollow=matches.length-1>=2;
+            const isPlanB=!isFrac&&Number.isInteger(first.n)&&first.n<=8&&hasEnoughFollow&&matches.slice(1).every(function(mt){return mt.n!==first.n;});
+            if(isPlanA){
                 planStr=first.n+'х'+first.reps+'-'+first.top;
+                for(let i=1;i<matches.length;i++) if(matches[i].top===null) resultSets.push({w:matches[i].n,r:matches[i].reps});
+            } else if(isPlanB){
+                planStr=first.n+'х'+first.reps;
                 for(let i=1;i<matches.length;i++) if(matches[i].top===null) resultSets.push({w:matches[i].n,r:matches[i].reps});
             } else {
                 for(const mt of matches) if(mt.top===null) resultSets.push({w:mt.n,r:mt.reps});
