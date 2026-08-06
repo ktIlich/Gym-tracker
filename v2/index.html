@@ -56,9 +56,9 @@
         .datenav .nav{padding:6px 10px; color:var(--mut); font-size:24px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
         .dmain{text-align:center}
         .dtitle{font-weight:600; text-transform:capitalize; font-size:16px}
-        .badge{font-size:12px; font-weight:600; margin-top:1px; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:2px; min-height:0}
+        .badge{font-size:12px; font-weight:600; margin-top:7px; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:2px; min-height:0}
         .b-work{color:var(--link)} .b-rest{color:var(--green)}
-        .today-link{font-size:11px; color:var(--dim); text-decoration:underline; margin-top:2px}
+        .today-link{font-size:13px; color:var(--dim); text-decoration:underline; margin-top:7px}
 
         .subtitle-row{margin:10px 0 2px}
         .subtitle-row input{background:transparent; border:1px dashed var(--border); text-align:center;
@@ -72,7 +72,7 @@
         .ex-head{display:flex; justify-content:space-between; gap:8px; align-items:flex-start}
         .ex-name{font-weight:600; line-height:1.25; font-size:16px; text-align:left; color:inherit}
         .ex-last{font-size:12px; color:var(--dim); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-        .del-ex{width:var(--touch); height:var(--touch); flex-shrink:0; margin:-4px -4px 0 0;
+        .del-ex{width:var(--touch); height:var(--touch); flex-shrink:0; margin:-2px 0 0 0;
             display:flex; align-items:center; justify-content:center;
             color:var(--mut); background:var(--card2); border:1px solid var(--border); border-radius:12px}
         .del-ex:active{color:var(--red); border-color:rgba(248,113,113,.5); background:rgba(248,113,113,.12)}
@@ -83,19 +83,21 @@
         .set:first-child{border-top:none}
         .set .idx{width:18px; font-size:12px; color:var(--dim)}
         .set .val{flex:1; font-weight:600; font-size:16px}
-        .set .unit{color:var(--dim); font-weight:400; font-size:13px}
+        .set .unit{color:var(--dim); font-weight:400; font-size:14px}
         .set .x{color:var(--dim); margin:0 6px; opacity:.6}
         .del-set{width:40px; height:40px; display:flex; align-items:center; justify-content:center;
-            color:var(--red); background:rgba(248,113,113,.12); border-radius:12px; font-size:16px; flex-shrink:0}
+            color:var(--red); background:rgba(248,113,113,.12); border-radius:12px; font-size:15px; flex-shrink:0}
         .del-set:active{background:rgba(248,113,113,.28)}
 
         .addset{display:flex; gap:6px; margin-top:10px}
-        .addset input{width:72px; padding:10px; font-size:16px; background:var(--card2); border-color:transparent; text-align:center}
-        .addset-extras{display:flex; gap:6px; margin-top:6px}
-        .btn-main{background:var(--btn); color:var(--btn-text); border-radius:12px; padding:0 14px; font-weight:700;
-            display:flex; align-items:center; min-height:var(--touch); font-size:18px}
+        .addset input{width:58px; padding:10px 6px; font-size:14px; background:var(--card2); border-color:transparent; text-align:center}
+        .addset .btn-main{flex:1; justify-content:center}
+        .addset-extras{display:flex; gap:6px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border)}
+        .addset-extras>*{flex:1; justify-content:center}
+        .btn-main{background:var(--btn); color:var(--btn-text); border-radius:12px; padding:0 10px; font-weight:700;
+            display:flex; align-items:center; min-height:var(--touch); font-size:15px}
         .btn-main:active{opacity:.85}
-        .btn-gray{background:var(--card2); color:var(--mut); border-radius:12px; padding:0 13px; display:flex; align-items:center; min-height:var(--touch)}
+        .btn-gray{background:var(--card2); color:var(--mut); border-radius:12px; padding:0 10px; display:flex; align-items:center; min-height:var(--touch); font-size:14px}
         .btn-gray:active{opacity:.7}
 
         .addex{display:flex; gap:8px; margin-top:12px}
@@ -194,14 +196,14 @@
         .rec-badge{display:inline-flex; align-items:center; background:var(--accent-bg); color:var(--accent); font-weight:600; border-radius:6px; padding:2px 8px; font-size:13px; font-variant-numeric:tabular-nums; flex-shrink:0}
         .rec-btn{display:inline-flex; align-items:center; background:var(--accent-bg); color:var(--accent); font-weight:600; border-radius:10px; padding:4px 12px; font-size:13px; min-height:40px; font-variant-numeric:tabular-nums; margin-top:4px; cursor:pointer}
         .rec-btn:active{opacity:.8}
-        .set-inp{width:auto; text-align:center; padding:5px 6px; font-size:15px; font-weight:600; background:transparent; border-color:transparent; min-width:0; border-radius:8px}
+        .set-inp{width:auto; text-align:center; padding:5px 6px; font-size:14px; font-weight:600; background:transparent; border-color:transparent; min-width:0; border-radius:8px}
         .set-inp:focus{background:var(--card2); border-color:var(--btn)}
         .set-inp::-webkit-inner-spin-button,.set-inp::-webkit-outer-spin-button{-webkit-appearance:none}
         .day-ss{border-left:3px solid var(--btn); padding-left:8px; margin-top:12px}
         .day-ss>.et-btitle{display:block; margin-bottom:2px}
         .day-ss>.card{margin-top:8px}
         .dtitle-btn{font-weight:600; text-transform:capitalize; font-size:16px; color:inherit; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px}
-        .timer-btn{min-height:var(--touch); min-width:40px; color:var(--mut); font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; background:var(--card2); border-radius:12px; padding:0 8px}
+        .timer-btn{min-height:var(--touch); color:var(--mut); font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; background:var(--card2); border-radius:12px; padding:0 8px}
         .timer-btn.active{color:var(--accent); background:var(--accent-bg)}
         .note-toggle{font-size:13px; color:var(--link); padding:4px 0; display:block; text-align:left; margin-top:4px}
         .day-note-area{font-size:14px; min-height:64px; margin-top:6px}
@@ -219,7 +221,7 @@
         .prog-ex-btn{width:100%; text-align:left; padding:10px 12px; border-radius:10px; font-size:13px; margin-top:4px; background:var(--card2); color:var(--text)}
         .prog-ex-btn:active{opacity:.7}
         .prog-ex-open{color:var(--btn)}
-        .variant-btn{min-width:44px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;justify-content:center}
+        .variant-btn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
         .variant-btn.variant-active{color:var(--btn)}
         .variant-list{margin-top:6px; border-top:1px solid var(--border); padding-top:6px}
         .swatch{width:30px; height:30px; border-radius:50%; border:3px solid transparent; cursor:pointer; flex-shrink:0}
@@ -232,9 +234,9 @@
 <body>
 <div id="app"></div>
 <nav class="tabbar" id="tabbar">
-    <button data-tab="day"><span class="ti">🏋️</span>Сегодня</button>
-    <button data-tab="cal"><span class="ti">📅</span>Календарь</button>
     <button data-tab="prg"><span class="ti">📈</span>Прогресс</button>
+    <button data-tab="cal"><span class="ti">📅</span>Календарь</button>
+    <button data-tab="day"><span class="ti">🏋️</span>Сегодня</button>
     <button data-tab="tpl"><span class="ti">🔖</span>Шаблоны</button>
     <button data-tab="set"><span class="ti">⚙️</span>Настройки</button>
 </nav>
@@ -1061,7 +1063,7 @@
         h+='<div class="addset-extras">'
             +'<button class="timer-btn'+(timerActive?' active':'')+'" data-act="timerToggle">'+timerLbl+'</button>'
             +'<button class="btn-gray variant-btn'+(curVariant?' variant-active':'')+'" data-act="variantToggle" data-id="'+ex.id+'" title="Вариант">'+esc(curVariant||'вариант')+'</button>'
-            +'<button class="btn-gray" style="min-width:44px;justify-content:center" data-act="exNoteToggle" data-id="'+ex.id+'" title="Заметка">📝</button>'
+            +'<button class="btn-gray" data-act="exNoteToggle" data-id="'+ex.id+'" title="Заметка">📝</button>'
             +'</div>';
         if(ui.variantOpen[ex.id]){
             const variants=getExVariants(ex.name);
