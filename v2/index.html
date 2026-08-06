@@ -668,25 +668,48 @@
             const ex=(data.log[k].exercises||[]).find(function(e){return e.name.toLowerCase()===low&&e.sets.length;});
             return {k:k,w:ex.sets.reduce(function(m,s){return Math.max(m,s.w);},0)};
         });
-        if(chartData.length<2){
-            h+='<div class="card" style="text-align:center;color:var(--mut);padding:20px">Недостаточно данных для графика</div>';
+        if(!chartData.length){
+            h+='<div class="card" style="text-align:center;color:var(--mut);padding:20px">Нет данных</div>';
         } else {
             const n=chartData.length, ws=chartData.map(function(d){return d.w;});
             const minW=Math.min.apply(null,ws), maxW=Math.max.apply(null,ws);
-            const wr=maxW-minW||1;
-            const pad=24, pw=320-pad*2, ph=120;
-            const px=function(i){ return pad+(n>1?i/(n-1)*pw:pw/2); };
-            const py=function(w){ return pad+ph-(w-minW)/wr*ph; };
+            // Nice Y grid step
+            const wr=maxW-minW;
+            const ystep=wr<=0?5:wr<=10?2.5:wr<=25?5:wr<=100?10:25;
+            const ymin=Math.floor(minW/ystep)*ystep, ymax=Math.ceil(maxW/ystep)*ystep;
+            const yticks=[];
+            for(let y=ymin;y<=ymax+0.001;y+=ystep) yticks.push(Math.round(y*10)/10);
+            // Layout
+            const W=340, H=180, padL=36, padR=10, padT=16, padB=26;
+            const pw=W-padL-padR, ph=H-padT-padB;
+            const px=function(i){ return padL+(n>1?i/(n-1)*pw:pw/2); };
+            const py=function(w){ const range=ymax-ymin||1; return padT+ph-(w-ymin)/range*ph; };
             const pts=chartData.map(function(d,i){return px(i)+','+py(d.w);}).join(' ');
-            let svg='<svg viewBox="0 0 320 160" width="100%" height="160" xmlns="http://www.w3.org/2000/svg">';
-            svg+='<line x1="'+pad+'" y1="'+py(maxW)+'" x2="'+(320-pad)+'" y2="'+py(maxW)+'" stroke="var(--border)" stroke-width="1"/>';
-            if(minW!==maxW) svg+='<line x1="'+pad+'" y1="'+py(minW)+'" x2="'+(320-pad)+'" y2="'+py(minW)+'" stroke="var(--border)" stroke-width="1"/>';
-            svg+='<text x="'+(pad+2)+'" y="'+(py(maxW)-3)+'" font-size="10" fill="var(--mut)">'+fmtW(maxW)+'</text>';
-            if(minW!==maxW) svg+='<text x="'+(pad+2)+'" y="'+(py(minW)+11)+'" font-size="10" fill="var(--mut)">'+fmtW(minW)+'</text>';
-            svg+='<text x="'+px(0)+'" y="155" font-size="9" fill="var(--mut)" text-anchor="start">'+fmtShort(chartData[0].k)+'</text>';
-            svg+='<text x="'+px(n-1)+'" y="155" font-size="9" fill="var(--mut)" text-anchor="end">'+fmtShort(chartData[n-1].k)+'</text>';
-            svg+='<polyline points="'+pts+'" fill="none" stroke="var(--btn)" stroke-width="2" stroke-linejoin="round"/>';
-            chartData.forEach(function(d,i){ svg+='<circle cx="'+px(i)+'" cy="'+py(d.w)+'" r="3" fill="var(--btn)"/>'; });
+            let svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;overflow:visible" xmlns="http://www.w3.org/2000/svg">';
+            // Y grid lines + labels
+            for(const y of yticks){
+                const ypx=Math.round(py(y));
+                svg+='<line x1="'+padL+'" y1="'+ypx+'" x2="'+(W-padR)+'" y2="'+ypx+'" stroke="var(--border)" stroke-width="1"/>';
+                svg+='<text x="'+(padL-4)+'" y="'+(ypx+3)+'" font-size="9" fill="var(--mut)" text-anchor="end">'+fmtW(y)+'</text>';
+            }
+            svg+='<text x="'+(padL-4)+'" y="'+(padT-3)+'" font-size="9" fill="var(--mut)" text-anchor="end">кг</text>';
+            // X labels (max 6 evenly spaced)
+            const xStep=Math.max(1,Math.ceil(n/6));
+            const xIdxs=[];
+            for(let i=0;i<n;i+=xStep) xIdxs.push(i);
+            if(xIdxs[xIdxs.length-1]!==n-1) xIdxs.push(n-1);
+            for(const i of xIdxs){
+                const anchor=i===0?'start':i===n-1?'end':'middle';
+                svg+='<text x="'+Math.round(px(i))+'" y="'+(H-4)+'" font-size="9" fill="var(--mut)" text-anchor="'+anchor+'">'+fmtShort(chartData[i].k)+'</text>';
+            }
+            svg+='<text x="'+(W-padR)+'" y="'+(H-4)+'" font-size="9" fill="var(--mut)" text-anchor="end" dx="0" dy="0"></text>';
+            // Line
+            if(n>1) svg+='<polyline points="'+pts+'" fill="none" stroke="var(--btn)" stroke-width="2" stroke-linejoin="round"/>';
+            // Points (+ labels for small datasets)
+            chartData.forEach(function(d,i){
+                svg+='<circle cx="'+Math.round(px(i))+'" cy="'+Math.round(py(d.w))+'" r="3" fill="var(--btn)"/>';
+                if(n<3) svg+='<text x="'+Math.round(px(i))+'" y="'+(Math.round(py(d.w))-6)+'" font-size="9" fill="var(--btn)" text-anchor="middle">'+fmtW(d.w)+'</text>';
+            });
             svg+='</svg>';
             const recEntry=chartData.reduce(function(a,b){return b.w>a.w?b:a;});
             h+='<div class="card">'+svg
