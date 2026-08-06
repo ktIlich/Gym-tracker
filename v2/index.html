@@ -218,6 +218,7 @@
         .import-day-head input[type=date]{font-size:13px; padding:5px 8px; width:auto; border-radius:8px}
         .prog-ex-btn{width:100%; text-align:left; padding:10px 12px; border-radius:10px; font-size:13px; margin-top:4px; background:var(--card2); color:var(--text)}
         .prog-ex-btn:active{opacity:.7}
+        .prog-ex-open{color:var(--btn)}
         .variant-btn{min-width:44px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;justify-content:center}
         .variant-btn.variant-active{color:var(--btn)}
         .variant-list{margin-top:6px; border-top:1px solid var(--border); padding-top:6px}
@@ -751,13 +752,16 @@
         h+='<div class="card"><input id="progSearch" placeholder="Поиск упражнения…" autocomplete="off">'
             +'<div id="progList" style="margin-top:8px">';
         for(const name of exList){
-            h+='<button class="prog-ex-btn" data-act="selectProg" data-name="'+esc(name)+'">'
+            const isOpen=progEx===name;
+            h+='<div class="prog-ex-item" data-name="'+esc(name)+'">'
+                +'<button class="prog-ex-btn'+(isOpen?' prog-ex-open':'')+'" data-act="selectProg" data-name="'+esc(name)+'">'
                 +'<span>'+esc(name)+'</span>'
                 +(freq[name]>1?'<span style="float:right;color:var(--mut)">'+freq[name]+'×</span>':'')
                 +'</button>';
+            if(isOpen) h+=histContentHtml(name,"progVariant");
+            h+='</div>';
         }
         h+='</div></div>';
-        if(progEx) h+=histContentHtml(progEx,"progVariant");
         return h;
     }
 
@@ -1493,8 +1497,8 @@
     app.addEventListener("input",function(e){
         if(e.target.id==="progSearch"){
             const q=e.target.value.toLowerCase();
-            document.querySelectorAll("#progList .prog-ex-btn").forEach(function(b){
-                b.style.display=b.dataset.name.toLowerCase().indexOf(q)>=0?"":"none";
+            document.querySelectorAll("#progList .prog-ex-item").forEach(function(item){
+                item.style.display=item.dataset.name.toLowerCase().indexOf(q)>=0?"":"none";
             });
         }
     });
@@ -1868,7 +1872,7 @@
                 toast("Шаблон удалён");
                 break;
             }
-            case "selectProg": progEx=ds.name; render(); break;
+            case "selectProg": progEx=(progEx===ds.name?null:ds.name); render(); break;
             case "progVariant": progEx=ds.name; render(); break;
             case "setAccent": data.cfg.accent=ds.accent; persistCfg(); applyTheme(); render(); break;
         }
