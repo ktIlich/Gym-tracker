@@ -223,6 +223,9 @@
         .variant-list{margin-top:6px; border-top:1px solid var(--border); padding-top:6px}
         .swatch{width:30px; height:30px; border-radius:50%; border:3px solid transparent; cursor:pointer; flex-shrink:0}
         .swatch.sel{border-color:var(--text)}
+        .theme-radios{display:flex;flex-direction:column;gap:4px}
+        .theme-radio{display:flex;align-items:center;gap:10px;cursor:pointer;min-height:44px;padding:0 2px}
+        .theme-radio input[type=radio]{accent-color:var(--btn);width:18px;height:18px;flex-shrink:0}
     </style>
 </head>
 <body>
@@ -1212,6 +1215,25 @@
         return h;
     }
 
+    const ACCENT_PRESETS=['#ff9f0a','#2481cc','#34d399','#8b5cf6','#f87171','#22d3ee'];
+    const PALETTE_VARS=['--bg','--card','--text','--mut','--border','--card2'];
+    const DARK_PAL={'--bg':'#09090b','--card':'#18181b','--text':'#f4f4f5','--mut':'#a1a1aa','--border':'rgba(128,128,128,.22)','--card2':'rgba(128,128,128,.14)'};
+    const LIGHT_PAL={'--bg':'#f8f8f8','--card':'#ffffff','--text':'#09090b','--mut':'#71717a','--border':'rgba(0,0,0,.12)','--card2':'rgba(0,0,0,.06)'};
+    function hexToRgb(hex){ return {r:parseInt(hex.slice(1,3),16),g:parseInt(hex.slice(3,5),16),b:parseInt(hex.slice(5,7),16)}; }
+    function accentBtnText(hex){ const {r,g,b}=hexToRgb(hex); return (r*0.299+g*0.587+b*0.114)/255>0.5?'#09090b':'#ffffff'; }
+    function applyTheme(){
+        const el=document.documentElement;
+        const theme=data.cfg.theme||'tg', accent=data.cfg.accent||'#ff9f0a';
+        if(theme==='tg'){ PALETTE_VARS.forEach(function(v){ el.style.removeProperty(v); }); }
+        else { const pal=theme==='dark'?DARK_PAL:LIGHT_PAL; PALETTE_VARS.forEach(function(v){ el.style.setProperty(v,pal[v]); }); }
+        const {r,g,b}=hexToRgb(accent);
+        el.style.setProperty('--btn',accent);
+        el.style.setProperty('--accent',accent);
+        el.style.setProperty('--link',accent);
+        el.style.setProperty('--accent-bg','rgba('+r+','+g+','+b+',.14)');
+        el.style.setProperty('--btn-text',accentBtnText(accent));
+    }
+
     function setPage(){
         const c=data.cfg.cycle;
         let h='<div class="sec-label" style="margin-top:16px">Цикл</div><div class="card">'
@@ -1260,6 +1282,16 @@
             +'<label class="switch"><input type="checkbox" '+(data.cfg.autoTimer?'checked':'')+' data-chg="autoTimer"><i></i></label></div>'
             +'<div class="row" style="margin-top:10px"><div class="lbl">Время отдыха, сек (30–300)</div>'
             +'<input type="number" inputmode="numeric" min="30" max="300" value="'+(data.cfg.restTimerSec||90)+'" data-chg="restTimerSec"></div></div>';
+
+        const th=data.cfg.theme||'tg', ac=data.cfg.accent||'#ff9f0a';
+        h+='<div class="sec-label">Тема</div><div class="card">'
+            +'<div class="theme-radios">'
+            +'<label class="theme-radio"><input type="radio" name="theme" value="tg" '+(th==='tg'?'checked':'')+' data-chg="theme"><span>Как в Telegram</span></label>'
+            +'<label class="theme-radio"><input type="radio" name="theme" value="dark" '+(th==='dark'?'checked':'')+' data-chg="theme"><span>Тёмная</span></label>'
+            +'<label class="theme-radio"><input type="radio" name="theme" value="light" '+(th==='light'?'checked':'')+' data-chg="theme"><span>Светлая</span></label>'
+            +'</div><div style="display:flex;gap:10px;align-items:center;margin-top:12px">';
+        for(const a of ACCENT_PRESETS) h+='<button class="swatch'+(a===ac?' sel':'')+'" style="background:'+a+'" data-act="setAccent" data-accent="'+a+'"></button>';
+        h+='</div></div>';
 
         h+='<div class="sec-label">Данные</div><div class="card">'
             +(cs?'<button class="wide-btn" data-act="syncNow">🔄 Синхронизировать сейчас</button>':'')
@@ -1392,6 +1424,7 @@
         if(chg==="warmupPercent"){ data.cfg.warmupPercent=Math.min(50,Math.max(20,parseInt(e.target.value,10)||35)); persistCfg(); render(); return; }
         if(chg==="restTimerSec"){ data.cfg.restTimerSec=Math.min(300,Math.max(30,parseInt(e.target.value,10)||90)); persistCfg(); return; }
         if(chg==="autoTimer"){ data.cfg.autoTimer=e.target.checked; persistCfg(); return; }
+        if(chg==="theme"){ data.cfg.theme=e.target.value; persistCfg(); applyTheme(); return; }
         if(chg==="dayNote"){
             const d=getDay(); d.note=e.target.value;
             const wi=weekInfo(curDate); if(wi) d.weekType=wi.isRest?"rest":"work";
@@ -1792,6 +1825,7 @@
             }
             case "selectProg": progEx=ds.name; render(); break;
             case "progVariant": progEx=ds.name; render(); break;
+            case "setAccent": data.cfg.accent=ds.accent; persistCfg(); applyTheme(); render(); break;
         }
     }
 
@@ -1802,6 +1836,7 @@
             if(migrateOld()) toast("Данные перенесены из старой версии");
             else { data.templates=DEFAULT_TEMPLATES.map(function(t){return normalizeTpl({id:uid(),name:t.name,title:t.title,exercises:t.exercises.slice()});}); saveCache(); }
         }
+        applyTheme();
         render();
         cloudLoad(); // фоновая синхронизация с Telegram CloudStorage
     })();
