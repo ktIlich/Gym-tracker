@@ -829,7 +829,7 @@
             const hasConflict=w.date&&data.log[w.date];
             h+='<div class="import-day">';
             h+='<div class="import-day-head">';
-            h+='<input type="date" value="'+esc(w.date||'')+'" data-chg="importDate" data-wi="'+wi+'">';
+            h+='<input type="date" value="'+esc(w.date||'')+'" data-chg="importDate" data-wi="'+wi+'"'+(w._dateError?' style="border-color:var(--red)"':'')+'>';
             h+='<span style="font-weight:600;font-size:14px">'+esc(w.title||'')+'</span>';
             if(hasConflict){
                 h+='<span style="font-size:12px;color:var(--red)">⚠ есть данные</span>';
@@ -839,6 +839,7 @@
                     +'</select>';
             }
             h+='</div>';
+            if(w.autoDate) h+='<div style="font-size:11px;color:var(--mut);margin-top:2px">дата не найдена в тексте, подставлена сегодняшняя</div>';
             h+='<div style="font-size:13px;color:var(--mut)">';
             for(const e of w.exercises){
                 h+='<div>• '+esc(e.name)+(e.sets.length?' — '+e.sets.map(function(s){return fmtW(s.w)+'×'+s.r;}).join(', '):'')+'</div>';
@@ -1452,7 +1453,7 @@
         }
         if(chg==="importDate"){
             const wi2=+e.target.dataset.wi;
-            if(ui.importParsed&&ui.importParsed[wi2]) ui.importParsed[wi2].date=e.target.value;
+            if(ui.importParsed&&ui.importParsed[wi2]){ ui.importParsed[wi2].date=e.target.value; delete ui.importParsed[wi2].autoDate; delete ui.importParsed[wi2]._dateError; }
             return;
         }
         if(chg==="importConflict"){
@@ -1658,16 +1659,31 @@
                 const rawText=(document.getElementById("importTextArea")||{}).value||"";
                 const parsed=parseWorkoutText(rawText);
                 if(!parsed.length){ toast("Не нашёл тренировок — проверь формат (дата ДД.ММ, упражнения с Nх…)"); return; }
-                parsed.forEach(function(w){ w.exercises.forEach(function(e){ e.name=canonicalExName(e.name); e.id=uid(); }); });
+                const todayKey=toKey(new Date());
+                parsed.forEach(function(w){
+                    if(!w.date){ w.date=todayKey; w.autoDate=true; }
+                    w.exercises.forEach(function(e){ e.name=canonicalExName(e.name); e.id=uid(); });
+                });
                 ui.importParsed=parsed; ui.importText=false; render();
                 break;
             }
             case "importConfirm":{
                 if(!ui.importParsed) return;
+                // Validate dates
+                ui.importParsed.forEach(function(w){ delete w._dateError; });
+                let hasDateErr=false;
+                ui.importParsed.forEach(function(w){
+                    if(!w.date||!/^\d{4}-\d{2}-\d{2}$/.test(w.date)){ w._dateError=true; hasDateErr=true; }
+                });
+                if(hasDateErr){ toast("Укажите дату для всех тренировок"); render(); return; }
+                const seenDates=new Set();
+                for(const w of ui.importParsed){
+                    if(seenDates.has(w.date)){ toast("Даты тренировок не должны повторяться"); return; }
+                    seenDates.add(w.date);
+                }
                 const toSync=[];
                 let nDays=0, nEx=0, nSets=0;
                 for(const w of ui.importParsed){
-                    if(!w.date) continue;
                     if(data.log[w.date]&&w.conflicts==="skip") continue;
                     const entry={title:w.title,exercises:w.exercises,up:Date.now()};
                     const wi2=weekInfo(w.date); if(wi2) entry.weekType=wi2.isRest?"rest":"work";
