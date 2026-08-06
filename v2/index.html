@@ -72,6 +72,16 @@
         .rest-hint{text-align:center; color:var(--green); font-size:14px;
             background:var(--rest-bg); border:1px solid rgba(52,211,153,.25); border-radius:14px; padding:12px; margin-top:12px}
 
+        .backup-banner{display:flex; align-items:center; gap:10px;
+            background:var(--accent-bg); border:1px solid rgba(255,159,10,.3); border-radius:14px;
+            padding:8px 8px 8px 14px; margin-top:12px; font-size:13px; color:var(--text)}
+        .backup-banner .txt{flex:1; min-width:0; line-height:1.35}
+        .backup-banner .btns{display:flex; align-items:center; gap:4px; flex-shrink:0}
+        .backup-banner .save-btn{background:var(--accent); color:var(--btn-text); border-radius:10px; padding:0 14px;
+            font-weight:700; font-size:13px; min-height:var(--touch); display:flex; align-items:center; flex-shrink:0}
+        .backup-banner .close-btn{width:var(--touch); height:var(--touch); display:flex; align-items:center; justify-content:center;
+            color:var(--mut); flex-shrink:0; font-size:16px}
+
         .card{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:12px 14px; margin-top:12px}
         .ex-head{display:flex; justify-content:space-between; gap:8px; align-items:flex-start}
         .ex-name{font-weight:600; line-height:1.25; font-size:16px; text-align:left; color:inherit}
@@ -281,7 +291,7 @@
     }}catch(e){} }
 
     // ============ state ============
-    const CACHE_KEY="gt2:cache", OLD_KEY="gym-tracker-v1";
+    const CACHE_KEY="gt2:cache", OLD_KEY="gym-tracker-v1", SNAPSHOT_KEY="gt2:snapshot";
     const DEFAULT_TEMPLATES=[
         { name:"Жимовая (пн)", title:"Жимовая", exercises:[
                 "Отведения в Пек-Дек на заднюю дельту (3х12-20)","Жим штанги лёжа под углом в Смите (3х8-12)",
@@ -298,7 +308,7 @@
                 "Жим ногами, стандартная постановка (2х8-12)","Болгарские приседания (2х10-15)","Разгибания сидя (2х10-15)",
                 "Голень стоя (3х10-20)","Задняя дельта Пек-Дек (3х12)","Задняя дельта гантели в наклоне (2х15)"]}
     ];
-    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, defaultWeightStep:null, warmupCount:4, warmupPercent:35, restTimerSec:90, autoTimer:true, theme:"tg", accent:"#ff9f0a", weekOverrides:{} }, templates:[], log:{} }; }
+    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, defaultWeightStep:null, warmupCount:4, warmupPercent:35, restTimerSec:90, autoTimer:true, theme:"tg", accent:"#ff9f0a", weekOverrides:{}, lastBackup:null, backupReminderDays:14, backupSnooze:null }, templates:[], log:{} }; }
     function normalizeData(d){
         const base=emptyData();
         d.cfg=Object.assign(base.cfg, d.cfg||{});
@@ -344,7 +354,8 @@
     }
     let data=emptyData();
     let curDate=toKey(new Date());
-    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null, editTpl:null, histEx:null, importText:false, importParsed:null, dayNoteOpen:false, exNoteOpen:{}, variantOpen:{}, weekTypeOpen:false };
+    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null, editTpl:null, histEx:null, importText:false, importParsed:null, dayNoteOpen:false, exNoteOpen:{}, variantOpen:{}, weekTypeOpen:false,
+        backupRestoreOpen:false, backupParsed:null, backupParsedSrc:null, backupMode:"merge", backupConfirmStep:0 };
     let calMonth=curDate.slice(0,7);
     let lastDel=null;
     let timerEnd=0, timerInterval=null;
@@ -359,6 +370,15 @@
     function uid(){ return Math.random().toString(36).slice(2,9); }
     function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];}); }
     function fmtW(w){ return (Math.round(w*100)/100).toString().replace(".",","); }
+    function ruPlural(n,one,few,many){ n=Math.abs(n)%100; const n1=n%10; if(n>10&&n<20) return many; if(n1>1&&n1<5) return few; if(n1===1) return one; return many; }
+    function daysSinceBackup(){ if(!data.cfg.lastBackup) return Infinity; return Math.floor((Date.now()-new Date(data.cfg.lastBackup).getTime())/86400000); }
+    function shouldShowBackupBanner(){
+        if(!Object.keys(data.log).length) return false;
+        const n=data.cfg.backupReminderDays;
+        if(!n) return false;
+        if(data.cfg.backupSnooze&&Date.now()<data.cfg.backupSnooze) return false;
+        return daysSinceBackup()>=n;
+    }
 
     function getMondayKey(dateKey){
         const d=parseKey(dateKey);
@@ -414,8 +434,71 @@
     }
 
     // ============ storage: localStorage cache + Telegram CloudStorage ============
-    function saveCache(){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(data)); }catch(e){} }
+    function saveCache(){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(data)); }catch(e){} maybeSnapshot(); }
     function loadCache(){ try{ const r=localStorage.getItem(CACHE_KEY); if(r){ data=normalizeData(JSON.parse(r)); return true; } }catch(e){} return false; }
+
+    // ============ backup / restore ============
+    function buildBackupDump(){
+        return { app:"gym-tracker", version:APP_VERSION, created:new Date().toISOString(),
+            cfg:data.cfg, templates:data.templates, log:data.log };
+    }
+    function getSnapshot(){ try{ const r=localStorage.getItem(SNAPSHOT_KEY); return r?JSON.parse(r):null; }catch(e){ return null; } }
+    function maybeSnapshot(){
+        try{
+            const prev=getSnapshot();
+            if(prev&&prev.created&&(Date.now()-new Date(prev.created).getTime())<86400000) return;
+            localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(buildBackupDump()));
+        }catch(e){}
+    }
+    function isBackupDump(o){ return o&&typeof o==="object"&&o.app==="gym-tracker"&&o.log&&typeof o.log==="object"; }
+    function backupSummary(dump){
+        const days=Object.keys(dump.log||{});
+        let nEx=0; for(const k of days) nEx+=((dump.log[k].exercises||[]).length);
+        return { days:days.length, ex:nEx, tpl:(dump.templates||[]).length, created:dump.created||null };
+    }
+    // «merge»: добавляются только дни/шаблоны, которых нет сейчас; «replace»: данные и облако перетираются полностью
+    function applyBackupDump(dump, mode){
+        const toSyncDays=[], toSyncTpl=[];
+        if(mode==="replace"){
+            data=normalizeData({ cfg:dump.cfg||{}, templates:(dump.templates||[]).slice(), log:dump.log||{} });
+            saveCache();
+            return { mode:mode, days:Object.keys(data.log).length, tpl:data.templates.length, cloudReplace:true };
+        }
+        let nDays=0, nTpl=0;
+        for(const k of Object.keys(dump.log||{})){
+            if(data.log[k]) continue;
+            data.log[k]=dump.log[k]; nDays++; toSyncDays.push(k);
+        }
+        for(const t of (dump.templates||[])){
+            const exists=data.templates.some(function(x){return x.id===t.id||x.name===t.name;});
+            if(exists) continue;
+            const nt=normalizeTpl(JSON.parse(JSON.stringify(t)));
+            data.templates.push(nt); nTpl++; toSyncTpl.push(nt);
+        }
+        saveCache();
+        return { mode:mode, days:nDays, tpl:nTpl, toSyncDays:toSyncDays, toSyncTpl:toSyncTpl };
+    }
+    function downloadJson(filename, text){
+        const blob=new Blob([text],{type:"application/json"});
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement("a");
+        a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        setTimeout(function(){ URL.revokeObjectURL(url); },1000);
+    }
+    function copyToClipboard(text){
+        if(navigator.clipboard&&navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+        return new Promise(function(resolve,reject){
+            try{
+                const ta=document.createElement("textarea");
+                ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+                document.body.appendChild(ta); ta.focus(); ta.select();
+                const ok=document.execCommand("copy");
+                document.body.removeChild(ta);
+                ok?resolve():reject(new Error("execCommand failed"));
+            }catch(e){ reject(e); }
+        });
+    }
 
     function csGetItems(keys){ return new Promise(function(res){ if(!cs||!keys.length) return res({}); cs.getItems(keys,function(e,v){ res(e?{}:(v||{})); }); }); }
     function csSet(k,v){ return new Promise(function(res){ if(!cs) return res(false); try{ cs.setItem(k,v,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
@@ -433,6 +516,11 @@
         await csSet("cfg", JSON.stringify(data.cfg));
         for(const t of data.templates) await csSet("tpl_"+t.id, JSON.stringify(t));
         for(const k of Object.keys(data.log)) await csSet("w_"+k, JSON.stringify(data.log[k]));
+    }
+    async function cloudReplaceAll(){
+        const keys=await csKeys();
+        if(keys) for(const k of keys) await csDel(k);
+        await cloudPushAll();
     }
     let syncState={ last:null, count:null, busy:false };
     async function cloudLoad(){
@@ -1183,6 +1271,13 @@
             if(pdn) h+='<div class="ex-last" style="white-space:normal">'+ICON_NOTE+' '+fmtShort(pdn.date)+': '+esc(pdn.note)+'</div>';
         }
         if(isRest&&!day.exercises.length) h+='<div class="rest-hint">Неделя отдыха — лёгкие веса, восстановление</div>';
+        if(shouldShowBackupBanner()){
+            const nb=daysSinceBackup();
+            const btxt=data.cfg.lastBackup?('Резервная копия не делалась '+nb+' '+ruPlural(nb,'день','дня','дней')):'Резервная копия ещё не делалась';
+            h+='<div class="backup-banner"><span class="txt">'+btxt+'</span>'
+                +'<span class="btns"><button class="save-btn" data-act="bannerBackupOpen">Сохранить</button>'
+                +'<button class="close-btn" data-act="bannerBackupSnooze" title="Напомнить позже через 3 дня">✕</button></span></div>';
+        }
 
         const exs=day.exercises;
         let exIdx=0;
@@ -1377,6 +1472,68 @@
         el.style.setProperty('--btn-text',accentBtnText(accent));
     }
 
+    function fmtBackupDate(iso){
+        if(!iso) return null;
+        const d=new Date(iso);
+        return d.toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric"})+' '+d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
+    }
+    function backupSectionHtml(){
+        const lb=fmtBackupDate(data.cfg.lastBackup);
+        let h='<div class="sec-label">Резервная копия</div><div class="card">'
+            +'<div class="note" style="margin-top:0">Последняя копия: '+(lb?esc(lb):'ещё не делалась')+'</div>'
+            +'<div style="display:flex;gap:8px;margin-top:8px">'
+            +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="backupDownload">'+ICON_DOWNLOAD+' Скачать файл</button>'
+            +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="backupCopy">'+ICON_CLIPBOARD+' Скопировать</button>'
+            +'</div>'
+            +'<div class="row"><div class="lbl">Напоминать о копии через, дней (0 — выключено)</div>'
+            +'<input type="number" inputmode="numeric" min="0" max="90" value="'+(data.cfg.backupReminderDays||0)+'" data-chg="backupReminderDays"></div>';
+
+        const snap=getSnapshot();
+        if(snap){
+            const sd=new Date(snap.created);
+            h+='<div class="note">Локальный снимок от '+esc(sd.toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"}))+', дней: '+Object.keys(snap.log||{}).length+'</div>'
+                +'<button class="wide-btn" data-act="backupSnapshotRestore">'+ICON_SYNC+' Восстановить из снимка</button>';
+        }
+
+        h+='<button class="wide-btn" data-act="backupRestoreToggle">'+ICON_UPLOAD+' Восстановить из копии</button>';
+
+        if(ui.backupRestoreOpen&&!ui.backupParsed){
+            h+='<textarea id="backupText" placeholder="Вставьте сюда JSON резервной копии…" style="margin-top:10px;min-height:100px"></textarea>'
+                +'<input type="file" id="backupFile" accept=".json" style="margin-top:8px">'
+                +'<button class="wide-btn primary" data-act="backupParseText">Разобрать</button>';
+        }
+
+        if(ui.backupParsed){
+            const s=backupSummary(ui.backupParsed);
+            const created=s.created?fmtBackupDate(s.created):'дата неизвестна';
+            h+='<div class="card" style="background:var(--card2);margin-top:10px">'
+                +'<div class="note" style="margin-top:0">Копия от '+esc(created)+': дней — '+s.days+', упражнений — '+s.ex+', шаблонов — '+s.tpl+'</div>'
+                +'<div class="theme-radios" style="margin-top:8px">'
+                +'<label class="theme-radio"><input type="radio" name="backupMode" value="merge" '+(ui.backupMode==='merge'?'checked':'')+' data-chg="backupMode"><span>Объединить — добавить недостающее</span></label>'
+                +'<label class="theme-radio"><input type="radio" name="backupMode" value="replace" '+(ui.backupMode==='replace'?'checked':'')+' data-chg="backupMode"><span>Заменить всё</span></label>'
+                +'</div>';
+            if(ui.backupMode==='replace'){
+                if(ui.backupConfirmStep===1){
+                    h+='<div class="confirm" style="margin-top:10px"><span>Это перезапишет текущие данные и данные в облаке Telegram. Продолжить?</span>'
+                        +'<span class="btns"><button class="btn-red" data-act="backupConfirmNext">Продолжить</button>'
+                        +'<button class="btn-gray" data-act="backupConfirmCancel">Отмена</button></span></div>';
+                } else if(ui.backupConfirmStep===2){
+                    h+='<div class="confirm" style="margin-top:10px"><span><b>Последнее подтверждение.</b> Текущие тренировки, шаблоны и настройки будут удалены и заменены копией.</span>'
+                        +'<span class="btns"><button class="btn-red" data-act="backupApplyGo">Заменить всё</button>'
+                        +'<button class="btn-gray" data-act="backupConfirmCancel">Отмена</button></span></div>';
+                } else {
+                    h+='<button class="wide-btn danger" data-act="backupReplaceAsk">Заменить всё</button>';
+                }
+            } else {
+                h+='<button class="wide-btn primary" data-act="backupApplyGo">Объединить</button>';
+            }
+            h+='<button class="wide-btn" data-act="backupApplyCancel">Отмена</button></div>';
+        }
+
+        h+='</div>';
+        return h;
+    }
+
     function setPage(){
         const c=data.cfg.cycle;
         let h='<div class="sec-label" style="margin-top:16px">Цикл</div><div class="card">'
@@ -1456,18 +1613,20 @@
             +'<button class="wide-btn" data-act="importTextOpen">'+ICON_CLIPBOARD+' Импорт из заметок</button>'
             +'<div class="note">'+syncNote+'</div></div>';
 
+        h+=backupSectionHtml();
+
         h+='<div class="sec-label">Опасная зона</div><div class="card">';
         if(ui.wipeStep===1){
-            h+='<div class="confirm" style="margin-top:0"><span>Удалить ВСЕ данные — тренировки, шаблоны, настройки, включая облако Telegram (все устройства)?</span>'
+            h+='<div class="confirm" style="margin-top:0"><span>Удалить ВСЕ данные — тренировки, шаблоны, настройки, включая облако Telegram (все устройства) и локальный снимок?</span>'
                 +'<span class="btns"><button class="btn-red" data-act="wipe2">Продолжить</button>'
                 +'<button class="btn-gray" data-act="wipeNo">Отмена</button></span></div>';
         } else if(ui.wipeStep===2){
-            h+='<div class="confirm" style="margin-top:0"><span><b>Последнее подтверждение.</b> Действие необратимо — восстановить получится только из Excel-файла.</span>'
+            h+='<div class="confirm" style="margin-top:0"><span><b>Последнее подтверждение.</b> Действие необратимо, включая локальный снимок — восстановить получится только из сохранённого файла копии или Excel.</span>'
                 +'<span class="btns"><button class="btn-red" data-act="wipeYes">Удалить всё</button>'
                 +'<button class="btn-gray" data-act="wipeNo">Отмена</button></span></div>';
         } else {
             h+='<button class="wide-btn danger" data-act="wipe1" style="margin-top:0">'+ICON_TRASH+' Удалить все данные</button>'
-                +'<div class="note">Перед удалением стоит нажать «Скачать Excel» — это единственная резервная копия.</div>';
+                +'<div class="note">Перед удалением сохраните резервную копию выше — очистка удаляет и локальный снимок, он не поможет восстановиться.</div>';
         }
         h+='</div>';
         return h;
@@ -1523,6 +1682,7 @@
         const b=e.target.closest("button[data-tab]"); if(!b) return;
         ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null; ui.wipeStep=0; ui.tplFromText=false; ui.tplParsed=null; ui.editTpl=null;
         ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.dayNoteOpen=false; ui.weekTypeOpen=false;
+        ui.backupRestoreOpen=false; ui.backupParsed=null; ui.backupParsedSrc=null; ui.backupMode="merge"; ui.backupConfirmStep=0;
         if(ui.tab==="cal") calMonth=curDate.slice(0,7);
         hap("light"); render();
     });
@@ -1562,6 +1722,20 @@
             return;
         }
         if(e.target.id==="et-name"&&ui.editTpl){ ui.editTpl.name=e.target.value.trim(); return; }
+        if(e.target.id==="backupFile"){
+            const file=e.target.files&&e.target.files[0]; if(!file) return;
+            const reader=new FileReader();
+            reader.onload=function(ev){
+                try{
+                    const obj=JSON.parse(ev.target.result);
+                    if(!isBackupDump(obj)){ toast("Файл не похож на резервную копию"); return; }
+                    ui.backupParsed=obj; ui.backupParsedSrc="file"; ui.backupMode="merge"; ui.backupConfirmStep=0;
+                    render();
+                }catch(err){ toast("Не удалось прочитать файл — проверьте формат JSON"); }
+            };
+            reader.readAsText(file);
+            return;
+        }
         const chg=e.target.dataset.chg;
         if(!chg) return;
         const c=data.cfg.cycle;
@@ -1654,6 +1828,8 @@
             it.plan=e.target.value.trim();
             return;
         }
+        if(chg==="backupReminderDays"){ data.cfg.backupReminderDays=Math.min(90,Math.max(0,parseInt(e.target.value,10)||0)); persistCfg(); render(); return; }
+        if(chg==="backupMode"){ ui.backupMode=e.target.value; ui.backupConfirmStep=0; render(); return; }
     });
     app.addEventListener("keydown",function(e){
         if(e.key!=="Enter") return;
@@ -1958,6 +2134,70 @@
             case "export": exportXlsx(); break;
             case "import": document.getElementById("importFile").click(); break;
 
+            case "backupDownload":{
+                const dump=buildBackupDump();
+                downloadJson("gym-tracker-"+toKey(new Date())+".json", JSON.stringify(dump,null,2));
+                data.cfg.lastBackup=new Date().toISOString(); persistCfg(); render();
+                toast("Копия сохранена");
+                break;
+            }
+            case "backupCopy":{
+                const dump=buildBackupDump();
+                copyToClipboard(JSON.stringify(dump)).then(function(){
+                    data.cfg.lastBackup=new Date().toISOString(); persistCfg(); render();
+                    toast("Скопировано. Вставьте в «Избранное» в Telegram");
+                }).catch(function(){ toast("Не удалось скопировать — попробуйте «Скачать файл»"); });
+                break;
+            }
+            case "backupRestoreToggle":
+                ui.backupRestoreOpen=!ui.backupRestoreOpen;
+                if(!ui.backupRestoreOpen){ ui.backupParsed=null; ui.backupConfirmStep=0; }
+                render(); break;
+            case "backupParseText":{
+                const raw=(document.getElementById("backupText")||{}).value||"";
+                let obj;
+                try{ obj=JSON.parse(raw); }catch(e){ toast("Не удалось разобрать JSON"); return; }
+                if(!isBackupDump(obj)){ toast("Это не похоже на резервную копию Gym Tracker"); return; }
+                ui.backupParsed=obj; ui.backupParsedSrc="paste"; ui.backupMode="merge"; ui.backupConfirmStep=0;
+                render();
+                break;
+            }
+            case "backupSnapshotRestore":{
+                const snap=getSnapshot();
+                if(!snap){ toast("Локального снимка пока нет"); return; }
+                ui.backupRestoreOpen=true; ui.backupParsed=snap; ui.backupParsedSrc="snapshot"; ui.backupMode="merge"; ui.backupConfirmStep=0;
+                render();
+                break;
+            }
+            case "backupReplaceAsk": ui.backupConfirmStep=1; render(); break;
+            case "backupConfirmNext": ui.backupConfirmStep=2; render(); break;
+            case "backupConfirmCancel": ui.backupConfirmStep=0; render(); break;
+            case "backupApplyGo":{
+                if(!ui.backupParsed) return;
+                const mode=ui.backupMode;
+                if(mode==="replace"&&ui.backupConfirmStep!==2) return;
+                const res=applyBackupDump(ui.backupParsed, mode);
+                ui.backupParsed=null; ui.backupParsedSrc=null; ui.backupRestoreOpen=false; ui.backupConfirmStep=0; ui.backupMode="merge";
+                applyTheme(); render();
+                hap("ok");
+                if(res.cloudReplace){
+                    toast("Данные заменены: дней — "+res.days+", шаблонов — "+res.tpl+". Синхронизация с облаком…");
+                    cloudReplaceAll().then(function(){ toast("Облако обновлено"); });
+                } else {
+                    toast("Объединено: добавлено дней — "+res.days+", шаблонов — "+res.tpl);
+                    (async function(){
+                        for(const dk of res.toSyncDays) await csSet("w_"+dk, JSON.stringify(data.log[dk]));
+                        for(const t of res.toSyncTpl) await csSet("tpl_"+t.id, JSON.stringify(t));
+                    })();
+                }
+                break;
+            }
+            case "backupApplyCancel":
+                ui.backupParsed=null; ui.backupParsedSrc=null; ui.backupRestoreOpen=false; ui.backupConfirmStep=0; ui.backupMode="merge";
+                render(); break;
+            case "bannerBackupOpen": ui.tab="set"; hap("light"); render(); break;
+            case "bannerBackupSnooze": data.cfg.backupSnooze=Date.now()+3*86400000; persistCfg(); render(); break;
+
             case "addEx":{
                 const inp=document.getElementById("newEx");
                 const name=inp.value.trim(); if(!name) return;
@@ -1989,7 +2229,7 @@
                     ui.wipeStep=0;
                     const keys=await csKeys();
                     if(keys) for(const k of keys) await csDel(k);
-                    try{ localStorage.removeItem(CACHE_KEY); }catch(e){}
+                    try{ localStorage.removeItem(CACHE_KEY); localStorage.removeItem(SNAPSHOT_KEY); }catch(e){}
                     data=emptyData();
                     data.templates=DEFAULT_TEMPLATES.map(function(t){return normalizeTpl({id:uid(),name:t.name,title:t.title,exercises:t.exercises.slice()});});
                     syncState.last=null; syncState.count=null; warnedCloud=false;
