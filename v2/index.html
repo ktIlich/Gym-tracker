@@ -218,6 +218,8 @@
         .import-day-head input[type=date]{font-size:13px; padding:5px 8px; width:auto; border-radius:8px}
         .prog-ex-btn{width:100%; text-align:left; padding:10px 12px; border-radius:10px; font-size:13px; margin-top:4px; background:var(--card2); color:var(--text)}
         .prog-ex-btn:active{opacity:.7}
+        .variant-btn{min-width:44px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;justify-content:center}
+        .variant-btn.variant-active{color:var(--btn)}
         .variant-list{margin-top:6px; border-top:1px solid var(--border); padding-top:6px}
         .swatch{width:30px; height:30px; border-radius:50%; border:3px solid transparent; cursor:pointer; flex-shrink:0}
         .swatch.sel{border-color:var(--text)}
@@ -315,7 +317,7 @@
     }
     let data=emptyData();
     let curDate=toKey(new Date());
-    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null, editTpl:null, histEx:null, importText:false, importParsed:null, dayNoteOpen:false, exNoteOpen:{} };
+    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null, editTpl:null, histEx:null, importText:false, importParsed:null, dayNoteOpen:false, exNoteOpen:{}, variantOpen:{} };
     let calMonth=curDate.slice(0,7);
     let lastDel=null;
     let timerEnd=0, timerInterval=null;
@@ -990,6 +992,8 @@
         }
         const timerActive=timerEnd>Date.now();
         const timerLbl=timerActive?fmtTimer(timerEnd-Date.now()):'⏱';
+        const exBase=ex.name.split(' · ')[0];
+        const curVariant=ex.name.indexOf(' · ')>=0?ex.name.split(' · ').slice(1).join(' · '):'';
         h+='<div class="addset">'
             +'<input type="number" inputmode="decimal" placeholder="кг" min="0" id="w-'+ex.id+'">'
             +'<input type="number" inputmode="numeric" placeholder="повт." min="1" id="r-'+ex.id+'" data-enter="addSet" data-id="'+ex.id+'">'
@@ -998,8 +1002,22 @@
             +'</div>';
         h+='<div class="addset-extras">'
             +'<button class="timer-btn'+(timerActive?' active':'')+'" data-act="timerToggle">'+timerLbl+'</button>'
+            +'<button class="btn-gray variant-btn'+(curVariant?' variant-active':'')+'" data-act="variantToggle" data-id="'+ex.id+'" title="Вариант">'+esc(curVariant||'вариант')+'</button>'
             +'<button class="btn-gray" style="min-width:44px;justify-content:center" data-act="exNoteToggle" data-id="'+ex.id+'" title="Заметка">📝</button>'
             +'</div>';
+        if(ui.variantOpen[ex.id]){
+            const variants=getExVariants(ex.name);
+            h+='<div class="variant-list">';
+            if(curVariant) h+='<button class="prog-ex-btn" data-act="applyVariant" data-id="'+esc(ex.id)+'" data-variant="" data-base="'+esc(exBase)+'">— без варианта</button>';
+            for(const v of variants){
+                if(v===curVariant) continue;
+                h+='<button class="prog-ex-btn" data-act="applyVariant" data-id="'+esc(ex.id)+'" data-variant="'+esc(v)+'" data-base="'+esc(exBase)+'">'+esc(v)+'</button>';
+            }
+            h+='<div style="display:flex;gap:6px;margin-top:6px">'
+                +'<input id="nv-'+ex.id+'" placeholder="Новый вариант…" style="flex:1">'
+                +'<button class="btn-gray" style="flex-shrink:0" data-act="newVariant" data-id="'+esc(ex.id)+'" data-base="'+esc(exBase)+'">＋</button>'
+                +'</div></div>';
+        }
         if(exNoteOpen) h+='<textarea class="ex-note-area" data-chg="exNote" data-id="'+ex.id+'" placeholder="Заметка к упражнению…">'+esc(ex.note||'')+'</textarea>';
         h+='</div>';
         return h;
@@ -1565,6 +1583,32 @@
             case "histVariant": ui.histEx=ds.name; render(); break;
             case "noteToggle": ui.dayNoteOpen=!ui.dayNoteOpen; render(); break;
             case "exNoteToggle": ui.exNoteOpen[ds.id]=!ui.exNoteOpen[ds.id]; render(); break;
+            case "variantToggle": ui.variantOpen[ds.id]=!ui.variantOpen[ds.id]; render(); break;
+            case "applyVariant":{
+                const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex) return;
+                const base=ds.base||ex.name.split(' · ')[0];
+                ex.name=ds.variant?base+' · '+ds.variant:base;
+                ui.variantOpen[ds.id]=false;
+                setDay(day); break;
+            }
+            case "newVariant":{
+                const inp=document.getElementById("nv-"+ds.id);
+                const v=(inp&&inp.value.trim())||''; if(!v) return;
+                const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex) return;
+                const base=ds.base||ex.name.split(' · ')[0];
+                ex.name=base+' · '+v;
+                const baseLow=base.toLowerCase();
+                for(const t of data.templates){
+                    let found=false;
+                    for(const b of t.blocks){
+                        const it=b.items.find(function(i){return fullEx(i).toLowerCase()===baseLow;});
+                        if(it){ if(!it.vars) it.vars=[]; if(it.vars.indexOf(v)<0){ it.vars.push(v); if(!it.alt) it.alt=1; } persistTpl(t); found=true; break; }
+                    }
+                    if(found) break;
+                }
+                ui.variantOpen[ds.id]=false;
+                setDay(day); break;
+            }
             case "timerToggle":
                 if(timerEnd>Date.now()) stopTimer();
                 else startTimer();
