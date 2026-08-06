@@ -231,6 +231,8 @@
         .import-day{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; margin-top:10px}
         .import-day-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px}
         .import-day-head svg.icon{width:14px; height:14px; vertical-align:-2px}
+        .import-ex-row{margin-top:10px; padding-top:10px; border-top:1px solid var(--border)}
+        .import-ex-row:first-of-type{margin-top:8px; padding-top:0; border-top:none}
         .import-day-head input[type=date]{font-size:13px; padding:5px 8px; width:auto; border-radius:8px}
         .prog-ex-btn{width:100%; text-align:left; padding:10px 12px; border-radius:10px; font-size:13px; margin-top:4px; background:var(--card2); color:var(--text)}
         .prog-ex-btn:active{opacity:.7}
@@ -509,7 +511,7 @@
             line=line.trim(); if(!line) continue;
             const m=line.match(PLAN_RE);
             if(m){
-                let name=line.slice(0,m.index).replace(/^\s*\d+[.)]\s*/,"").replace(/[\s,;:—–-]+$/,"").trim();
+                let name=line.slice(0,m.index).replace(/^\s*\d+[.)]\s*/,"").replace(/[\s,;:—–-]+$/,"").replace(/\(\s*$/,"").trim();
                 if(!name) continue; // строка из одних цифр (результаты) — пропускаем
                 const plan=m[1]+"х"+m[2]+(m[3]?"-"+m[3]:"");
                 if(!cur){ cur={name:"",exercises:[]}; out.push(cur); }
@@ -839,7 +841,7 @@
                 continue;
             }
             if(!cur){ cur={date:null,title:'',exercises:[],conflicts:'skip'}; out.push(cur); }
-            let name=line.slice(0,matches[0].idx).replace(/^\s*\d+[.)]\s*/,'').replace(/[\s,;:—–-]+$/,'').trim();
+            let name=line.slice(0,matches[0].idx).replace(/^\s*\d+[.)]\s*/,'').replace(/[\s,;:—–-]+$/,'').replace(/\(\s*$/,'').trim();
             if(!name&&prevEx){ for(const mt of matches) if(mt.top===null) prevEx.sets.push({w:mt.n,r:mt.reps}); continue; }
             if(!name) continue;
             const first=matches[0];
@@ -874,6 +876,20 @@
         }
         return rawName;
     }
+    // "40х10, 40х10, 42.5х8" → {sets:[{w,r}], valid} — используется в редактируемом предпросмотре импорта
+    function parseSetsStr(str){
+        const s=String(str||"").trim();
+        if(!s) return {sets:[], valid:true};
+        const parts=s.split(",").map(function(p){return p.trim();}).filter(Boolean);
+        const sets=[];
+        for(const p of parts){
+            const m=p.match(/^(\d+(?:[.,]\d+)?)\s*[хx×*]\s*(\d+)$/i);
+            if(!m) return {sets:[], valid:false};
+            sets.push({w:parseFloat(m[1].replace(",",".")), r:parseInt(m[2],10)});
+        }
+        return {sets:sets, valid:true};
+    }
+    function setsToStr(sets){ return (sets||[]).map(function(s){return fmtW(s.w)+"х"+s.r;}).join(", "); }
     function importTextPage(){
         let h='<button class="hist-back" data-act="importCancel">'+ICON_CHEVRON_LEFT+' Назад</button>';
         h+='<div class="sec-label" style="margin-top:4px">Импорт из заметок</div>';
@@ -894,7 +910,7 @@
             h+='<div class="import-day">';
             h+='<div class="import-day-head">';
             h+='<input type="date" value="'+esc(w.date||'')+'" data-chg="importDate" data-wi="'+wi+'"'+(w._dateError?' style="border-color:var(--red)"':'')+'>';
-            h+='<span style="font-weight:600;font-size:14px">'+esc(w.title||'')+'</span>';
+            h+='<input value="'+esc(w.title||'')+'" placeholder="Название тренировки" data-chg="importTitle" data-wi="'+wi+'" style="flex:1;min-width:110px;font-weight:600;font-size:14px">';
             if(hasConflict){
                 h+='<span style="font-size:12px;color:var(--red)">'+ICON_WARNING+' есть данные</span>';
                 h+='<select data-chg="importConflict" data-wi="'+wi+'" style="font-size:13px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px 8px">'
@@ -902,13 +918,21 @@
                     +'<option value="replace"'+(w.conflicts==='replace'?' selected':'')+'>Заменить</option>'
                     +'</select>';
             }
+            h+='<button class="del-ex" data-act="importDelDay" data-wi="'+wi+'" title="Удалить день"><i class="box">'+ICON_TRASH+'</i></button>';
             h+='</div>';
             if(w.autoDate) h+='<div style="font-size:11px;color:var(--mut);margin-top:2px">дата не найдена в тексте, подставлена сегодняшняя</div>';
-            h+='<div style="font-size:13px;color:var(--mut)">';
-            for(const e of w.exercises){
-                h+='<div>• '+esc(e.name)+(e.sets.length?' — '+e.sets.map(function(s){return fmtW(s.w)+'×'+s.r;}).join(', '):'')+'</div>';
-            }
-            h+='</div></div>';
+            w.exercises.forEach(function(e,ei){
+                const setsStr=e.setsStr!=null?e.setsStr:setsToStr(e.sets);
+                const nameErr=!e.name||!e.name.trim();
+                h+='<div class="import-ex-row">'
+                    +'<input value="'+esc(e.name)+'" placeholder="Название упражнения" data-chg="importExName" data-wi="'+wi+'" data-ei="'+ei+'"'+(nameErr?' style="border-color:var(--red)"':'')+'>'
+                    +'<div style="display:flex;gap:6px;margin-top:6px">'
+                    +'<input class="plan" value="'+esc(e.plan||'')+'" placeholder="3х8-12" data-chg="importExPlan" data-wi="'+wi+'" data-ei="'+ei+'" style="width:88px;flex-shrink:0">'
+                    +'<input value="'+esc(setsStr)+'" placeholder="40х10, 40х10" data-chg="importExSets" data-wi="'+wi+'" data-ei="'+ei+'" style="flex:1'+(e._setsError?';border-color:var(--red)':'')+'">'
+                    +'<button class="del-ex" data-act="importDelEx" data-wi="'+wi+'" data-ei="'+ei+'" title="Удалить упражнение"><i class="box">'+ICON_TRASH+'</i></button>'
+                    +'</div></div>';
+            });
+            h+='</div>';
         });
         h+='<div style="display:flex;gap:10px;margin-top:14px">';
         h+='<button class="btn-main" style="flex:1;justify-content:center;font-size:15px" data-act="importConfirm">Импортировать</button>';
@@ -1278,10 +1302,23 @@
 
         if(ui.tplParsed){
             h+='<div class="sec-label">Распознано — проверь названия</div>';
-            ui.tplParsed.forEach(function(t,i){
-                h+='<div class="card"><input id="pn-'+i+'" value="'+esc(t.name)+'" placeholder="Название шаблона">'
-                    +'<div class="note">'+t.exercises.map(esc).join("<br>")+'</div></div>';
+            ui.tplParsed.forEach(function(t,ti){
+                h+='<div class="card"><div style="display:flex;gap:8px;align-items:center">'
+                    +'<input value="'+esc(t.name)+'" placeholder="Название шаблона" data-chg="tplParsedName" data-ti="'+ti+'" style="flex:1">'
+                    +(ui.tplParsed.length>1?'<button class="del-ex" data-act="tplParsedDelTpl" data-ti="'+ti+'" title="Удалить шаблон"><i class="box">'+ICON_TRASH+'</i></button>':'')
+                    +'</div>';
+                t.exercises.forEach(function(it,ei){
+                    const nameErr=!it.name||!it.name.trim();
+                    h+='<div class="import-ex-row"><div style="display:flex;gap:6px">'
+                        +'<input value="'+esc(it.name)+'" placeholder="Название упражнения" data-chg="tplParsedExName" data-ti="'+ti+'" data-ei="'+ei+'" style="flex:2'+(nameErr?';border-color:var(--red)':'')+'">'
+                        +'<input value="'+esc(it.plan)+'" placeholder="3х8-12" data-chg="tplParsedExPlan" data-ti="'+ti+'" data-ei="'+ei+'" style="width:88px;flex-shrink:0">'
+                        +'<button class="del-ex" data-act="tplParsedDelEx" data-ti="'+ti+'" data-ei="'+ei+'" title="Удалить упражнение"><i class="box">'+ICON_TRASH+'</i></button>'
+                        +'</div></div>';
+                });
+                h+='</div>';
             });
+            const parsedExTotal=ui.tplParsed.reduce(function(a,t){return a+t.exercises.length;},0);
+            h+='<div class="note">Шаблонов: '+ui.tplParsed.length+', упражнений: '+parsedExTotal+'</div>';
             h+='<button class="wide-btn primary" data-act="tplTextSave">Сохранить ('+ui.tplParsed.length+')</button>'
                 +'<button class="wide-btn" data-act="tplTextCancel">Отмена</button>';
             return h;
@@ -1569,6 +1606,50 @@
             if(ui.importParsed&&ui.importParsed[wi2]) ui.importParsed[wi2].conflicts=e.target.value;
             return;
         }
+        if(chg==="importTitle"){
+            const wi2=+e.target.dataset.wi;
+            if(ui.importParsed&&ui.importParsed[wi2]) ui.importParsed[wi2].title=e.target.value.trim();
+            return;
+        }
+        if(chg==="importExName"){
+            const w=ui.importParsed&&ui.importParsed[+e.target.dataset.wi]; if(!w) return;
+            const ex=w.exercises[+e.target.dataset.ei]; if(!ex) return;
+            ex.name=e.target.value.trim();
+            render();
+            return;
+        }
+        if(chg==="importExPlan"){
+            const w=ui.importParsed&&ui.importParsed[+e.target.dataset.wi]; if(!w) return;
+            const ex=w.exercises[+e.target.dataset.ei]; if(!ex) return;
+            ex.plan=e.target.value.trim();
+            return;
+        }
+        if(chg==="importExSets"){
+            const w=ui.importParsed&&ui.importParsed[+e.target.dataset.wi]; if(!w) return;
+            const ex=w.exercises[+e.target.dataset.ei]; if(!ex) return;
+            const r=parseSetsStr(e.target.value);
+            ex.setsStr=e.target.value;
+            if(r.valid){ ex.sets=r.sets; ex._setsError=false; } else { ex._setsError=true; }
+            render();
+            return;
+        }
+        if(chg==="tplParsedName"){
+            if(ui.tplParsed&&ui.tplParsed[+e.target.dataset.ti]) ui.tplParsed[+e.target.dataset.ti].name=e.target.value.trim();
+            return;
+        }
+        if(chg==="tplParsedExName"){
+            const t=ui.tplParsed&&ui.tplParsed[+e.target.dataset.ti]; if(!t) return;
+            const it=t.exercises[+e.target.dataset.ei]; if(!it) return;
+            it.name=e.target.value.trim();
+            render();
+            return;
+        }
+        if(chg==="tplParsedExPlan"){
+            const t=ui.tplParsed&&ui.tplParsed[+e.target.dataset.ti]; if(!t) return;
+            const it=t.exercises[+e.target.dataset.ei]; if(!it) return;
+            it.plan=e.target.value.trim();
+            return;
+        }
     });
     app.addEventListener("keydown",function(e){
         if(e.key!=="Enter") return;
@@ -1707,20 +1788,36 @@
             case "tplTextParse":{
                 const parsed=parseTemplatesText(document.getElementById("tplText").value);
                 if(!parsed.length){ toast("Не нашёл упражнений — нужен формат «Жим 3х8-12»"); return; }
-                ui.tplParsed=parsed; render();
+                ui.tplParsed=parsed.map(function(t){
+                    return { name:t.name, exercises:t.exercises.map(function(s){ const p=splitPlan(s); return {name:p.name, plan:p.plan}; }) };
+                });
+                render();
+                break;
+            }
+            case "tplParsedDelTpl":
+                if(ui.tplParsed){ ui.tplParsed.splice(+ds.ti,1); render(); }
+                break;
+            case "tplParsedDelEx":{
+                const t=ui.tplParsed&&ui.tplParsed[+ds.ti];
+                if(t){ t.exercises.splice(+ds.ei,1); render(); }
                 break;
             }
             case "tplTextSave":{
+                let hasEmptyName=false;
+                for(const t of ui.tplParsed) for(const it of t.exercises) if(!it.name||!it.name.trim()) hasEmptyName=true;
+                if(hasEmptyName){ toast("Укажите название для всех упражнений"); render(); return; }
+                const toSave=ui.tplParsed.filter(function(t){return t.exercises.length;});
+                if(!toSave.length){ toast("Добавьте хотя бы одно упражнение"); return; }
                 let nEx=0;
-                ui.tplParsed.forEach(function(p,i){
-                    const inp=document.getElementById("pn-"+i);
-                    const name=(inp&&inp.value.trim())||p.name;
+                toSave.forEach(function(p,i){
+                    const name=(p.name||"").trim()||("Шаблон "+(i+1));
                     const old=data.templates.find(function(t){return t.name===name;});
                     if(old){ data.templates=data.templates.filter(function(t){return t.id!==old.id;}); unpersistTpl(old.id); }
-                    const t=normalizeTpl({id:uid(),name:name,title:name,exercises:p.exercises});
-                    data.templates.push(t); persistTpl(t); nEx+=p.exercises.length;
+                    const exercises=p.exercises.map(function(it){return it.plan?it.name+" ("+it.plan+")":it.name;});
+                    const t=normalizeTpl({id:uid(),name:name,title:name,exercises:exercises});
+                    data.templates.push(t); persistTpl(t); nEx+=exercises.length;
                 });
-                const n=ui.tplParsed.length;
+                const n=toSave.length;
                 ui.tplParsed=null; ui.tplFromText=false; render();
                 hap("ok"); toast("Шаблонов: "+n+", упражнений: "+nEx);
                 break;
@@ -1770,9 +1867,21 @@
                 const todayKey=toKey(new Date());
                 parsed.forEach(function(w){
                     if(!w.date){ w.date=todayKey; w.autoDate=true; }
-                    w.exercises.forEach(function(e){ e.name=canonicalExName(e.name); e.id=uid(); });
+                    w.exercises.forEach(function(e){
+                        e.name=canonicalExName(e.name); e.id=uid();
+                        const p=splitPlan(e.name); e.name=p.name; e.plan=p.plan;
+                        e.setsStr=setsToStr(e.sets);
+                    });
                 });
                 ui.importParsed=parsed; ui.importText=false; render();
+                break;
+            }
+            case "importDelDay":
+                if(ui.importParsed){ ui.importParsed.splice(+ds.wi,1); render(); }
+                break;
+            case "importDelEx":{
+                const w=ui.importParsed&&ui.importParsed[+ds.wi];
+                if(w){ w.exercises.splice(+ds.ei,1); render(); }
                 break;
             }
             case "importConfirm":{
@@ -1789,15 +1898,25 @@
                     if(seenDates.has(w.date)){ toast("Даты тренировок не должны повторяться"); return; }
                     seenDates.add(w.date);
                 }
+                let hasNameErr=false, hasSetsErr=false;
+                for(const w of ui.importParsed) for(const e of w.exercises){
+                    if(!e.name||!e.name.trim()) hasNameErr=true;
+                    if(e._setsError) hasSetsErr=true;
+                }
+                if(hasNameErr){ toast("Укажите название для всех упражнений"); render(); return; }
+                if(hasSetsErr){ toast("Проверьте строку подходов — есть нераспознанные значения"); render(); return; }
                 const toSync=[];
                 let nDays=0, nEx=0, nSets=0;
                 for(const w of ui.importParsed){
                     if(data.log[w.date]&&w.conflicts==="skip") continue;
-                    const entry={title:w.title,exercises:w.exercises,up:Date.now()};
+                    const exercises=w.exercises.map(function(e){
+                        return {id:e.id, name:e.plan?e.name+" ("+e.plan+")":e.name, sets:e.sets};
+                    });
+                    const entry={title:w.title,exercises:exercises,up:Date.now()};
                     const wi2=weekInfo(w.date); if(wi2) entry.weekType=wi2.isRest?"rest":"work";
                     data.log[w.date]=entry;
                     toSync.push(w.date);
-                    nDays++; nEx+=w.exercises.length; for(const e of w.exercises) nSets+=e.sets.length;
+                    nDays++; nEx+=exercises.length; for(const e of exercises) nSets+=e.sets.length;
                 }
                 ui.importParsed=null; ui.importText=false;
                 saveCache(); render();
