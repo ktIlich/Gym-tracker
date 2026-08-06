@@ -355,11 +355,13 @@
     let data=emptyData();
     let curDate=toKey(new Date());
     let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null, editTpl:null, histEx:null, importText:false, importParsed:null, dayNoteOpen:false, exNoteOpen:{}, variantOpen:{}, weekTypeOpen:false,
-        backupRestoreOpen:false, backupParsed:null, backupParsedSrc:null, backupMode:"merge", backupConfirmStep:0 };
+        backupRestoreOpen:false, backupParsed:null, backupParsedSrc:null, backupMode:"merge", backupConfirmStep:0,
+        progMode:"ex", progPeriod:"3m" };
     let calMonth=curDate.slice(0,7);
     let lastDel=null;
     let timerEnd=0, timerInterval=null;
     let progEx=null;
+    let summaryCache={period:null, result:null};
 
     // ============ helpers ============
     function toKey(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
@@ -767,6 +769,61 @@
         document.querySelectorAll('.timer-btn').forEach(function(b){ b.innerHTML=ICON_TIMER; b.classList.remove('active'); });
     }
 
+    // ============ shared axes chart helper (переиспользуется историей упражнения и сводкой) ============
+    function niceStep(range,targetTicks){
+        targetTicks=targetTicks||5;
+        if(!(range>0)) return 1;
+        const rough=range/targetTicks;
+        const mag=Math.pow(10,Math.floor(Math.log10(rough)));
+        const norm=rough/mag;
+        const step=norm<1.5?1:norm<3?2:norm<7?5:10;
+        return step*mag;
+    }
+    // points: [{k:dateKey, v:number}]; opts: {yUnit, yLabel(v), pointColor(d,i), lineColor, padL}
+    function chartSvg(points,opts){
+        opts=opts||{};
+        const n=points.length;
+        if(!n) return '';
+        const pointColor=opts.pointColor||function(){return 'var(--btn)';};
+        const yLabel=opts.yLabel||fmtW;
+        const padL=opts.padL||36;
+        const vs=points.map(function(d){return d.v;});
+        const minV=Math.min.apply(null,vs), maxV=Math.max.apply(null,vs);
+        const range=maxV-minV;
+        const ystep=niceStep(range>0?range:Math.max(1,maxV*0.2),5);
+        const ymin=Math.floor(minV/ystep)*ystep, ymax=Math.ceil(maxV/ystep)*ystep;
+        const yticks=[];
+        for(let y=ymin;y<=ymax+ystep*0.001;y+=ystep) yticks.push(Math.round(y*1000)/1000);
+        const W=340, H=180, padR=10, padT=16, padB=26;
+        const pw=W-padL-padR, ph=H-padT-padB;
+        const px=function(i){ return padL+(n>1?i/(n-1)*pw:pw/2); };
+        const py=function(v){ const r=ymax-ymin||1; return padT+ph-(v-ymin)/r*ph; };
+        const pts=points.map(function(d,i){return px(i)+','+py(d.v);}).join(' ');
+        let svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;overflow:visible" xmlns="http://www.w3.org/2000/svg">';
+        for(const y of yticks){
+            const ypx=Math.round(py(y));
+            svg+='<line x1="'+padL+'" y1="'+ypx+'" x2="'+(W-padR)+'" y2="'+ypx+'" stroke="var(--border)" stroke-width="1"/>';
+            svg+='<text x="'+(padL-4)+'" y="'+(ypx+3)+'" font-size="9" fill="var(--mut)" text-anchor="end">'+yLabel(y)+'</text>';
+        }
+        if(opts.yUnit) svg+='<text x="'+(padL-4)+'" y="'+(padT-3)+'" font-size="9" fill="var(--mut)" text-anchor="end">'+esc(opts.yUnit)+'</text>';
+        const xStep=Math.max(1,Math.ceil(n/6));
+        const xIdxs=[];
+        for(let i=0;i<n;i+=xStep) xIdxs.push(i);
+        if(xIdxs[xIdxs.length-1]!==n-1) xIdxs.push(n-1);
+        for(const i of xIdxs){
+            const anchor=i===0?'start':i===n-1?'end':'middle';
+            svg+='<text x="'+Math.round(px(i))+'" y="'+(H-4)+'" font-size="9" fill="var(--mut)" text-anchor="'+anchor+'">'+esc(fmtShort(points[i].k))+'</text>';
+        }
+        if(n>1) svg+='<polyline points="'+pts+'" fill="none" stroke="'+(opts.lineColor||'var(--btn)')+'" stroke-width="2" stroke-linejoin="round"/>';
+        points.forEach(function(d,i){
+            const col=pointColor(d,i);
+            svg+='<circle cx="'+Math.round(px(i))+'" cy="'+Math.round(py(d.v))+'" r="3" fill="'+col+'"/>';
+            if(n<3) svg+='<text x="'+Math.round(px(i))+'" y="'+(Math.round(py(d.v))-6)+'" font-size="9" fill="'+col+'" text-anchor="middle">'+yLabel(d.v)+'</text>';
+        });
+        svg+='</svg>';
+        return svg;
+    }
+
     // ============ Exercise history ============
     function histContentHtml(name, variantAct){
         variantAct=variantAct||"histVariant";
@@ -803,46 +860,7 @@
         if(!chartData.length){
             h+='<div class="card" style="text-align:center;color:var(--mut);padding:20px">Нет данных</div>';
         } else {
-            const n=chartData.length, ws=chartData.map(function(d){return d.w;});
-            const minW=Math.min.apply(null,ws), maxW=Math.max.apply(null,ws);
-            // Nice Y grid step
-            const wr=maxW-minW;
-            const ystep=wr<=0?5:wr<=10?2.5:wr<=25?5:wr<=100?10:25;
-            const ymin=Math.floor(minW/ystep)*ystep, ymax=Math.ceil(maxW/ystep)*ystep;
-            const yticks=[];
-            for(let y=ymin;y<=ymax+0.001;y+=ystep) yticks.push(Math.round(y*10)/10);
-            // Layout
-            const W=340, H=180, padL=36, padR=10, padT=16, padB=26;
-            const pw=W-padL-padR, ph=H-padT-padB;
-            const px=function(i){ return padL+(n>1?i/(n-1)*pw:pw/2); };
-            const py=function(w){ const range=ymax-ymin||1; return padT+ph-(w-ymin)/range*ph; };
-            const pts=chartData.map(function(d,i){return px(i)+','+py(d.w);}).join(' ');
-            let svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block;overflow:visible" xmlns="http://www.w3.org/2000/svg">';
-            // Y grid lines + labels
-            for(const y of yticks){
-                const ypx=Math.round(py(y));
-                svg+='<line x1="'+padL+'" y1="'+ypx+'" x2="'+(W-padR)+'" y2="'+ypx+'" stroke="var(--border)" stroke-width="1"/>';
-                svg+='<text x="'+(padL-4)+'" y="'+(ypx+3)+'" font-size="9" fill="var(--mut)" text-anchor="end">'+fmtW(y)+'</text>';
-            }
-            svg+='<text x="'+(padL-4)+'" y="'+(padT-3)+'" font-size="9" fill="var(--mut)" text-anchor="end">кг</text>';
-            // X labels (max 6 evenly spaced)
-            const xStep=Math.max(1,Math.ceil(n/6));
-            const xIdxs=[];
-            for(let i=0;i<n;i+=xStep) xIdxs.push(i);
-            if(xIdxs[xIdxs.length-1]!==n-1) xIdxs.push(n-1);
-            for(const i of xIdxs){
-                const anchor=i===0?'start':i===n-1?'end':'middle';
-                svg+='<text x="'+Math.round(px(i))+'" y="'+(H-4)+'" font-size="9" fill="var(--mut)" text-anchor="'+anchor+'">'+fmtShort(chartData[i].k)+'</text>';
-            }
-            svg+='<text x="'+(W-padR)+'" y="'+(H-4)+'" font-size="9" fill="var(--mut)" text-anchor="end" dx="0" dy="0"></text>';
-            // Line
-            if(n>1) svg+='<polyline points="'+pts+'" fill="none" stroke="var(--btn)" stroke-width="2" stroke-linejoin="round"/>';
-            // Points (+ labels for small datasets)
-            chartData.forEach(function(d,i){
-                svg+='<circle cx="'+Math.round(px(i))+'" cy="'+Math.round(py(d.w))+'" r="3" fill="var(--btn)"/>';
-                if(n<3) svg+='<text x="'+Math.round(px(i))+'" y="'+(Math.round(py(d.w))-6)+'" font-size="9" fill="var(--btn)" text-anchor="middle">'+fmtW(d.w)+'</text>';
-            });
-            svg+='</svg>';
+            const svg=chartSvg(chartData.map(function(d){return {k:d.k,v:d.w};}), {yUnit:'кг'});
             const recEntry=chartData.reduce(function(a,b){return b.w>a.w?b:a;});
             h+='<div class="card">'+svg
                 +'<div class="note" style="margin-top:4px">Рекорд: <b>'+fmtW(recEntry.w)+' кг</b> ('+fmtShort(recEntry.k)+') · Тренировок: '+allDates.length+'</div>'
@@ -869,18 +887,152 @@
         h+=histContentHtml(ui.histEx);
         return h;
     }
+    // ============ Аналитика («Сводка») ============
+    function dayTonnage(day){ let t=0; for(const e of (day.exercises||[])) for(const s of (e.sets||[])) t+=s.w*s.r; return t; }
+    function daySetsCount(day){ let n=0; for(const e of (day.exercises||[])) n+=(e.sets||[]).length; return n; }
+    function dayExCount(day){ return (day.exercises||[]).filter(function(e){return (e.sets||[]).length;}).length; }
+    function fmtTonnage(v){ return Math.round(v).toLocaleString("ru-RU"); }
+    function fmtTonnageShort(v){ return v>=1000?(Math.round(v/100)/10)+"k":String(Math.round(v)); }
+    function computeCycles(workouts){
+        if(!data.cfg.cycle.anchorDate) return [];
+        const groups={};
+        for(const w of workouts){
+            const wi=weekInfo(w.k); if(!wi) continue;
+            const start=addDays(w.k,-wi.day);
+            if(!groups[start]) groups[start]={start:start,workouts:[]};
+            groups[start].workouts.push(w);
+        }
+        const cycleLen=(data.cfg.cycle.workWeeks+data.cfg.cycle.restWeeks)*7;
+        const list=Object.keys(groups).sort().map(function(start){
+            const g=groups[start];
+            const tonnage=g.workouts.reduce(function(a,w){return a+w.tonnage;},0);
+            return { start:start, end:addDays(start,cycleLen-1), count:g.workouts.length, tonnage:tonnage };
+        });
+        list.forEach(function(c,i){
+            c.idx=i+1;
+            c.changePct=(i>0&&list[i-1].tonnage>0)?Math.round((c.tonnage-list[i-1].tonnage)/list[i-1].tonnage*100):null;
+        });
+        return list;
+    }
+    function computeRecords(){
+        const best={};
+        for(const k of Object.keys(data.log)) for(const e of (data.log[k].exercises||[])){
+            if(!e.sets||!e.sets.length) continue;
+            const top=e.sets.reduce(function(a,s){return s.w>a.w?s:a;});
+            if(!best[e.name]||top.w>best[e.name].w) best[e.name]={name:e.name,w:top.w,date:k};
+        }
+        return Object.keys(best).map(function(k){return best[k];}).sort(function(a,b){return b.w-a.w;}).slice(0,10);
+    }
+    function computeSummary(period){
+        const cutoff=period==="1m"?Date.now()-30*86400000:period==="3m"?Date.now()-90*86400000:null;
+        const workouts=Object.keys(data.log).filter(function(k){
+            const day=data.log[k];
+            if(!daySetsCount(day)) return false;
+            if(cutoff!==null&&parseKey(k).getTime()<cutoff) return false;
+            return true;
+        }).sort().map(function(k){
+            const day=data.log[k];
+            return { k:k, title:(day.title||"").trim(), tonnage:dayTonnage(day), sets:daySetsCount(day), ex:dayExCount(day) };
+        });
+        const totalWorkouts=workouts.length;
+        const totalTonnage=workouts.reduce(function(a,w){return a+w.tonnage;},0);
+        const avgTonnage=totalWorkouts?totalTonnage/totalWorkouts:0;
+        let heaviest=null;
+        for(const w of workouts) if(!heaviest||w.tonnage>heaviest.tonnage) heaviest=w;
+        const byTitleMap={};
+        for(const w of workouts){
+            const key=w.title||"Без названия";
+            if(!byTitleMap[key]) byTitleMap[key]={title:key,count:0,tonnage:0};
+            byTitleMap[key].count++; byTitleMap[key].tonnage+=w.tonnage;
+        }
+        const byTitle=Object.keys(byTitleMap).map(function(k){
+            const b=byTitleMap[k]; return {title:b.title,count:b.count,tonnage:b.tonnage,avg:b.tonnage/b.count};
+        }).sort(function(a,b){return b.tonnage-a.tonnage;});
+        return { workouts:workouts, totalWorkouts:totalWorkouts, totalTonnage:totalTonnage, avgTonnage:avgTonnage,
+            heaviest:heaviest, byTitle:byTitle, cycles:computeCycles(workouts), records:computeRecords() };
+    }
+    function getSummaryData(period){
+        if(summaryCache.period!==period){ summaryCache.period=period; summaryCache.result=computeSummary(period); }
+        return summaryCache.result;
+    }
+    function statBlock(label,value){ return '<div><div class="lbl">'+esc(label)+'</div><div style="font-size:19px;font-weight:700;margin-top:2px">'+value+'</div></div>'; }
+    function summaryPageHtml(){
+        const period=ui.progPeriod||"3m";
+        const s=getSummaryData(period);
+        function pChip(val,label){ return '<button class="chip'+(period===val?' on':'')+'" data-act="progPeriod" data-period="'+val+'">'+label+'</button>'; }
+        let h='<div class="chips" style="margin-top:10px">'+pChip("1m","Месяц")+pChip("3m","3 месяца")+pChip("all","Всё время")+'</div>';
+        if(!s.workouts.length){
+            h+='<div class="card" style="text-align:center;color:var(--mut);padding:24px;margin-top:10px">Нет данных за выбранный период</div>';
+        } else {
+            h+='<div class="card" style="margin-top:10px">'
+                +'<div class="row2">'+statBlock("Тренировок",s.totalWorkouts)+statBlock("Тоннаж",fmtTonnage(s.totalTonnage)+" кг")+'</div>'
+                +'<div class="row2" style="margin-top:12px">'+statBlock("Средний тоннаж",fmtTonnage(s.avgTonnage)+" кг")
+                +statBlock("Самая тяжёлая",s.heaviest?(esc(fmtShort(s.heaviest.k))+" · "+fmtTonnage(s.heaviest.tonnage)+" кг"):"—")+'</div>'
+                +'</div>';
+
+            const chartPoints=s.workouts.map(function(w){return {k:w.k,v:w.tonnage};});
+            const svg=chartSvg(chartPoints,{ yUnit:"кг", yLabel:fmtTonnageShort, padL:32,
+                pointColor:function(d){ return dayWeekType(d.k)==="rest"?"var(--green)":"var(--btn)"; } });
+            h+='<div class="sec-label">Тоннаж по тренировкам</div><div class="card">'+svg
+                +'<div class="cal-legend" style="margin-top:6px"><span><i style="background:var(--btn)"></i>рабочая неделя</span>'
+                +'<span><i style="background:var(--green)"></i>неделя отдыха</span></div></div>';
+
+            h+='<div class="sec-label">По типам тренировок</div><div class="card">';
+            const maxT=Math.max.apply(null,s.byTitle.map(function(b){return b.tonnage;}));
+            s.byTitle.forEach(function(b,i){
+                const pct=maxT?Math.round(b.tonnage/maxT*100):0;
+                h+='<div'+(i?' style="margin-top:12px"':'')+'>'
+                    +'<div style="display:flex;justify-content:space-between;font-size:13px"><span>'+esc(b.title)+' · '+b.count+'×</span>'
+                    +'<span class="num" style="color:var(--mut)">'+fmtTonnage(b.tonnage)+' кг</span></div>'
+                    +'<div style="background:var(--card2);border-radius:6px;height:8px;margin-top:4px;overflow:hidden">'
+                    +'<div style="width:'+pct+'%;height:100%;background:var(--btn);border-radius:6px"></div></div>'
+                    +'<div class="ex-last">в среднем '+fmtTonnage(b.avg)+' кг</div></div>';
+            });
+            h+='</div>';
+
+            if(s.cycles.length){
+                h+='<div class="sec-label">Сравнение циклов</div><div class="card"><table class="hist-table">';
+                for(const c of s.cycles){
+                    const chg=c.changePct==null?"—":(c.changePct>=0?"+":"")+c.changePct+"%";
+                    const chgColor=c.changePct==null?"var(--mut)":(c.changePct>=0?"var(--green)":"var(--red)");
+                    h+='<tr><td style="white-space:nowrap">№'+c.idx+' · '+esc(fmtShort(c.start))+'–'+esc(fmtShort(c.end))+'</td>'
+                        +'<td class="num" style="white-space:nowrap;color:var(--mut)">'+c.count+' трен.</td>'
+                        +'<td class="num" style="white-space:nowrap">'+fmtTonnage(c.tonnage)+' кг</td>'
+                        +'<td class="num" style="white-space:nowrap;color:'+chgColor+'">'+chg+'</td></tr>';
+                }
+                h+='</table></div>';
+            }
+        }
+        if(s.records.length){
+            h+='<div class="sec-label">Рекорды</div><div class="card">';
+            s.records.forEach(function(r,i){
+                h+='<button class="prog-ex-btn" data-act="openHist" data-name="'+esc(r.name)+'" style="display:flex;justify-content:space-between;gap:8px'+(i?';margin-top:4px':'')+'">'
+                    +'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(i+1)+'. '+esc(r.name)+'</span>'
+                    +'<span class="num" style="color:var(--mut);flex-shrink:0">'+fmtW(r.w)+' кг · '+esc(fmtShort(r.date))+'</span></button>';
+            });
+            h+='</div>';
+        }
+        return h;
+    }
+
     function progressPage(){
+        let h='<div class="sec-label" style="margin-top:12px">Прогресс</div>';
+        h+='<div class="chips" style="margin-top:0">'
+            +'<button class="chip'+(ui.progMode!=="summary"?' on':'')+'" data-act="progMode" data-mode="ex">Упражнение</button>'
+            +'<button class="chip'+(ui.progMode==="summary"?' on':'')+'" data-act="progMode" data-mode="summary">Сводка</button>'
+            +'</div>';
+        if(ui.progMode==="summary") return h+summaryPageHtml();
+
         const freq={};
         for(const k of Object.keys(data.log)) for(const e of (data.log[k].exercises||[])){
             if(e.sets.length) freq[e.name]=(freq[e.name]||0)+1;
         }
         const exList=Object.keys(freq).sort(function(a,b){return freq[b]-freq[a];});
-        let h='<div class="sec-label" style="margin-top:12px">Прогресс</div>';
         if(!exList.length){
             h+='<div class="card" style="text-align:center;color:var(--mut);padding:24px">Нет данных. Запишите первую тренировку.</div>';
             return h;
         }
-        h+='<div class="card"><input id="progSearch" placeholder="Поиск упражнения…" autocomplete="off">'
+        h+='<div class="card" style="margin-top:10px"><input id="progSearch" placeholder="Поиск упражнения…" autocomplete="off">'
             +'<div id="progList" style="margin-top:8px">';
         for(const name of exList){
             const isOpen=progEx===name;
@@ -1656,10 +1808,10 @@
         if(!data.cfg.cycle.anchorDate){ renderSetup(); return; }
         document.getElementById("tabbar").style.display="";
         const tb=document.getElementById("tabbar");
-        const tabForBar=ui.histEx?"day":ui.tab;
-        for(const b of tb.querySelectorAll("button")) b.classList.toggle("on", b.dataset.tab===tabForBar);
+        for(const b of tb.querySelectorAll("button")) b.classList.toggle("on", b.dataset.tab===ui.tab);
         let h=headerHtml();
-        if(ui.tab==="day"){ h+=ui.histEx?histPage():dayPage(); }
+        if(ui.histEx) h+=histPage();
+        else if(ui.tab==="day") h+=dayPage();
         else if(ui.tab==="cal") h+=calPage();
         else if(ui.tab==="prg") h+=progressPage();
         else if(ui.tab==="tpl") h+=tplPage();
@@ -1683,6 +1835,7 @@
         ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null; ui.wipeStep=0; ui.tplFromText=false; ui.tplParsed=null; ui.editTpl=null;
         ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.dayNoteOpen=false; ui.weekTypeOpen=false;
         ui.backupRestoreOpen=false; ui.backupParsed=null; ui.backupParsedSrc=null; ui.backupMode="merge"; ui.backupConfirmStep=0;
+        summaryCache.period=null;
         if(ui.tab==="cal") calMonth=curDate.slice(0,7);
         hap("light"); render();
     });
@@ -2318,6 +2471,8 @@
             }
             case "selectProg": progEx=(progEx===ds.name?null:ds.name); render(); break;
             case "progVariant": progEx=ds.name; render(); break;
+            case "progMode": ui.progMode=ds.mode; render(); break;
+            case "progPeriod": ui.progPeriod=ds.period; render(); break;
             case "setAccent": data.cfg.accent=ds.accent; persistCfg(); applyTheme(); render(); break;
             case "weekTypeToggle": ui.weekTypeOpen=!ui.weekTypeOpen; render(); break;
             case "setWeekType":{
