@@ -42,6 +42,7 @@
         textarea:focus{border-color:var(--btn)}
         textarea::placeholder{color:var(--dim); opacity:.7}
         .num{font-variant-numeric:tabular-nums}
+        svg.icon{width:18px; height:18px; flex-shrink:0; vertical-align:-4px}
 
         header{position:sticky; top:0; z-index:10; background:var(--bg);
             border-bottom:1px solid var(--border); margin:0 -14px; padding:10px 14px 6px}
@@ -54,9 +55,12 @@
 
         .datenav{display:flex; align-items:center; justify-content:space-between; margin-top:12px}
         .datenav .nav{padding:6px 10px; color:var(--mut); font-size:24px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
+        .datenav .nav svg.icon{width:22px; height:22px; vertical-align:-6px}
         .dmain{text-align:center}
         .dtitle{font-weight:600; text-transform:capitalize; font-size:16px}
-        .badge{font-size:12px; font-weight:600; margin-top:7px; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:2px; min-height:0}
+        .badge{font-size:12px; font-weight:600; margin-top:12px; display:inline-block; padding:4px 10px; border-radius:99px; background:var(--card2);
+            text-decoration:underline; text-decoration-style:dotted; text-underline-offset:2px; min-height:0}
+        .badge svg.icon{width:12px; height:12px; vertical-align:-1px}
         .b-work{color:var(--link)} .b-rest{color:var(--green)}
         .today-link{font-size:13px; color:var(--dim); text-decoration:underline; margin-top:7px}
 
@@ -72,32 +76,33 @@
         .ex-head{display:flex; justify-content:space-between; gap:8px; align-items:flex-start}
         .ex-name{font-weight:600; line-height:1.25; font-size:16px; text-align:left; color:inherit}
         .ex-last{font-size:12px; color:var(--dim); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-        .del-ex{width:var(--touch); height:var(--touch); flex-shrink:0; margin:-2px 0 0 0;
-            display:flex; align-items:center; justify-content:center;
-            color:var(--mut); background:var(--card2); border:1px solid var(--border); border-radius:12px}
-        .del-ex:active{color:var(--red); border-color:rgba(248,113,113,.5); background:rgba(248,113,113,.12)}
-        .del-ex svg{width:19px; height:19px}
+        .ex-last svg.icon{width:13px; height:13px; vertical-align:-2px}
+        .del-ex{width:44px; height:44px; flex-shrink:0; margin:-2px 0 0 0;
+            display:flex; align-items:center; justify-content:center}
+        .del-ex .box{width:40px; height:40px; display:flex; align-items:center; justify-content:center;
+            color:var(--red); background:rgba(248,113,113,.12); border-radius:12px}
+        .del-ex:active .box{background:rgba(248,113,113,.28)}
 
-        .sets{margin-top:6px}
-        .set{display:flex; align-items:center; gap:10px; border-top:1px solid var(--border); min-height:var(--touch)}
-        .set:first-child{border-top:none}
+        .sets{margin-top:6px; display:flex; flex-direction:column; gap:6px}
+        .set{display:flex; align-items:center; gap:10px; min-height:var(--touch)}
         .set .idx{width:18px; font-size:12px; color:var(--dim)}
         .set .val{flex:1; font-weight:600; font-size:16px}
         .set .unit{color:var(--dim); font-weight:400; font-size:14px}
         .set .x{color:var(--dim); margin:0 6px; opacity:.6}
-        .del-set{width:40px; height:40px; display:flex; align-items:center; justify-content:center;
-            color:var(--red); background:rgba(248,113,113,.12); border-radius:12px; font-size:15px; flex-shrink:0}
-        .del-set:active{background:rgba(248,113,113,.28)}
+        .del-set{width:44px; height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0}
+        .del-set .box{width:40px; height:40px; display:flex; align-items:center; justify-content:center;
+            color:var(--red); background:rgba(248,113,113,.12); border-radius:12px; font-size:16px}
+        .del-set:active .box{background:rgba(248,113,113,.28)}
 
         .addset{display:flex; gap:6px; margin-top:10px}
         .addset input{width:58px; padding:10px 6px; font-size:14px; background:var(--card2); border-color:transparent; text-align:center}
         .addset .btn-main{flex:1; justify-content:center}
-        .addset-extras{display:flex; gap:6px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border)}
+        .addset-extras{display:flex; gap:6px; margin-top:10px; padding-top:10px; border-top:2px solid color-mix(in srgb, var(--btn) 45%, transparent)}
         .addset-extras>*{flex:1; justify-content:center}
         .btn-main{background:var(--btn); color:var(--btn-text); border-radius:12px; padding:0 10px; font-weight:700;
             display:flex; align-items:center; min-height:var(--touch); font-size:15px}
         .btn-main:active{opacity:.85}
-        .btn-gray{background:var(--card2); color:var(--mut); border-radius:12px; padding:0 10px; display:flex; align-items:center; min-height:var(--touch); font-size:14px}
+        .btn-gray{background:var(--card2); color:var(--mut); border-radius:12px; padding:0 10px; display:flex; align-items:center; gap:6px; min-height:var(--touch); font-size:14px}
         .btn-gray:active{opacity:.7}
 
         .addex{display:flex; gap:8px; margin-top:12px}
@@ -106,6 +111,7 @@
             background:var(--card); border:1px solid var(--border); border-radius:99px; padding:9px 14px; min-height:40px}
         .chip:active{background:var(--card2)}
         .chip.danger{color:var(--red); border-color:rgba(248,113,113,.35)}
+        .chip svg.icon{width:15px; height:15px; vertical-align:-3px}
         .sec-label{font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.08em; margin:20px 0 4px}
 
         .row{margin-top:12px}
@@ -118,6 +124,7 @@
         .wide-btn.primary{background:var(--btn); color:var(--btn-text); font-weight:700}
         .wide-btn.danger{color:var(--red); border:1px solid rgba(248,113,113,.35); background:transparent}
         .note{font-size:12px; color:var(--dim); margin-top:10px; line-height:1.45}
+        .note svg.icon{width:13px; height:13px; vertical-align:-2px}
         .switch-row{display:flex; align-items:center; justify-content:space-between; min-height:var(--touch); margin-top:6px}
         .switch{position:relative; width:50px; height:30px; flex-shrink:0}
         .switch input{position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; z-index:2}
@@ -134,6 +141,7 @@
         .cal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px}
         .cal-title{font-weight:600; text-transform:capitalize}
         .cal-nav{padding:6px 14px; color:var(--mut); font-size:22px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
+        .cal-nav svg.icon{width:20px; height:20px; vertical-align:-5px}
         .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px}
         .cal-dow{font-size:10px; color:var(--dim); text-align:center; padding-bottom:2px}
         .cal-day{aspect-ratio:1; border-radius:10px; border:1px solid transparent;
@@ -170,6 +178,7 @@
             background:var(--card2); border-radius:10px; color:var(--mut); font-size:15px; padding:0 8px}
         .mini-btn:active{opacity:.7}
         .mini-btn.warn{color:var(--red)}
+        .mini-btn svg.icon{width:16px; height:16px; vertical-align:-3px}
         .et-item{border-top:1px solid var(--border); padding-top:10px; margin-top:10px}
         .et-item:first-of-type{border-top:none; padding-top:0; margin-top:6px}
         .et-row{display:flex; gap:6px; margin-top:6px; align-items:center}
@@ -183,6 +192,7 @@
         .tabbar button{flex:1; display:flex; flex-direction:column; align-items:center; gap:1px;
             padding:6px 0; color:var(--dim); font-size:9px; border-radius:12px; min-height:52px}
         .tabbar button .ti{font-size:21px; line-height:1.2}
+        .tabbar button .ti svg.icon{width:22px; height:22px; vertical-align:-6px}
         .tabbar button.on{color:var(--btn)}
 
         .toast{position:fixed; left:50%; bottom:calc(76px + env(safe-area-inset-bottom)); transform:translateX(-50%);
@@ -191,6 +201,7 @@
             pointer-events:none; white-space:nowrap; z-index:50; display:flex; gap:12px; align-items:center;
             box-shadow:0 4px 16px rgba(0,0,0,.25)}
         .toast.show{opacity:1; pointer-events:auto}
+        .toast svg.icon{width:15px; height:15px; vertical-align:-3px}
         .toast button{color:var(--link); font-weight:700; font-size:13px; padding:2px 4px}
         .ver{text-align:center; font-size:10px; color:var(--dim); opacity:.55; margin-top:28px}
         .rec-badge{display:inline-flex; align-items:center; background:var(--accent-bg); color:var(--accent); font-weight:600; border-radius:6px; padding:2px 8px; font-size:13px; font-variant-numeric:tabular-nums; flex-shrink:0}
@@ -206,17 +217,22 @@
         .timer-btn{min-height:var(--touch); color:var(--mut); font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; background:var(--card2); border-radius:12px; padding:0 8px}
         .timer-btn.active{color:var(--accent); background:var(--accent-bg)}
         .note-toggle{font-size:13px; color:var(--link); padding:4px 0; display:block; text-align:left; margin-top:4px}
+        .note-toggle svg.icon{width:15px; height:15px; vertical-align:-3px}
         .day-note-area{font-size:14px; min-height:64px; margin-top:6px}
         .ex-note-area{font-size:13px; min-height:52px; margin-top:6px; border-radius:10px}
         .ex-note-text{font-size:12px; color:var(--dim); margin-top:2px; font-style:italic}
         .chip.on{background:var(--btn); color:var(--btn-text); border-color:var(--btn)}
         .hist-back{color:var(--link); font-size:15px; padding:10px 0; display:inline-block; margin-top:8px}
+        .hist-back svg.icon{width:16px; height:16px; vertical-align:-3px}
         .hist-table{width:100%; border-collapse:collapse; font-size:13px}
         .hist-table td{padding:5px 6px; border-bottom:1px solid var(--border)}
         .hist-table tr:last-child td{border-bottom:none}
         .import-preview{margin-top:8px}
         .import-day{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; margin-top:10px}
         .import-day-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px}
+        .import-day-head svg.icon{width:14px; height:14px; vertical-align:-2px}
+        .import-ex-row{margin-top:10px; padding-top:10px; border-top:1px solid var(--border)}
+        .import-ex-row:first-of-type{margin-top:8px; padding-top:0; border-top:none}
         .import-day-head input[type=date]{font-size:13px; padding:5px 8px; width:auto; border-radius:8px}
         .prog-ex-btn{width:100%; text-align:left; padding:10px 12px; border-radius:10px; font-size:13px; margin-top:4px; background:var(--card2); color:var(--text)}
         .prog-ex-btn:active{opacity:.7}
@@ -234,17 +250,17 @@
 <body>
 <div id="app"></div>
 <nav class="tabbar" id="tabbar">
-    <button data-tab="prg"><span class="ti">📈</span>Прогресс</button>
-    <button data-tab="cal"><span class="ti">📅</span>Календарь</button>
-    <button data-tab="day"><span class="ti">🏋️</span>Сегодня</button>
-    <button data-tab="tpl"><span class="ti">🔖</span>Шаблоны</button>
-    <button data-tab="set"><span class="ti">⚙️</span>Настройки</button>
+    <button data-tab="prg"><span class="ti"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>Прогресс</button>
+    <button data-tab="cal"><span class="ti"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>Календарь</button>
+    <button data-tab="day"><span class="ti"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.5" height="10" rx="1"/><rect x="15.5" y="7" width="2.5" height="10" rx="1"/><line x1="8.5" y1="12" x2="15.5" y2="12"/></svg></span>Сегодня</button>
+    <button data-tab="tpl"><span class="ti"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21 12 16 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/></svg></span>Шаблоны</button>
+    <button data-tab="set"><span class="ti"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Настройки</button>
 </nav>
 <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none">
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none"></button></div>
 <script>
     "use strict";
-    const APP_VERSION="2.7.0"; // фаза 7: фиксы парсера/графика, ручной тип недели
+    const APP_VERSION="2.8.0"; // фаза 8: визуал, унификация иконок, правка предпросмотра импорта
     // ============ Telegram ============
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     let cs = null;
@@ -403,7 +419,7 @@
     function csKeys(){ return new Promise(function(res){ if(!cs) return res(null); try{ cs.getKeys(function(e,k){ res(e?null:(k||[])); }); }catch(err){ res(null); } }); }
 
     let warnedCloud=false;
-    function csSetWarn(k,v){ csSet(k,v).then(function(ok){ if(cs&&!ok&&!warnedCloud){ warnedCloud=true; toast("⚠️ Запись в облако не прошла ("+k+")"); } }); }
+    function csSetWarn(k,v){ csSet(k,v).then(function(ok){ if(cs&&!ok&&!warnedCloud){ warnedCloud=true; toast("Запись в облако не прошла ("+k+")"); } }); }
     function persistDay(k){ saveCache(); if(data.log[k]) csSetWarn("w_"+k, JSON.stringify(data.log[k])); else csDel("w_"+k); }
     function persistCfg(){ data.cfg.up=Date.now(); saveCache(); csSetWarn("cfg", JSON.stringify(data.cfg)); }
     function persistTpl(t){ t.up=Date.now(); saveCache(); csSetWarn("tpl_"+t.id, JSON.stringify(t)); }
@@ -495,7 +511,7 @@
             line=line.trim(); if(!line) continue;
             const m=line.match(PLAN_RE);
             if(m){
-                let name=line.slice(0,m.index).replace(/^\s*\d+[.)]\s*/,"").replace(/[\s,;:—–-]+$/,"").trim();
+                let name=line.slice(0,m.index).replace(/^\s*\d+[.)]\s*/,"").replace(/[\s,;:—–-]+$/,"").replace(/\(\s*$/,"").trim();
                 if(!name) continue; // строка из одних цифр (результаты) — пропускаем
                 const plan=m[1]+"х"+m[2]+(m[3]?"-"+m[3]:"");
                 if(!cur){ cur={name:"",exercises:[]}; out.push(cur); }
@@ -638,8 +654,8 @@
     function updateTimerBtns(){
         const rem=timerEnd-Date.now();
         const active=rem>0;
-        const lbl=active?fmtTimer(rem):'⏱';
-        document.querySelectorAll('.timer-btn').forEach(function(b){ b.textContent=lbl; b.classList.toggle('active',active); });
+        const lbl=active?fmtTimer(rem):ICON_TIMER;
+        document.querySelectorAll('.timer-btn').forEach(function(b){ b.innerHTML=lbl; b.classList.toggle('active',active); });
     }
     function startTimer(){
         if(timerInterval) clearInterval(timerInterval);
@@ -649,14 +665,14 @@
             if(Date.now()>=timerEnd){
                 clearInterval(timerInterval); timerInterval=null; timerEnd=0;
                 hap("ok"); toast("Отдых окончен");
-                document.querySelectorAll('.timer-btn').forEach(function(b){ b.textContent='⏱'; b.classList.remove('active'); });
+                document.querySelectorAll('.timer-btn').forEach(function(b){ b.innerHTML=ICON_TIMER; b.classList.remove('active'); });
             } else { updateTimerBtns(); }
         },500);
     }
     function stopTimer(){
         if(timerInterval){ clearInterval(timerInterval); timerInterval=null; }
         timerEnd=0;
-        document.querySelectorAll('.timer-btn').forEach(function(b){ b.textContent='⏱'; b.classList.remove('active'); });
+        document.querySelectorAll('.timer-btn').forEach(function(b){ b.innerHTML=ICON_TIMER; b.classList.remove('active'); });
     }
 
     // ============ Exercise history ============
@@ -757,7 +773,7 @@
         return h;
     }
     function histPage(){
-        let h='<button class="hist-back" data-act="histBack">‹ Назад</button>';
+        let h='<button class="hist-back" data-act="histBack">'+ICON_CHEVRON_LEFT+' Назад</button>';
         h+=histContentHtml(ui.histEx);
         return h;
     }
@@ -825,7 +841,7 @@
                 continue;
             }
             if(!cur){ cur={date:null,title:'',exercises:[],conflicts:'skip'}; out.push(cur); }
-            let name=line.slice(0,matches[0].idx).replace(/^\s*\d+[.)]\s*/,'').replace(/[\s,;:—–-]+$/,'').trim();
+            let name=line.slice(0,matches[0].idx).replace(/^\s*\d+[.)]\s*/,'').replace(/[\s,;:—–-]+$/,'').replace(/\(\s*$/,'').trim();
             if(!name&&prevEx){ for(const mt of matches) if(mt.top===null) prevEx.sets.push({w:mt.n,r:mt.reps}); continue; }
             if(!name) continue;
             const first=matches[0];
@@ -860,8 +876,22 @@
         }
         return rawName;
     }
+    // "40х10, 40х10, 42.5х8" → {sets:[{w,r}], valid} — используется в редактируемом предпросмотре импорта
+    function parseSetsStr(str){
+        const s=String(str||"").trim();
+        if(!s) return {sets:[], valid:true};
+        const parts=s.split(",").map(function(p){return p.trim();}).filter(Boolean);
+        const sets=[];
+        for(const p of parts){
+            const m=p.match(/^(\d+(?:[.,]\d+)?)\s*[хx×*]\s*(\d+)$/i);
+            if(!m) return {sets:[], valid:false};
+            sets.push({w:parseFloat(m[1].replace(",",".")), r:parseInt(m[2],10)});
+        }
+        return {sets:sets, valid:true};
+    }
+    function setsToStr(sets){ return (sets||[]).map(function(s){return fmtW(s.w)+"х"+s.r;}).join(", "); }
     function importTextPage(){
-        let h='<button class="hist-back" data-act="importCancel">‹ Назад</button>';
+        let h='<button class="hist-back" data-act="importCancel">'+ICON_CHEVRON_LEFT+' Назад</button>';
         h+='<div class="sec-label" style="margin-top:4px">Импорт из заметок</div>';
         h+='<div class="card"><p style="color:var(--mut);font-size:13px;margin:0 0 10px">Вставь тренировки текстом. Формат: дата (05.08) и название на отдельной строке, ниже — упражнения с планом (3х8-12) и результатами (55х10).</p>';
         h+='<textarea id="importTextArea" style="min-height:200px" placeholder="05.08 Жимовая&#10;1. Жим лёжа (3х8-12) 60х10 60х10&#10;2. Разводка 2х12-15&#10;   20х15 20х12"></textarea>';
@@ -872,7 +902,7 @@
         const parsed=ui.importParsed;
         let totalEx=0, totalSets=0;
         for(const w of parsed){ totalEx+=w.exercises.length; for(const e of w.exercises) totalSets+=e.sets.length; }
-        let h='<button class="hist-back" data-act="importCancel">‹ Назад</button>';
+        let h='<button class="hist-back" data-act="importCancel">'+ICON_CHEVRON_LEFT+' Назад</button>';
         h+='<div class="sec-label" style="margin-top:4px">Предпросмотр импорта</div>';
         h+='<div class="note">Дней: '+parsed.length+', упражнений: '+totalEx+', подходов: '+totalSets+'</div>';
         parsed.forEach(function(w,wi){
@@ -880,21 +910,29 @@
             h+='<div class="import-day">';
             h+='<div class="import-day-head">';
             h+='<input type="date" value="'+esc(w.date||'')+'" data-chg="importDate" data-wi="'+wi+'"'+(w._dateError?' style="border-color:var(--red)"':'')+'>';
-            h+='<span style="font-weight:600;font-size:14px">'+esc(w.title||'')+'</span>';
+            h+='<input value="'+esc(w.title||'')+'" placeholder="Название тренировки" data-chg="importTitle" data-wi="'+wi+'" style="flex:1;min-width:110px;font-weight:600;font-size:14px">';
             if(hasConflict){
-                h+='<span style="font-size:12px;color:var(--red)">⚠ есть данные</span>';
+                h+='<span style="font-size:12px;color:var(--red)">'+ICON_WARNING+' есть данные</span>';
                 h+='<select data-chg="importConflict" data-wi="'+wi+'" style="font-size:13px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px 8px">'
                     +'<option value="skip"'+(w.conflicts==='skip'?' selected':'')+'>Пропустить</option>'
                     +'<option value="replace"'+(w.conflicts==='replace'?' selected':'')+'>Заменить</option>'
                     +'</select>';
             }
+            h+='<button class="del-ex" data-act="importDelDay" data-wi="'+wi+'" title="Удалить день"><i class="box">'+ICON_TRASH+'</i></button>';
             h+='</div>';
             if(w.autoDate) h+='<div style="font-size:11px;color:var(--mut);margin-top:2px">дата не найдена в тексте, подставлена сегодняшняя</div>';
-            h+='<div style="font-size:13px;color:var(--mut)">';
-            for(const e of w.exercises){
-                h+='<div>• '+esc(e.name)+(e.sets.length?' — '+e.sets.map(function(s){return fmtW(s.w)+'×'+s.r;}).join(', '):'')+'</div>';
-            }
-            h+='</div></div>';
+            w.exercises.forEach(function(e,ei){
+                const setsStr=e.setsStr!=null?e.setsStr:setsToStr(e.sets);
+                const nameErr=!e.name||!e.name.trim();
+                h+='<div class="import-ex-row">'
+                    +'<input value="'+esc(e.name)+'" placeholder="Название упражнения" data-chg="importExName" data-wi="'+wi+'" data-ei="'+ei+'"'+(nameErr?' style="border-color:var(--red)"':'')+'>'
+                    +'<div style="display:flex;gap:6px;margin-top:6px">'
+                    +'<input class="plan" value="'+esc(e.plan||'')+'" placeholder="3х8-12" data-chg="importExPlan" data-wi="'+wi+'" data-ei="'+ei+'" style="width:88px;flex-shrink:0">'
+                    +'<input value="'+esc(setsStr)+'" placeholder="40х10, 40х10" data-chg="importExSets" data-wi="'+wi+'" data-ei="'+ei+'" style="flex:1'+(e._setsError?';border-color:var(--red)':'')+'">'
+                    +'<button class="del-ex" data-act="importDelEx" data-wi="'+wi+'" data-ei="'+ei+'" title="Удалить упражнение"><i class="box">'+ICON_TRASH+'</i></button>'
+                    +'</div></div>';
+            });
+            h+='</div>';
         });
         h+='<div style="display:flex;gap:10px;margin-top:14px">';
         h+='<button class="btn-main" style="flex:1;justify-content:center;font-size:15px" data-act="importConfirm">Импортировать</button>';
@@ -985,7 +1023,27 @@
 
     // ============ render ============
     const app=document.getElementById("app");
-    const ICON_TRASH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+    function svgIcon(inner){ return '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+inner+'</svg>'; }
+    const ICON_TRASH=svgIcon('<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>');
+    const ICON_LINK=svgIcon('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>');
+    const ICON_NOTE=svgIcon('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/>');
+    const ICON_TIMER=svgIcon('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>');
+    const ICON_CLIPBOARD=svgIcon('<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/>');
+    const ICON_DOWNLOAD=svgIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
+    const ICON_UPLOAD=svgIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>');
+    const ICON_SYNC=svgIcon('<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>');
+    const ICON_CHART=svgIcon('<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>');
+    const ICON_CALENDAR=svgIcon('<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>');
+    const ICON_DUMBBELL=svgIcon('<rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.5" height="10" rx="1"/><rect x="15.5" y="7" width="2.5" height="10" rx="1"/><line x1="8.5" y1="12" x2="15.5" y2="12"/>');
+    const ICON_BOOKMARK=svgIcon('<path d="M19 21 12 16 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/>');
+    const ICON_GEAR=svgIcon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>');
+    const ICON_PENCIL=svgIcon('<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>');
+    const ICON_CLOUD=svgIcon('<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>');
+    const ICON_CHEVRON_UP=svgIcon('<polyline points="18 15 12 9 6 15"/>');
+    const ICON_CHEVRON_DOWN=svgIcon('<polyline points="6 9 12 15 18 9"/>');
+    const ICON_CHEVRON_LEFT=svgIcon('<polyline points="15 18 9 12 15 6"/>');
+    const ICON_CHEVRON_RIGHT=svgIcon('<polyline points="9 18 15 12 9 6"/>');
+    const ICON_WARNING=svgIcon('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>');
 
     function headerHtml(){
         const c=data.cfg.cycle, wi=weekInfo(curDate);
@@ -1035,8 +1093,8 @@
         }
         if(warmup) h+='<div class="ex-last">Разминка: '+fmtW(warmup.w)+'×'+warmup.r+'</div>';
         if(data.cfg.view.viewNotes&&ex.note&&!exNoteOpen) h+='<div class="ex-note-text">'+esc(ex.note)+'</div>';
-        if(data.cfg.view.viewPastNotes&&!ex.note){ const pn=lastExNote(ex.name); if(pn) h+='<div class="ex-last">📝 '+fmtShort(pn.date)+': '+esc(pn.note)+'</div>'; }
-        h+='</div><button class="del-ex" data-act="delEx" data-id="'+ex.id+'" title="Удалить упражнение">'+ICON_TRASH+'</button></div>';
+        if(data.cfg.view.viewPastNotes&&!ex.note){ const pn=lastExNote(ex.name); if(pn) h+='<div class="ex-last">'+ICON_NOTE+' '+fmtShort(pn.date)+': '+esc(pn.note)+'</div>'; }
+        h+='</div><button class="del-ex" data-act="delEx" data-id="'+ex.id+'" title="Удалить упражнение"><i class="box">'+ICON_TRASH+'</i></button></div>';
         if(ex.sets.length){
             h+='<div class="sets">';
             ex.sets.forEach(function(s,i){
@@ -1046,12 +1104,12 @@
                     +'<span class="unit">кг</span><span class="x">×</span>'
                     +'<input type="number" class="set-inp num" inputmode="numeric" min="1" style="width:52px;flex-shrink:0" value="'+s.r+'" data-set="r" data-id="'+ex.id+'" data-i="'+i+'">'
                     +'</span>'
-                    +'<button class="del-set" data-act="delSet" data-id="'+ex.id+'" data-i="'+i+'">✕</button></div>';
+                    +'<button class="del-set" data-act="delSet" data-id="'+ex.id+'" data-i="'+i+'"><i class="box">✕</i></button></div>';
             });
             h+='</div>';
         }
         const timerActive=timerEnd>Date.now();
-        const timerLbl=timerActive?fmtTimer(timerEnd-Date.now()):'⏱';
+        const timerLbl=timerActive?fmtTimer(timerEnd-Date.now()):ICON_TIMER;
         const exBase=ex.name.split(' · ')[0];
         const curVariant=ex.name.indexOf(' · ')>=0?ex.name.split(' · ').slice(1).join(' · '):'';
         h+='<div class="addset">'
@@ -1063,7 +1121,7 @@
         h+='<div class="addset-extras">'
             +'<button class="timer-btn'+(timerActive?' active':'')+'" data-act="timerToggle">'+timerLbl+'</button>'
             +'<button class="btn-gray variant-btn'+(curVariant?' variant-active':'')+'" data-act="variantToggle" data-id="'+ex.id+'" title="Вариант">'+esc(curVariant||'вариант')+'</button>'
-            +'<button class="btn-gray" data-act="exNoteToggle" data-id="'+ex.id+'" title="Заметка">📝</button>'
+            +'<button class="btn-gray" data-act="exNoteToggle" data-id="'+ex.id+'" title="Заметка">'+ICON_NOTE+'</button>'
             +'</div>';
         if(ui.variantOpen[ex.id]){
             const variants=getExVariants(ex.name);
@@ -1091,11 +1149,11 @@
         const isOverridden=!!(data.cfg.weekOverrides&&data.cfg.weekOverrides[mondayKey]);
         let h='';
         h+='<div class="datenav">'
-            +'<button class="nav" data-act="prev">‹</button>'
+            +'<button class="nav" data-act="prev">'+ICON_CHEVRON_LEFT+'</button>'
             +'<div class="dmain"><button class="dtitle-btn" data-act="openCal">'+esc(fmtDate(curDate))+'</button>'
-            +'<button class="badge '+(isRest?'b-rest':'b-work')+'" data-act="weekTypeToggle">'+weekLabel(wi)+(isOverridden?' ✎':'')+'</button>'
+            +'<button class="badge '+(isRest?'b-rest':'b-work')+'" data-act="weekTypeToggle">'+weekLabel(wi)+(isOverridden?' '+ICON_PENCIL:'')+'</button>'
             +(curDate!==today?'<div><button class="today-link" data-act="today">к сегодня</button></div>':'')
-            +'</div><button class="nav" data-act="next">›</button></div>';
+            +'</div><button class="nav" data-act="next">'+ICON_CHEVRON_RIGHT+'</button></div>';
         if(ui.weekTypeOpen&&wi){
             const c=data.cfg.cycle;
             h+='<div class="variant-list card" style="margin-top:4px;padding:8px">';
@@ -1110,17 +1168,17 @@
         if(data.cfg.view.viewNotes){
             if(ui.dayNoteOpen||day.note){
                 const notePreview=day.note?day.note.slice(0,40)+(day.note.length>40?'…':''):'';
-                h+='<button class="note-toggle" data-act="noteToggle">'+(ui.dayNoteOpen?'▾ Заметка':'📝 '+(notePreview||'Заметка'))+'</button>';
+                h+='<button class="note-toggle" data-act="noteToggle">'+(ui.dayNoteOpen?'▾ Заметка':ICON_NOTE+' '+(notePreview||'Заметка'))+'</button>';
                 if(ui.dayNoteOpen) h+='<textarea class="day-note-area" data-chg="dayNote" placeholder="Заметка к тренировке…">'+esc(day.note||'')+'</textarea>';
             } else {
-                h+='<button class="note-toggle" data-act="noteToggle">📝 Заметка</button>';
+                h+='<button class="note-toggle" data-act="noteToggle">'+ICON_NOTE+' Заметка</button>';
             }
         }
         if(data.cfg.view.viewPastNotes&&!day.note&&(day.title||'').trim()){
             const pdn=lastDayNote(day.title);
-            if(pdn) h+='<div style="font-size:12px;color:var(--dim);margin-top:2px">📝 '+fmtShort(pdn.date)+': '+esc(pdn.note)+'</div>';
+            if(pdn) h+='<div class="ex-last" style="white-space:normal">'+ICON_NOTE+' '+fmtShort(pdn.date)+': '+esc(pdn.note)+'</div>';
         }
-        if(isRest&&!day.exercises.length) h+='<div class="rest-hint">Неделя отдыха — лёгкие веса, восстановление 💤</div>';
+        if(isRest&&!day.exercises.length) h+='<div class="rest-hint">Неделя отдыха — лёгкие веса, восстановление</div>';
 
         const exs=day.exercises;
         let exIdx=0;
@@ -1144,8 +1202,8 @@
             +'<button class="btn-main" data-act="addEx">＋</button></div>';
         h+='<div class="chips">'
             +(hasPast?'<button class="chip" data-act="copyLast">⧉ Повторить прошлую тренировку</button>':'')
-            +(day.exercises.length&&!ui.savingTpl?'<button class="chip" data-act="tplStart">🔖 Сохранить как шаблон</button>':'')
-            +((day.exercises.length||day.title)&&!ui.confirmDel?'<button class="chip danger" data-act="dayDelAsk">🗑 Очистить день</button>':'')
+            +(day.exercises.length&&!ui.savingTpl?'<button class="chip" data-act="tplStart">'+ICON_BOOKMARK+' Сохранить как шаблон</button>':'')
+            +((day.exercises.length||day.title)&&!ui.confirmDel?'<button class="chip danger" data-act="dayDelAsk">'+ICON_TRASH+' Очистить день</button>':'')
             +'</div>';
         if(ui.confirmDel)
             h+='<div class="confirm"><span>Удалить все записи за '+esc(fmtDate(curDate))+'?</span>'
@@ -1174,9 +1232,9 @@
         const today=toKey(new Date());
         const monthName=first.toLocaleDateString("ru-RU",{month:"long",year:"numeric"});
         let h='<div class="card"><div class="cal-head">'
-            +'<button class="cal-nav" data-act="calPrev">‹</button>'
+            +'<button class="cal-nav" data-act="calPrev">'+ICON_CHEVRON_LEFT+'</button>'
             +'<div class="cal-title">'+esc(monthName)+'</div>'
-            +'<button class="cal-nav" data-act="calNext">›</button></div><div class="cal-grid">';
+            +'<button class="cal-nav" data-act="calNext">'+ICON_CHEVRON_RIGHT+'</button></div><div class="cal-grid">';
         for(const d of ["пн","вт","ср","чт","пт","сб","вс"]) h+='<div class="cal-dow">'+d+'</div>';
         for(let i=0;i<lead;i++) h+='<div></div>';
         for(let d=1;d<=daysIn;d++){
@@ -1211,9 +1269,9 @@
                 +'<div class="et-bhead"><span class="et-btitle">'+(ss?'Суперсет':'№'+(k+1))+'</span>'
                 +'<span class="et-bbtns">'
                 +(ss?'<button class="mini-btn" data-act="etSplit" data-k="'+k+'">разъед.</button>'
-                    :(k<t.blocks.length-1?'<button class="mini-btn" data-act="etJoin" data-k="'+k+'" title="Объединить со следующим в суперсет">⛓</button>':''))
-                +(k>0?'<button class="mini-btn" data-act="etBlockUp" data-k="'+k+'">▲</button>':'')
-                +(k<t.blocks.length-1?'<button class="mini-btn" data-act="etBlockDown" data-k="'+k+'">▼</button>':'')
+                    :(k<t.blocks.length-1?'<button class="mini-btn" data-act="etJoin" data-k="'+k+'" title="Объединить со следующим в суперсет">'+ICON_LINK+'</button>':''))
+                +(k>0?'<button class="mini-btn" data-act="etBlockUp" data-k="'+k+'">'+ICON_CHEVRON_UP+'</button>':'')
+                +(k<t.blocks.length-1?'<button class="mini-btn" data-act="etBlockDown" data-k="'+k+'">'+ICON_CHEVRON_DOWN+'</button>':'')
                 +'</span></div>';
             b.items.forEach(function(it,i){
                 h+='<div class="et-item">'
@@ -1221,8 +1279,8 @@
                     +'<div class="et-row">'
                     +'<input class="plan" value="'+esc(it.plan)+'" placeholder="3х8-12" data-et="plan" data-k="'+k+'" data-i="'+i+'">'
                     +'<button class="mini-btn" data-act="etVarsToggle" data-k="'+k+'" data-i="'+i+'">варианты'+(it.vars?' ('+it.vars.length+')':'')+'</button>'
-                    +(ss&&i>0?'<button class="mini-btn" data-act="etItemUp" data-k="'+k+'" data-i="'+i+'">↑</button>':'')
-                    +(ss&&i<b.items.length-1?'<button class="mini-btn" data-act="etItemDown" data-k="'+k+'" data-i="'+i+'">↓</button>':'')
+                    +(ss&&i>0?'<button class="mini-btn" data-act="etItemUp" data-k="'+k+'" data-i="'+i+'">'+ICON_CHEVRON_UP+'</button>':'')
+                    +(ss&&i<b.items.length-1?'<button class="mini-btn" data-act="etItemDown" data-k="'+k+'" data-i="'+i+'">'+ICON_CHEVRON_DOWN+'</button>':'')
                     +'<button class="mini-btn warn" data-act="etDelItem" data-k="'+k+'" data-i="'+i+'" style="margin-left:auto">✕</button>'
                     +'</div>';
                 if(it._v===true||(it._v!==false&&!!it.vars))
@@ -1244,10 +1302,23 @@
 
         if(ui.tplParsed){
             h+='<div class="sec-label">Распознано — проверь названия</div>';
-            ui.tplParsed.forEach(function(t,i){
-                h+='<div class="card"><input id="pn-'+i+'" value="'+esc(t.name)+'" placeholder="Название шаблона">'
-                    +'<div class="note">'+t.exercises.map(esc).join("<br>")+'</div></div>';
+            ui.tplParsed.forEach(function(t,ti){
+                h+='<div class="card"><div style="display:flex;gap:8px;align-items:center">'
+                    +'<input value="'+esc(t.name)+'" placeholder="Название шаблона" data-chg="tplParsedName" data-ti="'+ti+'" style="flex:1">'
+                    +(ui.tplParsed.length>1?'<button class="del-ex" data-act="tplParsedDelTpl" data-ti="'+ti+'" title="Удалить шаблон"><i class="box">'+ICON_TRASH+'</i></button>':'')
+                    +'</div>';
+                t.exercises.forEach(function(it,ei){
+                    const nameErr=!it.name||!it.name.trim();
+                    h+='<div class="import-ex-row"><div style="display:flex;gap:6px">'
+                        +'<input value="'+esc(it.name)+'" placeholder="Название упражнения" data-chg="tplParsedExName" data-ti="'+ti+'" data-ei="'+ei+'" style="flex:2'+(nameErr?';border-color:var(--red)':'')+'">'
+                        +'<input value="'+esc(it.plan)+'" placeholder="3х8-12" data-chg="tplParsedExPlan" data-ti="'+ti+'" data-ei="'+ei+'" style="width:88px;flex-shrink:0">'
+                        +'<button class="del-ex" data-act="tplParsedDelEx" data-ti="'+ti+'" data-ei="'+ei+'" title="Удалить упражнение"><i class="box">'+ICON_TRASH+'</i></button>'
+                        +'</div></div>';
+                });
+                h+='</div>';
             });
+            const parsedExTotal=ui.tplParsed.reduce(function(a,t){return a+t.exercises.length;},0);
+            h+='<div class="note">Шаблонов: '+ui.tplParsed.length+', упражнений: '+parsedExTotal+'</div>';
             h+='<button class="wide-btn primary" data-act="tplTextSave">Сохранить ('+ui.tplParsed.length+')</button>'
                 +'<button class="wide-btn" data-act="tplTextCancel">Отмена</button>';
             return h;
@@ -1261,7 +1332,7 @@
         }
 
         h+='<button class="wide-btn" data-act="etNew" style="margin-top:0">＋ Новый шаблон</button>'
-            +'<button class="wide-btn" data-act="tplFromText">📋 Создать шаблоны из текста</button>';
+            +'<button class="wide-btn" data-act="tplFromText">'+ICON_CLIPBOARD+' Создать шаблоны из текста</button>';
         if(!data.templates.length) h+='<div class="card" style="color:var(--mut)">Шаблонов нет. Создайте новый, вставьте программу текстом или откройте день с упражнениями и нажмите «Сохранить как шаблон».</div>';
         for(const t of data.templates){
             const nss=t.blocks.filter(function(b){return b.type==="superset";}).length;
@@ -1273,13 +1344,13 @@
                     +'<button class="btn-gray" data-act="tplDelNo">Отмена</button></span></div>';
             } else {
                 h+='<div class="tpl-btns">'
-                    +'<button class="btn-gray" data-act="etEdit" data-id="'+t.id+'">✎ Изменить</button>'
+                    +'<button class="btn-gray" data-act="etEdit" data-id="'+t.id+'">'+ICON_PENCIL+' Изменить</button>'
                     +'<button class="btn-gray" data-act="tplApplyGo" data-id="'+t.id+'">Применить к '+fmtShort(curDate)+'</button>'
                     +'<button class="btn-gray" style="flex:0 0 auto; color:var(--red)" data-act="tplDelAsk" data-id="'+t.id+'">✕</button></div>';
             }
             h+='</div>';
         }
-        h+='<div class="note">Порядок и суперсеты настраиваются внутри шаблона (✎ Изменить).</div>';
+        h+='<div class="note">Порядок и суперсеты настраиваются внутри шаблона ('+ICON_PENCIL+' Изменить).</div>';
         return h;
     }
 
@@ -1353,7 +1424,7 @@
 
         let syncNote;
         if(cs){
-            syncNote='☁️ Синхронизация через Telegram включена.';
+            syncNote=ICON_CLOUD+' Синхронизация через Telegram включена.';
             if(syncState.last) syncNote+=' Последняя: '+syncState.last.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})+', записей в облаке: '+syncState.count+'.';
         } else {
             syncNote='Режим браузера: данные хранятся локально, синхронизации нет. Откройте аппку внутри Telegram (кнопка меню у бота). Для переноса из старой версии: там «Скачать Excel», здесь «Импорт».';
@@ -1375,10 +1446,10 @@
         h+='</div></div>';
 
         h+='<div class="sec-label">Данные</div><div class="card">'
-            +(cs?'<button class="wide-btn" data-act="syncNow">🔄 Синхронизировать сейчас</button>':'')
-            +'<button class="wide-btn" data-act="export">⬇ Скачать Excel</button>'
-            +'<button class="wide-btn" data-act="import">⬆ Импорт из Excel-файла</button>'
-            +'<button class="wide-btn" data-act="importTextOpen">📋 Импорт из заметок</button>'
+            +(cs?'<button class="wide-btn" data-act="syncNow">'+ICON_SYNC+' Синхронизировать сейчас</button>':'')
+            +'<button class="wide-btn" data-act="export">'+ICON_DOWNLOAD+' Скачать Excel</button>'
+            +'<button class="wide-btn" data-act="import">'+ICON_UPLOAD+' Импорт из Excel-файла</button>'
+            +'<button class="wide-btn" data-act="importTextOpen">'+ICON_CLIPBOARD+' Импорт из заметок</button>'
             +'<div class="note">'+syncNote+'</div></div>';
 
         h+='<div class="sec-label">Опасная зона</div><div class="card">';
@@ -1391,7 +1462,7 @@
                 +'<span class="btns"><button class="btn-red" data-act="wipeYes">Удалить всё</button>'
                 +'<button class="btn-gray" data-act="wipeNo">Отмена</button></span></div>';
         } else {
-            h+='<button class="wide-btn danger" data-act="wipe1" style="margin-top:0">🗑 Удалить все данные</button>'
+            h+='<button class="wide-btn danger" data-act="wipe1" style="margin-top:0">'+ICON_TRASH+' Удалить все данные</button>'
                 +'<div class="note">Перед удалением стоит нажать «Скачать Excel» — это единственная резервная копия.</div>';
         }
         h+='</div>';
@@ -1402,7 +1473,7 @@
         document.getElementById("tabbar").style.display="none";
         if(ui.setupStep!==2){
             app.innerHTML='<div class="setup"><div class="card">'
-                +'<div style="font-weight:800; font-size:17px; margin-bottom:10px">🏋️ Gym Tracker</div>'
+                +'<div style="font-weight:800; font-size:17px; margin-bottom:10px">'+ICON_DUMBBELL+' Gym Tracker</div>'
                 +'<p>Цикл по умолчанию: 2 рабочие недели, потом 1 неделя отдыха (поменять можно в настройках). Укажи дату начала первой рабочей недели.</p>'
                 +'<input type="date" id="startInput" value="'+(ui.setupDate||toKey(new Date()))+'" style="margin:10px 0 14px">'
                 +'<button class="wide-btn primary" data-act="setupNext">Далее</button></div></div>';
@@ -1533,6 +1604,50 @@
         if(chg==="importConflict"){
             const wi2=+e.target.dataset.wi;
             if(ui.importParsed&&ui.importParsed[wi2]) ui.importParsed[wi2].conflicts=e.target.value;
+            return;
+        }
+        if(chg==="importTitle"){
+            const wi2=+e.target.dataset.wi;
+            if(ui.importParsed&&ui.importParsed[wi2]) ui.importParsed[wi2].title=e.target.value.trim();
+            return;
+        }
+        if(chg==="importExName"){
+            const w=ui.importParsed&&ui.importParsed[+e.target.dataset.wi]; if(!w) return;
+            const ex=w.exercises[+e.target.dataset.ei]; if(!ex) return;
+            ex.name=e.target.value.trim();
+            render();
+            return;
+        }
+        if(chg==="importExPlan"){
+            const w=ui.importParsed&&ui.importParsed[+e.target.dataset.wi]; if(!w) return;
+            const ex=w.exercises[+e.target.dataset.ei]; if(!ex) return;
+            ex.plan=e.target.value.trim();
+            return;
+        }
+        if(chg==="importExSets"){
+            const w=ui.importParsed&&ui.importParsed[+e.target.dataset.wi]; if(!w) return;
+            const ex=w.exercises[+e.target.dataset.ei]; if(!ex) return;
+            const r=parseSetsStr(e.target.value);
+            ex.setsStr=e.target.value;
+            if(r.valid){ ex.sets=r.sets; ex._setsError=false; } else { ex._setsError=true; }
+            render();
+            return;
+        }
+        if(chg==="tplParsedName"){
+            if(ui.tplParsed&&ui.tplParsed[+e.target.dataset.ti]) ui.tplParsed[+e.target.dataset.ti].name=e.target.value.trim();
+            return;
+        }
+        if(chg==="tplParsedExName"){
+            const t=ui.tplParsed&&ui.tplParsed[+e.target.dataset.ti]; if(!t) return;
+            const it=t.exercises[+e.target.dataset.ei]; if(!it) return;
+            it.name=e.target.value.trim();
+            render();
+            return;
+        }
+        if(chg==="tplParsedExPlan"){
+            const t=ui.tplParsed&&ui.tplParsed[+e.target.dataset.ti]; if(!t) return;
+            const it=t.exercises[+e.target.dataset.ei]; if(!it) return;
+            it.plan=e.target.value.trim();
             return;
         }
     });
@@ -1673,20 +1788,36 @@
             case "tplTextParse":{
                 const parsed=parseTemplatesText(document.getElementById("tplText").value);
                 if(!parsed.length){ toast("Не нашёл упражнений — нужен формат «Жим 3х8-12»"); return; }
-                ui.tplParsed=parsed; render();
+                ui.tplParsed=parsed.map(function(t){
+                    return { name:t.name, exercises:t.exercises.map(function(s){ const p=splitPlan(s); return {name:p.name, plan:p.plan}; }) };
+                });
+                render();
+                break;
+            }
+            case "tplParsedDelTpl":
+                if(ui.tplParsed){ ui.tplParsed.splice(+ds.ti,1); render(); }
+                break;
+            case "tplParsedDelEx":{
+                const t=ui.tplParsed&&ui.tplParsed[+ds.ti];
+                if(t){ t.exercises.splice(+ds.ei,1); render(); }
                 break;
             }
             case "tplTextSave":{
+                let hasEmptyName=false;
+                for(const t of ui.tplParsed) for(const it of t.exercises) if(!it.name||!it.name.trim()) hasEmptyName=true;
+                if(hasEmptyName){ toast("Укажите название для всех упражнений"); render(); return; }
+                const toSave=ui.tplParsed.filter(function(t){return t.exercises.length;});
+                if(!toSave.length){ toast("Добавьте хотя бы одно упражнение"); return; }
                 let nEx=0;
-                ui.tplParsed.forEach(function(p,i){
-                    const inp=document.getElementById("pn-"+i);
-                    const name=(inp&&inp.value.trim())||p.name;
+                toSave.forEach(function(p,i){
+                    const name=(p.name||"").trim()||("Шаблон "+(i+1));
                     const old=data.templates.find(function(t){return t.name===name;});
                     if(old){ data.templates=data.templates.filter(function(t){return t.id!==old.id;}); unpersistTpl(old.id); }
-                    const t=normalizeTpl({id:uid(),name:name,title:name,exercises:p.exercises});
-                    data.templates.push(t); persistTpl(t); nEx+=p.exercises.length;
+                    const exercises=p.exercises.map(function(it){return it.plan?it.name+" ("+it.plan+")":it.name;});
+                    const t=normalizeTpl({id:uid(),name:name,title:name,exercises:exercises});
+                    data.templates.push(t); persistTpl(t); nEx+=exercises.length;
                 });
-                const n=ui.tplParsed.length;
+                const n=toSave.length;
                 ui.tplParsed=null; ui.tplFromText=false; render();
                 hap("ok"); toast("Шаблонов: "+n+", упражнений: "+nEx);
                 break;
@@ -1736,9 +1867,21 @@
                 const todayKey=toKey(new Date());
                 parsed.forEach(function(w){
                     if(!w.date){ w.date=todayKey; w.autoDate=true; }
-                    w.exercises.forEach(function(e){ e.name=canonicalExName(e.name); e.id=uid(); });
+                    w.exercises.forEach(function(e){
+                        e.name=canonicalExName(e.name); e.id=uid();
+                        const p=splitPlan(e.name); e.name=p.name; e.plan=p.plan;
+                        e.setsStr=setsToStr(e.sets);
+                    });
                 });
                 ui.importParsed=parsed; ui.importText=false; render();
+                break;
+            }
+            case "importDelDay":
+                if(ui.importParsed){ ui.importParsed.splice(+ds.wi,1); render(); }
+                break;
+            case "importDelEx":{
+                const w=ui.importParsed&&ui.importParsed[+ds.wi];
+                if(w){ w.exercises.splice(+ds.ei,1); render(); }
                 break;
             }
             case "importConfirm":{
@@ -1755,15 +1898,25 @@
                     if(seenDates.has(w.date)){ toast("Даты тренировок не должны повторяться"); return; }
                     seenDates.add(w.date);
                 }
+                let hasNameErr=false, hasSetsErr=false;
+                for(const w of ui.importParsed) for(const e of w.exercises){
+                    if(!e.name||!e.name.trim()) hasNameErr=true;
+                    if(e._setsError) hasSetsErr=true;
+                }
+                if(hasNameErr){ toast("Укажите название для всех упражнений"); render(); return; }
+                if(hasSetsErr){ toast("Проверьте строку подходов — есть нераспознанные значения"); render(); return; }
                 const toSync=[];
                 let nDays=0, nEx=0, nSets=0;
                 for(const w of ui.importParsed){
                     if(data.log[w.date]&&w.conflicts==="skip") continue;
-                    const entry={title:w.title,exercises:w.exercises,up:Date.now()};
+                    const exercises=w.exercises.map(function(e){
+                        return {id:e.id, name:e.plan?e.name+" ("+e.plan+")":e.name, sets:e.sets};
+                    });
+                    const entry={title:w.title,exercises:exercises,up:Date.now()};
                     const wi2=weekInfo(w.date); if(wi2) entry.weekType=wi2.isRest?"rest":"work";
                     data.log[w.date]=entry;
                     toSync.push(w.date);
-                    nDays++; nEx+=w.exercises.length; for(const e of w.exercises) nSets+=e.sets.length;
+                    nDays++; nEx+=exercises.length; for(const e of exercises) nSets+=e.sets.length;
                 }
                 ui.importParsed=null; ui.importText=false;
                 saveCache(); render();
