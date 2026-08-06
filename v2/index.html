@@ -179,7 +179,7 @@
             background:var(--bg); border-top:1px solid var(--border);
             display:flex; padding:4px 6px calc(4px + env(safe-area-inset-bottom));}
         .tabbar button{flex:1; display:flex; flex-direction:column; align-items:center; gap:1px;
-            padding:6px 0; color:var(--dim); font-size:10px; border-radius:12px; min-height:52px}
+            padding:6px 0; color:var(--dim); font-size:9px; border-radius:12px; min-height:52px}
         .tabbar button .ti{font-size:21px; line-height:1.2}
         .tabbar button.on{color:var(--btn)}
 
@@ -216,6 +216,11 @@
         .import-day{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 14px; margin-top:10px}
         .import-day-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px}
         .import-day-head input[type=date]{font-size:13px; padding:5px 8px; width:auto; border-radius:8px}
+        .prog-ex-btn{width:100%; text-align:left; padding:10px 12px; border-radius:10px; font-size:13px; margin-top:4px; background:var(--card2); color:var(--text)}
+        .prog-ex-btn:active{opacity:.7}
+        .variant-list{margin-top:6px; border-top:1px solid var(--border); padding-top:6px}
+        .swatch{width:30px; height:30px; border-radius:50%; border:3px solid transparent; cursor:pointer; flex-shrink:0}
+        .swatch.sel{border-color:var(--text)}
     </style>
 </head>
 <body>
@@ -223,6 +228,7 @@
 <nav class="tabbar" id="tabbar">
     <button data-tab="day"><span class="ti">🏋️</span>Сегодня</button>
     <button data-tab="cal"><span class="ti">📅</span>Календарь</button>
+    <button data-tab="prg"><span class="ti">📈</span>Прогресс</button>
     <button data-tab="tpl"><span class="ti">🔖</span>Шаблоны</button>
     <button data-tab="set"><span class="ti">⚙️</span>Настройки</button>
 </nav>
@@ -313,6 +319,7 @@
     let calMonth=curDate.slice(0,7);
     let lastDel=null;
     let timerEnd=0, timerInterval=null;
+    let progEx=null;
 
     // ============ helpers ============
     function toKey(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
@@ -624,14 +631,13 @@
     }
 
     // ============ Exercise history ============
-    function histPage(){
-        const name=ui.histEx;
+    function histContentHtml(name, variantAct){
+        variantAct=variantAct||"histVariant";
         const low=name.toLowerCase();
         const allDates=Object.keys(data.log).sort().filter(function(k){
             return (data.log[k].exercises||[]).some(function(e){return e.name.toLowerCase()===low&&e.sets.length;});
         });
-        let h='<button class="hist-back" data-act="histBack">‹ Назад</button>';
-        h+='<div class="sec-label" style="margin-top:4px">'+esc(name)+'</div>';
+        let h='<div class="sec-label" style="margin-top:8px">'+esc(name)+'</div>';
         // Variant switcher
         if(name.indexOf(' · ')>=0){
             const base=name.split(' · ')[0].toLowerCase();
@@ -648,11 +654,11 @@
             }
             if(variants.size>1){
                 h+='<div class="chips" style="margin-top:4px">';
-                for(const v of variants) h+='<button class="chip'+(v===name?' on':'')+'" data-act="histVariant" data-name="'+esc(v)+'">'+esc(v.split(' · ').pop())+'</button>';
+                for(const v of variants) h+='<button class="chip'+(v===name?' on':'')+'" data-act="'+variantAct+'" data-name="'+esc(v)+'">'+esc(v.split(' · ').pop())+'</button>';
                 h+='</div>';
             }
         }
-        // Chart data: max weight per session
+        // Chart + stats
         const chartData=allDates.map(function(k){
             const ex=(data.log[k].exercises||[]).find(function(e){return e.name.toLowerCase()===low&&e.sets.length;});
             return {k:k,w:ex.sets.reduce(function(m,s){return Math.max(m,s.w);},0)};
@@ -677,7 +683,10 @@
             svg+='<polyline points="'+pts+'" fill="none" stroke="var(--btn)" stroke-width="2" stroke-linejoin="round"/>';
             chartData.forEach(function(d,i){ svg+='<circle cx="'+px(i)+'" cy="'+py(d.w)+'" r="3" fill="var(--btn)"/>'; });
             svg+='</svg>';
-            h+='<div class="card">'+svg+'</div>';
+            const recEntry=chartData.reduce(function(a,b){return b.w>a.w?b:a;});
+            h+='<div class="card">'+svg
+                +'<div class="note" style="margin-top:4px">Рекорд: <b>'+fmtW(recEntry.w)+' кг</b> ('+fmtShort(recEntry.k)+') · Тренировок: '+allDates.length+'</div>'
+                +'</div>';
         }
         const recent=allDates.slice().reverse().slice(0,20);
         if(recent.length){
@@ -693,6 +702,34 @@
             }
             h+='</table></div>';
         }
+        return h;
+    }
+    function histPage(){
+        let h='<button class="hist-back" data-act="histBack">‹ Назад</button>';
+        h+=histContentHtml(ui.histEx);
+        return h;
+    }
+    function progressPage(){
+        const freq={};
+        for(const k of Object.keys(data.log)) for(const e of (data.log[k].exercises||[])){
+            if(e.sets.length) freq[e.name]=(freq[e.name]||0)+1;
+        }
+        const exList=Object.keys(freq).sort(function(a,b){return freq[b]-freq[a];});
+        let h='<div class="sec-label" style="margin-top:12px">Прогресс</div>';
+        if(!exList.length){
+            h+='<div class="card" style="text-align:center;color:var(--mut);padding:24px">Нет данных. Запишите первую тренировку.</div>';
+            return h;
+        }
+        h+='<div class="card"><input id="progSearch" placeholder="Поиск упражнения…" autocomplete="off">'
+            +'<div id="progList" style="margin-top:8px">';
+        for(const name of exList){
+            h+='<button class="prog-ex-btn" data-act="selectProg" data-name="'+esc(name)+'">'
+                +'<span>'+esc(name)+'</span>'
+                +(freq[name]>1?'<span style="float:right;color:var(--mut)">'+freq[name]+'×</span>':'')
+                +'</button>';
+        }
+        h+='</div></div>';
+        if(progEx) h+=histContentHtml(progEx,"progVariant");
         return h;
     }
 
@@ -1259,6 +1296,7 @@
         let h=headerHtml();
         if(ui.tab==="day"){ h+=ui.histEx?histPage():dayPage(); }
         else if(ui.tab==="cal") h+=calPage();
+        else if(ui.tab==="prg") h+=progressPage();
         else if(ui.tab==="tpl") h+=tplPage();
         else if(ui.tab==="set"){
             if(ui.importParsed) h+=importConfirmPage();
@@ -1370,6 +1408,14 @@
         if(e.key!=="Enter") return;
         const act=e.target.dataset.enter;
         if(act) doAction(act,e.target.dataset);
+    });
+    app.addEventListener("input",function(e){
+        if(e.target.id==="progSearch"){
+            const q=e.target.value.toLowerCase();
+            document.querySelectorAll("#progList .prog-ex-btn").forEach(function(b){
+                b.style.display=b.dataset.name.toLowerCase().indexOf(q)>=0?"":"none";
+            });
+        }
     });
     app.addEventListener("click",function(e){
         const btn=e.target.closest("[data-act]");
@@ -1700,6 +1746,8 @@
                 toast("Шаблон удалён");
                 break;
             }
+            case "selectProg": progEx=ds.name; render(); break;
+            case "progVariant": progEx=ds.name; render(); break;
         }
     }
 
