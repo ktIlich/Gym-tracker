@@ -17,6 +17,9 @@
             --accent:     #ff9f0a;
             --on-accent:  #09090b;
             --accent-2:   var(--accent);
+            --rest:       #30d158;
+            --rest-bg:    color-mix(in srgb, var(--rest) 14%, transparent);
+            --white:      #ffffff;
             --danger:     #f87171;
             --on-danger:  #09090b;
             --warn:       #fbbf24;
@@ -66,7 +69,7 @@
         .strip{display:flex; gap:0.25rem; height:0.5rem; border-radius:6.1875rem; overflow:hidden; position:relative}
         .strip>i{flex:1}
         .s-work{background:color-mix(in srgb, var(--accent) 35%, transparent)}
-        .s-rest{background:repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent-2) 45%, transparent) 0 0.25rem, color-mix(in srgb, var(--accent-2) 18%, transparent) 0.25rem 0.5rem)}
+        .s-rest{background:repeating-linear-gradient(135deg, color-mix(in srgb, var(--rest) 45%, transparent) 0 0.25rem, color-mix(in srgb, var(--rest) 18%, transparent) 0.25rem 0.5rem)}
         .dot{position:absolute; top:0; width:0.5rem; height:0.5rem; border-radius:50%; background:var(--text); box-shadow:0 0 4px color-mix(in srgb, var(--black) 50%, transparent)}
         .strip-labels{display:flex; justify-content:space-between; font-size:0.625rem; color:var(--text-muted); margin-top:0.25rem}
 
@@ -165,12 +168,23 @@
         .font-seg .fs-pct{color:var(--text-muted); font-weight:400}
         .font-seg button.on .fs-pct{color:var(--on-accent)}
         .font-sample{margin-top:.75rem; padding:.75rem; border-radius:.75rem; background:var(--surface-2)}
-        .sw-grid{display:flex; flex-wrap:wrap; gap:0.625rem 0.75rem}
-        .sw-wrap{display:flex; flex-direction:column; align-items:center; gap:2px; width:3.25rem}
-        .sw-cap{font-size:0.625rem; color:var(--text-muted); text-align:center; line-height:1.15; overflow-wrap:anywhere}
-        .swatch{width:var(--touch-w); height:var(--touch); border-radius:50%; border:2px solid var(--border); cursor:pointer; flex-shrink:0; position:relative; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-weight:800}
-        .swatch.sel{box-shadow:0 0 0 2px var(--bg), 0 0 0 4px var(--text)}
+        .sw-grid{display:grid; grid-template-columns:repeat(6,1fr); gap:0.75rem}
+        .swatch{width:100%; max-width:2.75rem; aspect-ratio:1; justify-self:center; border-radius:50%; border:1px solid var(--border); cursor:pointer; position:relative; display:flex; align-items:center; justify-content:center; color:var(--white); padding:0}
+        .swatch.sel{outline:2px solid var(--text); outline-offset:2px}
+        .swatch svg.icon{width:1.25rem; height:1.25rem; vertical-align:0}
+        .swatch.custom{border:1.5px dashed var(--text-muted); color:var(--text-muted)}
+        .swatch.custom.set{border:1px solid var(--border)}
+        .swatch .sw-edit{position:absolute; right:-0.125rem; bottom:-0.125rem; width:1rem; height:1rem; border-radius:50%; background:var(--surface); color:var(--text); display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 1px var(--border)}
+        .swatch .sw-edit svg.icon{width:0.625rem; height:0.625rem}
         .swatch input[type=color]{position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; padding:0; border:none}
+        .sw-picked{margin-top:0.5rem}
+        .cs-row{display:flex; align-items:center; gap:0.75rem; width:100%; min-height:3.25rem; border-top:1px solid var(--border); text-align:left}
+        .cs-tap{flex:1; min-width:0; display:flex; align-items:center; justify-content:space-between; gap:0.75rem}
+        .cs-tap .swatch{width:2.5rem; max-width:2.5rem; flex-shrink:0}
+        .cs-name{flex:1; min-width:0}
+        .cs-reset{min-height:var(--touch); padding:0 0.5rem; color:var(--text-muted); font-size:0.8125rem}
+        .cs-check{color:var(--accent)}
+        .theme-strip{height:0.5rem}
         .datenav{display:flex; align-items:center; justify-content:space-between; margin-top:0.75rem}
         .datenav .nav{padding:0.375rem 0.625rem; color:var(--text-muted); font-size:1.5rem; line-height:1; min-width:var(--touch); min-height:var(--touch)}
         .datenav .nav svg.icon{width:1.375rem; height:1.375rem; vertical-align:-0.375rem}
@@ -179,7 +193,7 @@
         .badge{font-size:0.75rem; font-weight:600; margin-top:0.75rem; display:inline-block; padding:0.25rem 0.625rem; border-radius:6.1875rem; background:var(--surface-2);
             text-decoration:underline; text-decoration-style:dotted; text-underline-offset:2px; min-height:0}
         .badge svg.icon{width:0.75rem; height:0.75rem; vertical-align:-0.0625rem}
-        .b-work{color:var(--accent)} .b-rest{color:var(--accent-2)}
+        .b-work{color:var(--accent)} .b-rest{color:var(--rest)}
         .today-link{font-size:0.8125rem; color:var(--text-muted); text-decoration:underline; margin-top:0.4375rem}
 
         .subtitle-row{margin:0.625rem 0 2px}
@@ -187,8 +201,9 @@
             font-weight:600; font-size:1rem; border-radius:0.875rem}
         .subtitle-row input:focus{border-style:solid}
 
-        .rest-hint{text-align:center; color:var(--accent-2); font-size:0.875rem;
-            background:var(--accent-2-bg); border:1px solid color-mix(in srgb, var(--accent-2) 25%, transparent); border-radius:0.875rem; padding:0.75rem; margin-top:0.75rem}
+        .ex-last.ex-rest{color:var(--rest)}
+        .rest-hint{text-align:center; color:var(--rest); font-size:0.875rem;
+            background:var(--rest-bg); border:1px solid color-mix(in srgb, var(--rest) 25%, transparent); border-radius:0.875rem; padding:0.75rem; margin-top:0.75rem}
 
         .backup-banner{display:flex; align-items:center; gap:0.625rem;
             background:var(--accent-bg); border:1px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius:0.875rem;
@@ -296,7 +311,7 @@
         .cal-day{aspect-ratio:1; border-radius:0.625rem; border:1px solid transparent;
             display:flex; flex-direction:column; align-items:center; justify-content:center;
             font-size:0.8125rem; color:var(--text-muted); overflow:hidden}
-        .cal-day.rest{background:var(--accent-2-bg); border-style:dashed; border-color:color-mix(in srgb, var(--accent-2) 45%, transparent)}
+        .cal-day.rest{background:var(--rest-bg); border-style:dashed; border-color:color-mix(in srgb, var(--rest) 45%, transparent)}
         .cal-day.has{color:var(--text)}
         .cal-day.sel{border-color:var(--accent)}
         .cal-day.today .n{color:var(--accent); font-weight:800}
@@ -428,7 +443,7 @@
     const THEME_INK={dark:"#09090b",light:"#ffffff"};   // кандидаты для --on-accent
     const DANGER_HEX="#f87171";
     const CUSTOM_FALLBACK={bg:"#09090b",surface:"#18181b",text:"#f4f4f5"};
-    const DEFAULT_THEME={base:"tg",accent:"#ff9f0a",accent2:null,custom:{}};
+    const DEFAULT_THEME={base:"tg",accent:"#ff9f0a",accent2:null,rest:"#30d158",custom:{}};
     // THEME-DATA-END
     // ============ среда: test / prod, изоляция ключей ============
     let TOUR_MODE=false, tour=null;   // тур по интерфейсу: на демо-данных, любая запись в хранилище запрещена
@@ -1705,11 +1720,11 @@
 
             const chartPoints=s.workouts.map(function(w){return {k:w.k,v:w.tonnage};});
             const svg=chartSvg(chartPoints,{ yUnit:"кг", yLabel:fmtTonnageShort, padL:32,
-                pointColor:function(d){ return dayWeekType(d.k)==="rest"?"var(--accent-2)":"var(--accent)"; },
+                pointColor:function(d){ return dayWeekType(d.k)==="rest"?"var(--rest)":"var(--accent)"; },
                 pointHollow:function(d){ return dayWeekType(d.k)==="rest"; } });
             h+='<div class="sec-label">Тоннаж по тренировкам</div><div class="card" data-tour="prog-tonnage">'+svg
                 +'<div class="cal-legend" style="margin-top:0.375rem"><span><i style="background:var(--accent)"></i>рабочая неделя</span>'
-                +'<span><i style="background:var(--accent-2)"></i>неделя отдыха</span></div></div>';
+                +'<span><i style="background:var(--rest)"></i>неделя отдыха</span></div></div>';
 
             h+='<div class="sec-label">По типам тренировок</div><div class="card">';
             const maxT=Math.max.apply(null,s.byTitle.map(function(b){return b.tonnage;}));
@@ -2245,6 +2260,7 @@
     const ICON_DUMBBELL=svgIcon('<rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.5" height="10" rx="1"/><rect x="15.5" y="7" width="2.5" height="10" rx="1"/><line x1="8.5" y1="12" x2="15.5" y2="12"/>');
     const ICON_BOOKMARK=svgIcon('<path d="M19 21 12 16 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/>');
     const ICON_GEAR=svgIcon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>');
+    const ICON_TELEGRAM=svgIcon('<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>');
     const ICON_PENCIL=svgIcon('<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>');
     const ICON_CLOUD_UP=svgIcon('<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>');
     const ICON_CLOUD=svgIcon('<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>');
@@ -2405,7 +2421,7 @@
         }
         if(data.cfg.view.lastRest&&showRest){
             const lrV=prevVariantLabel(lr);
-            h+='<div class="ex-last">Отдых '+fmtShort(lr.date)+lrV+': '+esc(lr.str)+'</div>';
+            h+='<div class="ex-last ex-rest">Отдых '+fmtShort(lr.date)+lrV+': '+esc(lr.str)+'</div>';
         }
         if(warmup) h+='<div class="ex-last" data-tour="warmup-line">Разминка: '+fmtW(warmup.w)+'×'+warmup.r+'</div>';
         if(data.cfg.view.viewNotes&&ex.note&&!exNoteOpen) h+='<div class="ex-note-text">'+esc(ex.note)+'</div>';
@@ -2565,7 +2581,7 @@
                 +'</button>';
         }
         h+='</div><div class="cal-legend">'
-            +'<span><i style="background:color-mix(in srgb, var(--accent-2) 35%, transparent)"></i>неделя отдыха</span>'
+            +'<span><i style="background:color-mix(in srgb, var(--rest) 35%, transparent)"></i>неделя отдыха</span>'
             +'<span><i style="background:var(--accent)"></i>есть тренировка</span>'
             +'</div></div>';
         return h;
@@ -2691,7 +2707,9 @@
         else th={base:({tg:"tg",dark:"oled",light:"light"})[t]||"tg",accent:acc||DEFAULT_THEME.accent,accent2:null,custom:{}};
         const okBase=th.base==="custom"||THEME_BASES.some(function(x){return x.id===th.base;});
         return { base:okBase?th.base:"tg", accent:HEX_RE.test(th.accent||"")?th.accent.toLowerCase():DEFAULT_THEME.accent,
-                 accent2:HEX_RE.test(th.accent2||"")?th.accent2.toLowerCase():null, custom:(th.custom&&typeof th.custom==="object")?th.custom:{} };
+                 accent2:HEX_RE.test(th.accent2||"")?th.accent2.toLowerCase():null,
+                 rest:HEX_RE.test(th.rest||"")?th.rest.toLowerCase():DEFAULT_THEME.rest,   // rest не наследует accent2: у старых тем получает значение по умолчанию
+                 custom:(th.custom&&typeof th.custom==="object")?th.custom:{} };
     }
     function hexToRgb(hex){ return {r:parseInt(hex.slice(1,3),16),g:parseInt(hex.slice(3,5),16),b:parseInt(hex.slice(5,7),16)}; }
     function relLum(c){ const f=function(v){ v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4); }; return 0.2126*f(c.r)+0.7152*f(c.g)+0.0722*f(c.b); }
@@ -2727,6 +2745,7 @@
         }
         st.setProperty("--accent",th.accent); st.setProperty("--on-accent",accentBtnText(th.accent));
         if(th.accent2) st.setProperty("--accent-2",th.accent2); else st.removeProperty("--accent-2");
+        st.setProperty("--rest",th.rest);
         st.setProperty("--on-danger",accentBtnText(DANGER_HEX));
     }
     let themeSaveTimer=null;
@@ -2746,63 +2765,86 @@
         if(b.id==="tg") return "linear-gradient(135deg, "+b.sw[0]+" 50%, "+b.sw[1]+" 50%)";
         return "linear-gradient(135deg, "+b.bg+" 50%, "+b.surface+" 50%)";
     }
+    function isPresetHex(hex){ return ACCENT_COLORS.some(function(c){return c[1]===hex;}); }
     function themeCustomValue(th,tok){
         if(tok==="accent") return th.accent;
+        if(tok==="rest") return th.rest;
         if(tok==="accent2") return th.accent2||rgbToHex(resolveColor("--accent-2"));
         if(th.base==="custom"&&th.custom[tok]) return th.custom[tok];
         return rgbToHex(resolveColor({bg:"--bg",surface:"--surface",text:"--text"}[tok]));
     }
-    function customSwatchHtml(th,tok,label,isSel){
-        const val=themeCustomValue(th,tok);
-        return '<span class="sw-wrap"><label class="swatch custom'+(isSel?' sel':'')+'" data-custom="'+tok+'" title="Свой: '+label+'" style="background:'+(isSel?val:'conic-gradient(var(--c6),var(--c4),var(--c2),var(--c3),var(--c5),var(--c6))')+'">'
-            +'<input type="color" value="'+val+'" data-theme-custom="'+tok+'" aria-label="Свой цвет: '+label+'"></label><span class="sw-cap">'+label+'</span></span>';
+    // «свой» цвет задан: для акцентов — если значение не из палитры, для основы — если есть собственное значение
+    function themeCustomIsSet(th,tok){
+        if(tok==="accent") return !isPresetHex(th.accent);
+        if(tok==="accent2") return !!th.accent2&&!isPresetHex(th.accent2);
+        if(tok==="rest") return !isPresetHex(th.rest);
+        return th.base==="custom"&&!!th.custom[tok];
+    }
+    // образец «свой цвет»: не задан — пунктирный кружок с «+»; задан — залит цветом, внизу справа значок-карандаш
+    function customSwatchHtml(th,tok,label){
+        const set=themeCustomIsSet(th,tok), val=themeCustomValue(th,tok);
+        return '<label class="swatch custom'+(set?' set':'')+((set&&tok!=="bg"&&tok!=="surface"&&tok!=="text")?' sel':'')+'" data-custom="'+tok+'" title="Свой цвет: '+label+'"'+(set?' style="background:'+val+'"':'')+'>'
+            +(set?'<span class="sw-edit">'+ICON_PENCIL+'</span>':ICON_PLUS)
+            +'<input type="color" value="'+val+'" data-theme-custom="'+tok+'" aria-label="Свой цвет: '+label+'"></label>';
+    }
+    function customRowHtml(th,tok,name,label){
+        return '<div class="cs-row"><span class="cs-tap">'+'<span class="cs-name">'+name+'</span>'+customSwatchHtml(th,tok,label)+'</span>'
+            +(themeCustomIsSet(th,tok)?'<button class="cs-reset" data-act="themeCustomReset" data-tok="'+tok+'">Сбросить</button>':'')+'</div>';
     }
     function themePreviewHtml(){
-        return '<div class="card" id="themePreview" style="margin-top:0"><div class="ex-head"><div style="min-width:0"><div class="ex-name" style="cursor:default">Пример упражнения (3х8-12)</div>'
+        return '<div class="card" id="themePreview" style="margin-top:0"><div class="strip theme-strip"><i class="s-work"></i><i class="s-work"></i><i class="s-work"></i><i class="s-rest"></i></div>'
+            +'<div class="ex-head" style="margin-top:0.75rem"><div style="min-width:0"><div class="ex-name" style="cursor:default">Пример упражнения (3х8-12)</div>'
             +'<span class="rec-btn" style="cursor:default">Реком.: 70×8</span>'
-            +'<div class="ex-last">Рабочая 23.09: 65×10, 65×10</div></div><span class="del-ex"><i class="box">'+ICON_TRASH+'</i></span></div>'
+            +'<div class="ex-last">Рабочая 23.09: 65×10, 65×10</div><div class="ex-last ex-rest">Отдых 16.09: 50×10</div></div><span class="del-ex"><i class="box">'+ICON_TRASH+'</i></span></div>'
             +'<div class="sets-wrap"><div class="set-grid set-labels"><span></span><span>кг</span><span>повт.</span><span></span></div>'
             +'<div class="set-grid set-row"><span class="idx num">1</span><span class="cell">'+wText(65)+'</span><span class="cell">'+rText(10)+'</span><span class="del-set">'+ICON_CLOSE+'</span></div>'
             +'<div class="set-grid set-next"><span class="idx num">2</span><div class="stepper"><span class="step">'+ICON_MINUS+'</span><span class="val">'+wText(70)+'</span><span class="step">'+ICON_PLUS+'</span></div>'
             +'<div class="stepper"><span class="step">'+ICON_MINUS+'</span><span class="val">'+rText(8)+'</span><span class="step">'+ICON_PLUS+'</span></div><span class="check">'+ICON_CHECK+'</span></div></div>'
             +'<div class="addset-extras" style="--n:2"><span class="btn-gray variant-btn"><span class="vtxt">Блок</span></span><span class="btn-gray">'+ICON_NOTE+'</span></div></div>';
     }
-    function themePageHtml(){
-        const th=normTheme(data.cfg.theme,data.cfg.accent), base=THEME_BASES.find(function(x){return x.id===th.base;});
-        let h='<button class="hist-back" data-act="themeClose">'+ICON_CHEVRON_LEFT+' Назад</button><div class="sec-label" style="margin-top:0.25rem">Тема</div>'+themePreviewHtml();
-        h+='<div class="sec-label">Основа</div><div class="card"><div class="sw-grid" id="swBase">'
-            +THEME_BASES.map(function(b){ return '<span class="sw-wrap"><button class="swatch'+(th.base===b.id?' sel':'')+'" data-act="themeBase" data-v="'+b.id+'" title="'+b.name+'" aria-label="'+b.name+'" style="background:'+swatchBase(b)+'"></button></span>'; }).join("")
-            +customSwatchHtml(th,"bg","Фон",th.base==="custom")+customSwatchHtml(th,"surface","Карточки",th.base==="custom")+customSwatchHtml(th,"text","Текст",th.base==="custom")
-            +'</div><div class="note" id="swBaseName">'+esc(base?base.name:"Свои цвета")+'</div></div>';
-        const isPreset=function(hex){ return ACCENT_COLORS.some(function(c){return c[1]===hex;}); };
-        h+='<div class="sec-label">Акцент</div><div class="card"><div class="sw-grid" id="swAccent">'
-            +ACCENT_COLORS.map(function(c){ return '<span class="sw-wrap"><button class="swatch'+(th.accent===c[1]?' sel':'')+'" data-act="themeAccent" data-v="'+c[1]+'" title="'+c[0]+'" aria-label="'+c[0]+'" style="background:'+c[1]+'"></button></span>'; }).join("")
-            +customSwatchHtml(th,"accent","Свой",!isPreset(th.accent))+'</div></div>';
-        h+='<div class="sec-label">Дополнительный цвет</div><div class="card"><div class="note" style="margin-top:0">Бейдж рекомендации, обводка следующего подхода, недели отдыха.</div><div class="sw-grid" id="swAccent2" style="margin-top:0.5rem">'
-            +'<span class="sw-wrap"><button class="swatch same'+(!th.accent2?' sel':'')+'" data-act="themeAccent2" data-v="" title="Как акцент" aria-label="Как акцент">=</button><span class="sw-cap">Как акцент</span></span>'
-            +ACCENT_COLORS.map(function(c){ return '<span class="sw-wrap"><button class="swatch'+(th.accent2===c[1]?' sel':'')+'" data-act="themeAccent2" data-v="'+c[1]+'" title="'+c[0]+'" aria-label="'+c[0]+'" style="background:'+c[1]+'"></button></span>'; }).join("")
-            +customSwatchHtml(th,"accent2","Свой",!!th.accent2&&!isPreset(th.accent2))+'</div></div>';
-        h+='<div class="al-warn" id="themeWarn" style="margin-top:0.625rem">'+esc(themeWarnText())+'</div>'
-            +'<button class="wide-btn danger" data-act="themeResetAsk">Сбросить к стандартной</button>';
+    function presetGridHtml(id,act,cur){
+        return '<div class="sw-grid" id="'+id+'">'+ACCENT_COLORS.map(function(c){
+            return '<button class="swatch'+(cur===c[1]?' sel':'')+'" data-act="'+act+'" data-v="'+c[1]+'" title="'+c[0]+'" aria-label="'+c[0]+'" style="background:'+c[1]+'"></button>'; }).join("")+'</div>';
+    }
+    function hexName(hex){ const c=ACCENT_COLORS.find(function(x){return x[1]===hex;}); return c?c[0]:"свой "+hex.toUpperCase(); }
+    function themeSectionsHtml(th){
+        const base=THEME_BASES.find(function(x){return x.id===th.base;});
+        let h='<div class="sec-label">Основа</div><div class="card"><div class="sw-grid" id="swBase">'
+            +THEME_BASES.map(function(b){ return '<button class="swatch'+(th.base===b.id?' sel':'')+'" data-act="themeBase" data-v="'+b.id+'" title="'+b.name+'" aria-label="'+b.name+'" style="background:'+swatchBase(b)+'">'+(b.id==="tg"?ICON_TELEGRAM:'')+'</button>'; }).join("")
+            +'</div><div class="note sw-picked" id="swBaseName">Выбрано: '+esc(base?base.name:"свои цвета")+'</div>'
+            +'<div class="sec-sub" style="margin:0.75rem 0 0.25rem;font-weight:700;color:var(--text)">Свои цвета основы</div>'
+            +customRowHtml(th,"bg","Фон","Фон")+customRowHtml(th,"surface","Карточки","Карточки")+customRowHtml(th,"text","Текст","Текст")+'</div>';
+        h+='<div class="sec-label">Акцент</div><div class="card">'+presetGridHtml("swAccent","themeAccent",th.accent)
+            +'<div class="note sw-picked">Выбрано: '+esc(hexName(th.accent))+'</div>'+customRowHtml(th,"accent","Свой цвет","Акцент")+'</div>';
+        h+='<div class="sec-label">Дополнительный цвет</div><div class="card"><div class="note" style="margin-top:0">Бейдж рекомендации и обводка следующего подхода.</div>'
+            +'<div style="margin-top:0.75rem">'+presetGridHtml("swAccent2","themeAccent2",th.accent2)+'</div>'
+            +'<button class="cs-row cs-same" data-act="themeAccent2" data-v=""><span class="cs-name">Как акцент</span>'+(!th.accent2?'<span class="cs-check">'+ICON_CHECK+'</span>':'')+'</button>'
+            +'<div class="note sw-picked">Выбрано: '+esc(th.accent2?hexName(th.accent2):"как акцент")+'</div>'+customRowHtml(th,"accent2","Свой цвет","Дополнительный цвет")+'</div>';
+        h+='<div class="sec-label">Неделя отдыха</div><div class="card"><div class="note" style="margin-top:0">Полоса цикла, недели отдыха в календаре и на графиках, строка «Отдых: …» в карточке.</div>'
+            +'<div style="margin-top:0.75rem">'+presetGridHtml("swRest","themeRest",th.rest)+'</div>'
+            +'<div class="note sw-picked">Выбрано: '+esc(hexName(th.rest))+'</div>'+customRowHtml(th,"rest","Свой цвет","Неделя отдыха")+'</div>';
         return h;
     }
-    // обновить отметки выбора, кружки «Свой» и предупреждение без перерисовки экрана (skipEl — инпут, который сейчас правит пользователь)
+    function themePageHtml(){
+        const th=normTheme(data.cfg.theme,data.cfg.accent);
+        return '<button class="hist-back" data-act="themeClose">'+ICON_CHEVRON_LEFT+' Назад</button><div class="sec-label" style="margin-top:0.25rem">Тема</div>'+themePreviewHtml()
+            +'<div id="themeSections">'+themeSectionsHtml(th)+'</div>'
+            +'<div class="al-warn" id="themeWarn" style="margin-top:0.625rem">'+esc(themeWarnText())+'</div>'
+            +'<button class="wide-btn danger" data-act="themeResetAsk">Сбросить к стандартной</button>';
+    }
+    // обновить экран без сброса прокрутки; skipEl — инпут, который сейчас правит пользователь (его не пересоздаём)
     function themeMarks(skipEl){
-        const th=normTheme(data.cfg.theme,data.cfg.accent), root=document.getElementById("swBase"); if(!root) return;
-        const isPreset=function(hex){ return ACCENT_COLORS.some(function(c){return c[1]===hex;}); };
-        const mark=function(sel,test){ document.querySelectorAll(sel).forEach(function(b){ b.classList.toggle("sel",test(b.dataset.v||"")); }); };
-        mark('#swBase [data-act="themeBase"]',function(v){return v===th.base;});
-        mark('#swAccent [data-act="themeAccent"]',function(v){return v===th.accent;});
-        mark('#swAccent2 [data-act="themeAccent2"]',function(v){return (v||null)===th.accent2;});
-        document.querySelectorAll(".swatch.custom").forEach(function(l){
-            const tok=l.dataset.custom, inp=l.querySelector("input");
-            const sel=tok==="accent"?!isPreset(th.accent):tok==="accent2"?(!!th.accent2&&!isPreset(th.accent2)):th.base==="custom";
-            l.classList.toggle("sel",sel);
-            const val=themeCustomValue(th,tok);
-            if(inp!==skipEl) inp.value=val;
-            l.style.background=sel?val:"conic-gradient(var(--c6),var(--c4),var(--c2),var(--c3),var(--c5),var(--c6))";
-        });
-        const base=THEME_BASES.find(function(x){return x.id===th.base;}); const nm=document.getElementById("swBaseName"); if(nm) nm.textContent=base?base.name:"Свои цвета";
+        const box=document.getElementById("themeSections"); if(!box) return;
+        const th=normTheme(data.cfg.theme,data.cfg.accent);
+        if(skipEl){
+            // инпут сейчас правит пользователь — не пересоздаём его, только обновляем вид образца
+            const l=skipEl.closest(".swatch.custom"); if(l){
+                const tok=l.dataset.custom, own=tok==="bg"||tok==="surface"||tok==="text";
+                l.style.background=skipEl.value; l.classList.add("set");
+                if(!own){ l.classList.add("sel"); const grid=l.closest(".card").querySelector(".sw-grid"); if(grid) grid.querySelectorAll(".swatch.sel").forEach(function(b){ b.classList.remove("sel"); }); }
+                if(!l.querySelector(".sw-edit")){ const ic=l.querySelector("svg.icon"); if(ic) ic.remove(); l.insertAdjacentHTML("afterbegin",'<span class="sw-edit">'+ICON_PENCIL+'</span>'); }
+            }
+        } else box.innerHTML=themeSectionsHtml(th);
         const w=document.getElementById("themeWarn"); if(w) w.textContent=themeWarnText();
     }
     function fontSectionHtml(){
@@ -4070,12 +4112,13 @@
         const act=e.target.dataset.enter;
         if(act) doAction(act,e.target.dataset);
     });
+    app.addEventListener("change",function(e){ if(e.target.dataset&&e.target.dataset.themeCustom) themeMarks(); });
     app.addEventListener("input",function(e){
         if(e.target.dataset.themeCustom){
             const tok=e.target.dataset.themeCustom, hex=e.target.value;
             themeUpdate(function(t){
-                if(tok==="accent") t.accent=hex; else if(tok==="accent2") t.accent2=hex;
-                else { if(t.base!=="custom"){ t.custom={bg:themeCustomValue(t,"bg"),surface:themeCustomValue(t,"surface"),text:themeCustomValue(t,"text")}; t.base="custom"; } t.custom[tok]=hex; }
+                if(tok==="accent") t.accent=hex; else if(tok==="accent2") t.accent2=hex; else if(tok==="rest") t.rest=hex;
+                else { if(t.base!=="custom"){ t.custom={from:t.base,bg:themeCustomValue(t,"bg"),surface:themeCustomValue(t,"surface"),text:themeCustomValue(t,"text")}; t.base="custom"; } t.custom[tok]=hex; }
             },false);
             themeMarks(e.target);
             return;
@@ -4662,10 +4705,16 @@
             case "themeBase": themeUpdate(function(t){ t.base=ds.v; },true); break;
             case "themeAccent": themeUpdate(function(t){ t.accent=ds.v; },true); break;
             case "themeAccent2": themeUpdate(function(t){ t.accent2=ds.v||null; },true); break;
+            case "themeRest": themeUpdate(function(t){ t.rest=ds.v; },true); break;
+            case "themeCustomReset": themeUpdate(function(t){
+                const tok=ds.tok;
+                if(tok==="accent") t.accent=DEFAULT_THEME.accent; else if(tok==="accent2") t.accent2=null; else if(tok==="rest") t.rest=DEFAULT_THEME.rest;
+                else { const from=t.custom&&t.custom.from; t.custom={}; t.base=THEME_BASES.some(function(b){return b.id===from;})?from:DEFAULT_THEME.base; }
+            },true); break;
             case "themeResetAsk":
                 showDialog({title:"Сбросить тему?",text:"Основа, акцент и свои цвета вернутся к стандартным.",buttons:[{label:"Сбросить",primary:true},{label:"Отмена"}]}).then(function(i){
                     if(i!==0) return;
-                    themeUpdate(function(t){ t.base=DEFAULT_THEME.base; t.accent=DEFAULT_THEME.accent; t.accent2=null; t.custom={}; },true);
+                    themeUpdate(function(t){ t.base=DEFAULT_THEME.base; t.accent=DEFAULT_THEME.accent; t.accent2=null; t.rest=DEFAULT_THEME.rest; t.custom={}; },true);
                 });
                 break;
             case "weekTypeToggle": ui.weekTypeOpen=!ui.weekTypeOpen; render(); break;

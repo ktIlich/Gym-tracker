@@ -38,7 +38,7 @@ async def main():
             pat = r"#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)"
             check("3.1: в стилях нет цветов вне токенов (поиск «#» и «rgb(» вне :root)", not re.findall(pat, css_rest), re.findall(pat, css_rest)[:5])
             check("3.1: в JS нет цветов вне блока данных темы (THEME-DATA)", not re.findall(pat, js_rest), re.findall(pat, js_rest)[:5])
-            check("3.1: старые токены (--card, --mut, --dim, --btn, --link, --red, --green) не используются", not re.findall(r"var\(--(card2?|mut|dim|btn(-text)?|link|red|green|rest-bg)\)", src))
+            check("3.1: старые токены (--card, --mut, --dim, --btn, --link, --red, --green) не используются", not re.findall(r"var\(--(card2?|mut|dim|btn(-text)?|link|red|green)\)", src))
 
             seed(dump)
             page, errs = await open_tg(browser)
@@ -52,18 +52,18 @@ async def main():
             # ---- 3.5 миграция
             mig = await page.evaluate("""[normTheme('tg','#2481cc'),normTheme('dark','#34d399'),normTheme('light',undefined),normTheme({base:'graphite',accent:'#3B82F6',accent2:'#ff453a',custom:{}}),normTheme({base:'мусор',accent:'red'}),normTheme(undefined,undefined)]""")
             check("3.5: миграция cfg.theme-строки и cfg.accent: tg→tg, dark→oled, light→light, акцент сохраняется", mig[0]["base"] == "tg" and mig[0]["accent"] == "#2481cc" and mig[1]["base"] == "oled" and mig[1]["accent"] == "#34d399" and mig[2]["base"] == "light" and mig[2]["accent"] == "#ff9f0a", mig[:3])
-            check("3.5: объект темы проходит как есть (нормализуется регистр hex), мусор → tg/оранжевый", mig[3] == {"base": "graphite", "accent": "#3b82f6", "accent2": "#ff453a", "custom": {}} and mig[4]["base"] == "tg" and mig[4]["accent"] == "#ff9f0a" and mig[5]["base"] == "tg", mig[3:])
+            check("3.5: объект темы проходит как есть (нормализуется регистр hex), мусор → tg/оранжевый", mig[3] == {"base": "graphite", "accent": "#3b82f6", "accent2": "#ff453a", "rest": "#30d158", "custom": {}} and mig[4]["base"] == "tg" and mig[4]["accent"] == "#ff9f0a" and mig[5]["base"] == "tg", mig[3:])
             check("3.5: в реальных данных cfg.theme стал объектом, cfg.accent синхронизирован", await page.evaluate("typeof data.cfg.theme==='object' && data.cfg.theme.base==='tg' && data.cfg.accent===data.cfg.theme.accent"))
 
             # ---- 3.4 экран
             await page.click('button[data-tab="set"]'); await page.wait_for_timeout(200)
             check("3.4: в настройках строка «Цвета и акцент» ведёт на экран темы", await page.locator('[data-act="themeOpen"]').count() == 1)
             await page.click('[data-act="themeOpen"]'); await page.wait_for_timeout(200)
-            cnt = await page.evaluate("({base:document.querySelectorAll('#swBase [data-act=themeBase]').length, baseCustom:document.querySelectorAll('#swBase .swatch.custom').length, acc:document.querySelectorAll('#swAccent [data-act=themeAccent]').length, accCustom:document.querySelectorAll('#swAccent .swatch.custom').length, a2:document.querySelectorAll('#swAccent2 [data-act=themeAccent2]').length, a2Custom:document.querySelectorAll('#swAccent2 .swatch.custom').length, preview:!!document.getElementById('themePreview')})")
-            check("3.2: основа — 6 вариантов + свои (фон, карточки, текст); акцент — 12 + «Свой»; дополнительный — «Как акцент» + 12 + «Свой»", cnt == {"base": 6, "baseCustom": 3, "acc": 12, "accCustom": 1, "a2": 13, "a2Custom": 1, "preview": True}, cnt)
+            cnt = await page.evaluate("({base:document.querySelectorAll('#swBase [data-act=themeBase]').length, baseCustom:document.querySelectorAll('#themeSections .swatch.custom[data-custom=bg],#themeSections .swatch.custom[data-custom=surface],#themeSections .swatch.custom[data-custom=text]').length, acc:document.querySelectorAll('#swAccent [data-act=themeAccent]').length, accCustom:document.querySelectorAll('.swatch.custom[data-custom=accent]').length, a2:document.querySelectorAll('#swAccent2 [data-act=themeAccent2]').length, a2Custom:document.querySelectorAll('.swatch.custom[data-custom=accent2]').length, preview:!!document.getElementById('themePreview')})")
+            check("3.2: основа — 6 вариантов + «Свои цвета основы» (фон, карточки, текст); акцент — 12 + «Свой»; дополнительный — 12 + «Свой» (+ строка «Как акцент»)", cnt == {"base": 6, "baseCustom": 3, "acc": 12, "accCustom": 1, "a2": 12, "a2Custom": 1, "preview": True}, cnt)
             names = await page.evaluate("[...document.querySelectorAll('#swBase [data-act=themeBase]')].map(b=>b.title)")
             check("3.2: названия основ как в ТЗ", names == ["Как в Telegram", "Чёрная (OLED)", "Тёмно-серая", "Графит с синевой", "Светлая", "Тёплая светлая"], names)
-            check("3.2: в сетке акцентов оранжевый #ff9f0a выбран (обводка), круги ≥ 44px", await page.evaluate("(()=>{ const b=document.querySelector('#swAccent [data-v=\"#ff9f0a\"]'); return b.classList.contains('sel')&&getComputedStyle(b).boxShadow!=='none'&&b.getBoundingClientRect().width>=44; })()"))
+            check("3.2: в сетке акцентов оранжевый #ff9f0a выбран (обводка), круги ≥ 44px", await page.evaluate("(()=>{ const b=document.querySelector('#swAccent [data-v=\"#ff9f0a\"]'); return b.classList.contains('sel')&&getComputedStyle(b).outlineStyle==='solid'&&b.getBoundingClientRect().width>=44; })()"))
             prev = await page.evaluate("(()=>{ const c=document.getElementById('themePreview'); return {name:!!c.querySelector('.ex-name'), badge:!!c.querySelector('.rec-btn'), steppers:c.querySelectorAll('.stepper').length, check:!!c.querySelector('.check'), variant:!!c.querySelector('.variant-btn')}; })()")
             check("3.4: живое превью: карточка упражнения с заголовком, бейджем, строкой подхода со степперами и галочкой, кнопкой варианта", prev == {"name": True, "badge": True, "steppers": 2, "check": True, "variant": True}, prev)
 
@@ -72,7 +72,7 @@ async def main():
             bgs = await page.evaluate("getComputedStyle(document.getElementById('themePreview')).backgroundColor")
             await page.click('#swBase [data-v="oled"]'); await page.wait_for_timeout(300)
             r = await page.evaluate("({bg:getComputedStyle(document.body).backgroundColor, card:getComputedStyle(document.getElementById('themePreview')).backgroundColor, sel:document.querySelector('#swBase [data-v=oled]').classList.contains('sel'), name:document.getElementById('swBaseName').textContent, renders:window.__renders})")
-            check("3.2: «Чёрная (OLED)»: фон #000 и карточки #0d0d0f применяются сразу к превью и странице, отметка и название обновились, render() не вызывался", r["bg"] == "rgb(0, 0, 0)" and r["card"] == rgb("#0d0d0f") and r["sel"] and r["name"] == "Чёрная (OLED)" and r["renders"] == 0 and r["card"] != bgs, r)
+            check("3.2: «Чёрная (OLED)»: фон #000 и карточки #0d0d0f применяются сразу к превью и странице, отметка и название обновились, render() не вызывался", r["bg"] == "rgb(0, 0, 0)" and r["card"] == rgb("#0d0d0f") and r["sel"] and r["name"] == "Выбрано: Чёрная (OLED)" and r["renders"] == 0 and r["card"] != bgs, r)
             check("3.5: тема сохранена в cfg и в облаке (base oled)", await page.evaluate("data.cfg.theme.base") == "oled" and '"base":"oled"' in STORE["tst_cfg"])
             await page.click('#swAccent [data-v="#ffd60a"]'); await page.wait_for_timeout(200)
             a = await page.evaluate("({acc:getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), chk:getComputedStyle(document.querySelector('#themePreview .check')).backgroundColor, chkc:getComputedStyle(document.querySelector('#themePreview .check')).color})")
@@ -80,7 +80,7 @@ async def main():
             await page.click('#swAccent2 [data-v="#ff453a"]'); await page.wait_for_timeout(200)
             a2 = await page.evaluate("({badge:getComputedStyle(document.querySelector('#themePreview .rec-btn')).color, outline:getComputedStyle(document.querySelector('#themePreview .set-next'),'::before').borderTopColor, acc:getComputedStyle(document.querySelector('#themePreview .check')).backgroundColor})")
             check("3.1: дополнительный цвет (красный) красит бейдж рекомендации и обводку следующего подхода; акцент остаётся жёлтым", a2["badge"] == rgb("#ff453a") and a2["outline"] == rgb("#ff453a") and a2["acc"] == rgb("#ffd60a"), a2)
-            await page.click('#swAccent2 [data-act="themeAccent2"][data-v=""]'); await page.wait_for_timeout(150)
+            await page.click('[data-act="themeAccent2"][data-v=""]'); await page.wait_for_timeout(150)
             check("3.2: «Как акцент» возвращает дополнительный цвет к акценту", await page.evaluate("data.cfg.theme.accent2") is None and await page.evaluate("JSON.stringify(resolveColor('--accent-2'))===JSON.stringify(resolveColor('--accent'))"))
 
             # ---- 3.3 свои цвета и контраст
@@ -91,7 +91,7 @@ async def main():
             await page.evaluate("(()=>{ const i=document.querySelector('[data-theme-custom=bg]'); i.value='#202020'; i.dispatchEvent(new Event('input',{bubbles:true})); 0 })()"); await page.wait_for_timeout(200)
             await page.evaluate("(()=>{ const i=document.querySelector('[data-theme-custom=surface]'); i.value='#303030'; i.dispatchEvent(new Event('input',{bubbles:true})); const t=document.querySelector('[data-theme-custom=text]'); t.value='#383838'; t.dispatchEvent(new Event('input',{bubbles:true})); 0 })()"); await page.wait_for_timeout(700)
             w = await page.evaluate("({base:data.cfg.theme.base, custom:data.cfg.theme.custom, warn:document.getElementById('themeWarn').textContent, name:document.getElementById('swBaseName').textContent, bg:getComputedStyle(document.body).backgroundColor})")
-            check("3.3: свои фон/карточки/текст → base=custom, значения сохранены; контраст текста ниже 4.5:1 → «Текст может плохо читаться» (сохранить можно)", w["base"] == "custom" and w["custom"] == {"bg": "#202020", "surface": "#303030", "text": "#383838"} and w["warn"] == "Текст может плохо читаться" and w["bg"] == rgb("#202020"), w)
+            check("3.3: свои фон/карточки/текст → base=custom, значения сохранены; контраст текста ниже 4.5:1 → «Текст может плохо читаться» (сохранить можно)", w["base"] == "custom" and w["custom"] == {"from": "oled", "bg": "#202020", "surface": "#303030", "text": "#383838"} and w["warn"] == "Текст может плохо читаться" and w["bg"] == rgb("#202020"), w)
             await page.evaluate("(()=>{ const t=document.querySelector('[data-theme-custom=text]'); t.value='#f0f0f0'; t.dispatchEvent(new Event('input',{bubbles:true})); 0 })()"); await page.wait_for_timeout(200)
             check("3.3: хороший контраст — предупреждение исчезает", await page.evaluate("document.getElementById('themeWarn').textContent") == "")
             # reset
@@ -101,7 +101,7 @@ async def main():
             check("3.4: «Отмена» тему не трогает", await page.evaluate("data.cfg.theme.base") == "custom")
             await page.click('[data-act="themeResetAsk"]'); await page.click('#dlg [data-dlg="0"]'); await page.wait_for_timeout(700)
             rs = await page.evaluate("({t:data.cfg.theme, acc:getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), bgInline:document.documentElement.style.getPropertyValue('--bg')})")
-            check("3.4: после подтверждения — «Как в Telegram», акцент #ff9f0a, свои цвета очищены, inline-переопределения фона сняты", rs["t"] == {"base": "tg", "accent": "#ff9f0a", "accent2": None, "custom": {}} and rs["acc"] == "#ff9f0a" and rs["bgInline"] == "", rs)
+            check("3.4: после подтверждения — «Как в Telegram», акцент #ff9f0a, свои цвета очищены, inline-переопределения фона сняты", rs["t"] == {"base": "tg", "accent": "#ff9f0a", "accent2": None, "rest": "#30d158", "custom": {}} and rs["acc"] == "#ff9f0a" and rs["bgInline"] == "", rs)
             await page.evaluate("document.documentElement.style.setProperty('--tg-theme-bg-color','#123456'); 0")
             check("3.2: «Как в Telegram» берёт фон из themeParams (--tg-theme-bg-color)", await page.evaluate("getComputedStyle(document.body).backgroundColor") == "rgb(18, 52, 86)")
             await page.evaluate("document.documentElement.style.removeProperty('--tg-theme-bg-color'); 0")
