@@ -112,7 +112,7 @@ async def main():
             j = json.loads(r[0]["content"]) if r else {}
             check("1.2: в копии — актуальные данные после синхронизации (35 дней, 12 шаблонов), не пустой кэш", len(j.get("log", {})) == 35 and len(j.get("templates", [])) == 12, (len(j.get("log", {})), len(j.get("templates", []))))
             check("1.2: тост «Копия отправлена в чат», lastBackup обновлён и в облаке (cfg синхронизирован)",
-                  "Копия отправлена в чат" in await page.inner_text("#toastMsg") and await page.evaluate("Date.now()-new Date(data.cfg.lastBackup).getTime()<60000") and time.strftime("%Y-%m-%d") in STORE["tst_cfg"])
+                  "Копия отправлена в чат" in await page.inner_text("#toastMsg") and await page.evaluate("Date.now()-new Date(data.cfg.lastBackup).getTime()<60000") and time.strftime("%Y-%m-%d", time.gmtime()) in STORE["tst_cfg"])
             await page.reload(); await page.wait_for_timeout(2500)
             check("1.2: повторный запуск копию не шлёт", len(st["reqs"]) == 1, len(st["reqs"]))
             await page.evaluate("ui.autoBackupTried=false; maybeAutoBackup(); 0")
