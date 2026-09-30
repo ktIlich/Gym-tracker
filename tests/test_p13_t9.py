@@ -26,7 +26,7 @@ async def main():
 
             # ---------- браузер (без Telegram)
             d = json.loads(json.dumps(dump)); d["cfg"]["lastBackup"] = iso_ago(1); d["cfg"]["backupReminderDays"] = 14
-            page, errs = await new_page(browser, d, mock=False)
+            page, errs = await new_page(browser, d, mock=False, snooze=False)
             await page.set_viewport_size({"width": 390, "height": 844})
             await page.goto(BASE + "/test/index.html"); await page.wait_for_timeout(2500)
             check("9.2: в браузере IN_TG = false", await page.evaluate("IN_TG") is False)
@@ -71,7 +71,7 @@ async def main():
 
             # ---------- автокопия в браузере: просрочена → диалог
             d2 = json.loads(json.dumps(dump)); d2["cfg"]["lastBackup"] = iso_ago(30); d2["cfg"]["backupReminderDays"] = 14; d2["cfg"]["autoBackup"] = True
-            page, errs = await new_page(browser, d2, mock=False)
+            page, errs = await new_page(browser, d2, mock=False, snooze=False)
             await page.goto(BASE + "/test/index.html"); await page.wait_for_timeout(2800)
             dlg = await page.evaluate("(()=>{ const d=document.getElementById('dlg'); return d?{title:d.querySelector('.dlg-title').textContent, text:d.querySelector('.dlg-text').textContent, btns:[...d.querySelectorAll('[data-dlg]')].map(b=>b.textContent)}:null; })()")
             check("9.2: автокопия в браузере при просрочке — диалог «Пора сделать копию» с кнопками «Скачать JSON» и «Позже» (без фоновой отправки)", dlg and dlg["title"] == "Пора сделать копию" and dlg["btns"] == ["Скачать JSON", "Позже"] and "30 дней назад" in dlg["text"], dlg)
@@ -86,7 +86,7 @@ async def main():
             await page.context.close()
 
             d3 = json.loads(json.dumps(dump)); d3["cfg"]["lastBackup"] = iso_ago(30); d3["cfg"]["backupReminderDays"] = 14
-            page, errs = await new_page(browser, d3, mock=False)
+            page, errs = await new_page(browser, d3, mock=False, snooze=False)
             await page.goto(BASE + "/test/index.html"); await page.wait_for_timeout(2800)
             await page.click('#dlg [data-dlg="1"]'); await page.wait_for_timeout(300)
             sn = await page.evaluate("({left:(data.cfg.backupSnooze-Date.now())/3600000, dlg:!!document.getElementById('dlg')})")

@@ -124,12 +124,15 @@ async def worker_tests(browser):
 
 async def client_tests(browser, dump):
     have_xlsx = ensure_xlsx_lib()
+    import time as _t
+    cfg_b = dict(dump["cfg"]); cfg_b["backupSnooze"] = int(_t.time() * 1000) + 365 * 86400000   # диалог автокопии браузера (фаза 13/9) не мешает
+    cache_b = json.dumps(json.dumps({"cfg": cfg_b, "templates": dump["templates"], "log": dump["log"]}))
     cache = json.dumps(json.dumps({"cfg": dump["cfg"], "templates": dump["templates"], "log": dump["log"]}))
     async def make(endpoint, tg=True, delay=0.0, mode="ok"):
         ctx = await browser.new_context(viewport={"width": 390, "height": 900})
         if tg:
             await ctx.expose_binding("__cs", cs_handler); await ctx.expose_binding("__log", log_handler); await ctx.add_init_script(MOCK)
-        await ctx.add_init_script("if(!localStorage.getItem('tst_gt2:cache'))localStorage.setItem('tst_gt2:cache',%s);" % cache)
+        await ctx.add_init_script("if(!localStorage.getItem('tst_gt2:cache'))localStorage.setItem('tst_gt2:cache',%s);" % (cache if tg else cache_b))
         page = await ctx.new_page(); state = {"reqs": [], "mode": mode}
         await page.route("**/telegram.org/**", lambda r: r.abort())
         if have_xlsx: await page.route("**/cdnjs.cloudflare.com/**", lambda r: r.fulfill(path=XLSX_JS, content_type="application/javascript"))

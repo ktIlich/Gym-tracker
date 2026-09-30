@@ -1,5 +1,5 @@
 """Задача 4: восстановление из JSON (файл/текст, превью, merge/replace, prerestore) и экспорт JSON/XLSX/CSV. На реальном дампе ../current_data.json."""
-import asyncio, copy, csv, io, json, os, subprocess, sys, tempfile, time, urllib.request
+import time, asyncio, copy, csv, io, json, os, subprocess, sys, tempfile, time, urllib.request
 sys.path.insert(0, os.path.dirname(__file__))
 from test_step0 import STORE, MOCK, cs_handler, log_handler, check, RESULTS, REPO, BASE
 from playwright.async_api import async_playwright
@@ -15,11 +15,13 @@ def ensure_xlsx_lib():
     except Exception:
         return False
 
-async def new_page(browser, dump, mock=False, xlsx=True):
+async def new_page(browser, dump, mock=False, xlsx=True, snooze=True):
     ctx = await browser.new_context(viewport={"width": 390, "height": 900}, accept_downloads=True)
     if mock:
         await ctx.expose_binding("__cs", cs_handler); await ctx.expose_binding("__log", log_handler); await ctx.add_init_script(MOCK)
-    cache = {"cfg": dump["cfg"], "templates": dump["templates"], "log": dump["log"]}
+    cfg = dict(dump["cfg"])
+    if snooze: cfg["backupSnooze"] = int(time.time() * 1000) + 365 * 86400000   # автокопия-диалог браузера (фаза 13/9) не мешает тестам
+    cache = {"cfg": cfg, "templates": dump["templates"], "log": dump["log"]}
     await ctx.add_init_script("if(!localStorage.getItem('tst_gt2:cache'))localStorage.setItem('tst_gt2:cache',%s);" % json.dumps(json.dumps(cache)))
     page = await ctx.new_page(); errs = []
     page.on("pageerror", lambda e: errs.append(str(e)))
