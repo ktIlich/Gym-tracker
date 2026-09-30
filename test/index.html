@@ -54,6 +54,10 @@
         .strip-labels{display:flex; justify-content:space-between; font-size:10px; color:var(--dim); margin-top:4px}
 
         .env-badge{display:inline-block; background:var(--accent); color:var(--btn-text); font-weight:800; font-size:11px; letter-spacing:.08em; border-radius:6px; padding:2px 8px; line-height:1.3}
+        .alias-row{display:flex; align-items:center; gap:6px; margin-top:8px}
+        .alias-row input{flex:1; min-width:0; min-height:44px}
+        .alias-arrow{flex-shrink:0; color:var(--dim)}
+        .alias-del{flex-shrink:0; min-width:44px; min-height:44px; justify-content:center}
         .env-fixed{position:fixed; z-index:1000; pointer-events:none;
             top:calc(var(--tg-content-safe-area-inset-top, 0px) + var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + 4px);
             right:calc(var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px)) + 6px)}
@@ -346,6 +350,8 @@
         d.cfg.cycle=Object.assign(base.cfg.cycle, d.cfg.cycle||{});
         d.cfg.view=Object.assign({lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, d.cfg.view||{});
         if(!d.cfg.weekOverrides) d.cfg.weekOverrides={};
+        if(!d.cfg.aliases||typeof d.cfg.aliases!=="object") d.cfg.aliases=Object.assign({},DEFAULT_ALIASES);
+        if(!d.cfg.variantAliases||typeof d.cfg.variantAliases!=="object") d.cfg.variantAliases=Object.assign({},DEFAULT_VARIANT_ALIASES);
         if(d.cfg.compact){ d.cfg.view.lastWork=false; d.cfg.view.lastRest=false; delete d.cfg.compact; }
         d.templates=(d.templates||[]).map(normalizeTpl); d.log=d.log||{};
         return d;
@@ -373,6 +379,87 @@
         return t;
     }
     function fullEx(it){ return it.name+(it.plan?" ("+it.plan+")":""); }
+
+    // ============ модель упражнения в логе: { id, name, base, plan, variant, sets, note?, ss? } ============
+    // name сохраняется для совместимости и всегда собирается из полей
+    const DEFAULT_ALIASES={
+        "Голень стоя":"Голень стоя (икры)",
+        "Гиперэкстензия, акцент на разгибатели и поясница":"Гиперэкстензия, акцент разгибатели и поясница",
+        "Сгибания голени сидя или стоя":"Сгибания голени",
+        "Приседания в гаке лицом назад":"Приседания в гакк-машине · вариант «Спиной»",
+        "Приседания в гаке лицом к тренажёру":"Приседания в гакк-машине · вариант «Лицом»"
+    };
+    const DEFAULT_VARIANT_ALIASES={ "свободный вес":"Свободный" };
+    let migCtx=null;   // во время migrateAll алиасы берутся из мигрируемых данных, а не из глобальных
+    function aliasCfg(){ return (migCtx&&migCtx.cfg)||data.cfg||{}; }
+    function composeName(base,plan,variant){ return base+(plan?" ("+plan+")":"")+(variant?" · "+variant:""); }
+    // разбор старого name: 1) вариант — по последнему " · "; 2) план — последняя скобка вида (NхM[-K]) в конце
+    function parseExName(name){
+        let str=String(name==null?"":name).trim(), variant=null, plan=null;
+        const i=str.lastIndexOf(" · ");
+        if(i>=0){ variant=str.slice(i+3).trim()||null; str=str.slice(0,i).trim(); }
+        const m=str.match(/^(.*?)\s*\((\d+)\s*[хx×]\s*(\d+(?:\s*[-–—]\s*\d+)?)\)\s*$/i);
+        if(m){ str=m[1].trim(); plan=m[2]+"х"+m[3].replace(/\s+/g,"").replace(/[–—]/g,"-"); }
+        return {base:str, plan:plan, variant:variant};
+    }
+    function aliasLookup(map,key){
+        const k=String(key==null?"":key).trim().toLowerCase(); if(!k||!map) return null;
+        for(const a of Object.keys(map)) if(a.trim().toLowerCase()===k) return map[a];
+        return null;
+    }
+    function capFirst(v){ return v?v.charAt(0).toUpperCase()+v.slice(1):v; }
+    // цель алиаса: «База · вариант «X»» или «База · X» → {base, variant}
+    function parseAliasTarget(t){
+        t=String(t).trim();
+        const m=t.match(/^(.*?)\s*·\s*вариант\s*«(.+?)»\s*$/i);
+        if(m) return {base:m[1].trim(), variant:capFirst(m[2].trim())};
+        const i=t.lastIndexOf(" · ");
+        if(i>=0) return {base:t.slice(0,i).trim(), variant:t.slice(i+3).trim()||null};
+        return {base:t, variant:null};
+    }
+    function canonVariant(v){
+        v=v==null?"":String(v).trim(); if(!v) return null;
+        const t=aliasLookup(aliasCfg().variantAliases,v);
+        return t?(String(t).trim()||v):v;
+    }
+    // алиасы применяются к base и variant (регистр и пробелы при сравнении не важны); собственный variant записи не перетирается
+    function applyAliases(base,variant){
+        const t=aliasLookup(aliasCfg().aliases,base);
+        if(t){ const p=parseAliasTarget(t); base=p.base; if(p.variant&&!variant) variant=p.variant; }
+        return {base:String(base==null?"":base).trim(), variant:canonVariant(variant)};
+    }
+    // приводит запись к модели: заполняет base/plan/variant (из name, если base нет), применяет алиасы, пересобирает name
+    function ensureEx(ex){
+        if(!ex.base){ const p=parseExName(ex.name); ex.base=p.base; ex.plan=p.plan; ex.variant=p.variant; }
+        ex.plan=ex.plan||null;
+        const a=applyAliases(ex.base,ex.variant);
+        ex.base=a.base; ex.variant=a.variant;
+        ex.name=composeName(ex.base,ex.plan,ex.variant);
+        return ex;
+    }
+    function newEx(base,plan,variant,extra){
+        const ex={id:uid(), name:"", base:base, plan:plan||null, variant:variant||null, sets:[]};
+        if(extra) Object.assign(ex,extra);
+        return ensureEx(ex);
+    }
+    function exShell(src){ const q=ensureEx({name:src.name,base:src.base,plan:src.plan,variant:src.variant}); return newEx(q.base,q.plan,q.variant); }
+    function setExVariant(ex,v){ ensureEx(ex); ex.variant=canonVariant(v); ex.name=composeName(ex.base,ex.plan,ex.variant); }
+    // повторное применение алиасов ко всему логу (не через needs(): у мигрированных записей base уже есть)
+    function recomputeLog(pre){
+        const changed=[];
+        for(const k of Object.keys(data.log).sort()){
+            const d=data.log[k]; let ch=false;
+            for(const e of (d.exercises||[])){
+                const before=e.name+"|"+e.base+"|"+e.plan+"|"+e.variant;
+                if(pre) pre(e);
+                ensureEx(e);
+                if(before!==e.name+"|"+e.base+"|"+e.plan+"|"+e.variant) ch=true;
+            }
+            if(ch){ d.up=Date.now(); changed.push(k); }
+        }
+        for(const k of changed) persistDay(k);
+        return changed;
+    }
     function tplExCount(t){ return t.blocks.reduce(function(a,b){return a+b.items.length;},0); }
     // сколько раз семейство упражнения встречалось до текущей даты (для чередования вариантов)
     function countFamily(fam){
@@ -574,13 +661,22 @@
     // Состояние миграции определяется самими записями: cfg может быть новее отдельных дней (слияние, старый клиент).
     // Миграция: { id, needs(rec,kind)→bool, run(rec,kind)→rec }, kind = "day" | "tpl". run идемпотентна.
     // cfg.schema — только информационная метка, для решения о запуске миграций не используется.
-    const APP_SCHEMA=1;
-    const MIGRATIONS=[];
+    const APP_SCHEMA=2;   // 2 — модель упражнения base/plan/variant
+    const MIGRATIONS=[
+        // schema 2: у каждого упражнения дня появляются base/plan/variant, применяются алиасы, name пересобирается
+        { id:"log-fields",
+          needs:function(rec,kind){ return kind==="day" && (rec.exercises||[]).some(function(e){ return !e.base; }); },
+          run:function(rec){ for(const e of (rec.exercises||[])) if(!e.base) ensureEx(e); return rec; } }
+    ];
     const PREMIG_KEEP=3;
     function migNeeds(m,rec,kind){ try{ return !!m.needs(rec,kind); }catch(e){ return false; } }
     // Проходит по всем дням и шаблонам d, применяет миграции там, где needs()===true. Меняет d на месте.
     // Не трогает up. Возвращает {days:[ключи], tpls:[id], errors, snapshot}
     function migrateAll(d, list){
+        migCtx={cfg:d.cfg||{}};
+        try{ return migrateAllInner(d,list); }finally{ migCtx=null; }
+    }
+    function migrateAllInner(d, list){
         list=list||MIGRATIONS;
         const res={days:[], tpls:[], errors:0, snapshot:null};
         if(!list.length) return res;
@@ -1615,8 +1711,9 @@
                     if(!imported[dk]) imported[dk]={title:"",exercises:[]};
                     if(col.title>=0&&row[col.title]&&!imported[dk].title) imported[dk].title=String(row[col.title]).trim();
                     if(col.dayNote>=0&&row[col.dayNote]&&!imported[dk].note) imported[dk].note=String(row[col.dayNote]).trim();
-                    let ex=imported[dk].exercises.find(function(x){return x.name.toLowerCase()===exName.toLowerCase();});
-                    if(!ex){ ex={id:uid(),name:exName,sets:[]}; imported[dk].exercises.push(ex); }
+                    const pe=parseExName(exName), cand=newEx(pe.base,pe.plan,pe.variant);
+                    let ex=imported[dk].exercises.find(function(x){return x.name.toLowerCase()===cand.name.toLowerCase();});
+                    if(!ex){ ex=cand; imported[dk].exercises.push(ex); }
                     if(col.exNote>=0&&row[col.exNote]&&!ex.note) ex.note=String(row[col.exNote]).trim();
                     ex.sets.push({w:w,r:r}); nSets++;
                 }
@@ -1728,8 +1825,8 @@
         }
         const timerActive=timerEnd>Date.now();
         const timerLbl=timerActive?fmtTimer(timerEnd-Date.now()):ICON_TIMER;
-        const exBase=ex.name.split(' · ')[0];
-        const curVariant=ex.name.indexOf(' · ')>=0?ex.name.split(' · ').slice(1).join(' · '):'';
+        const exBase=ex.base?composeName(ex.base,ex.plan,null):ex.name.split(' · ')[0];
+        const curVariant=ex.base?(ex.variant||''):(ex.name.indexOf(' · ')>=0?ex.name.split(' · ').slice(1).join(' · '):'');
         h+='<div class="addset">'
             +'<input type="number" inputmode="decimal" placeholder="кг" min="0" id="w-'+ex.id+'">'
             +'<input type="number" inputmode="numeric" placeholder="повт." min="1" id="r-'+ex.id+'" data-enter="addSet" data-id="'+ex.id+'">'
@@ -2061,6 +2158,70 @@
         return h;
     }
 
+    function aliasRowsHtml(kind){
+        const map=kind==="var"?data.cfg.variantAliases:data.cfg.aliases;
+        const ph=kind==="var"?["Старый вариант","Каноническое значение"]:["Старое имя","Каноническое имя"];
+        let h="";
+        Object.keys(map).forEach(function(k,i){
+            h+='<div class="alias-row" data-kind="'+kind+'" data-i="'+i+'">'
+                +'<input value="'+esc(k)+'" placeholder="'+ph[0]+'" data-chg="aliasPair">'
+                +'<span class="alias-arrow">→</span>'
+                +'<input value="'+esc(map[k])+'" placeholder="'+ph[1]+'" data-chg="aliasPair">'
+                +'<button class="btn-gray alias-del" data-act="aliasDel" data-kind="'+kind+'" data-i="'+i+'" title="Удалить">'+ICON_TRASH+'</button></div>';
+        });
+        h+='<div class="alias-row alias-add">'
+            +'<input id="alias-old-'+kind+'" placeholder="'+ph[0]+'">'
+            +'<span class="alias-arrow">→</span>'
+            +'<input id="alias-new-'+kind+'" placeholder="'+ph[1]+'">'
+            +'<button class="btn-gray alias-del" data-act="aliasAdd" data-kind="'+kind+'" title="Добавить">'+ICON_PLUS+'</button></div>';
+        return h;
+    }
+    function aliasPageHtml(){
+        return '<div class="sec-label" style="margin-top:16px">Алиасы упражнений</div><div class="card">'
+            +'<div class="note" style="margin-top:0">Старое имя заменяется на каноническое в логе, при импорте и при поиске истории. Сравнение без учёта регистра. Изменение сразу пересчитывает лог.</div>'
+            +aliasRowsHtml("ex")+'</div>'
+            +'<div class="sec-label">Алиасы вариантов</div><div class="card">'+aliasRowsHtml("var")+'</div>'
+            +'<button class="wide-btn" data-act="aliasClose">Назад</button>';
+    }
+    // сохранить изменённые алиасы и повторно применить их к логу
+    function aliasCommit(msg,pre){
+        persistCfg();
+        const ch=recomputeLog(pre);
+        toast(ch.length?(msg+". Пересчитано дней: "+ch.length):msg);
+        render();
+    }
+    function aliasEntries(kind){ return Object.entries(kind==="var"?data.cfg.variantAliases:data.cfg.aliases); }
+    function aliasWrite(kind,entries){ const o={}; for(const e of entries) o[e[0]]=e[1]; if(kind==="var") data.cfg.variantAliases=o; else data.cfg.aliases=o; }
+    function aliasValidate(kind,entries,idx,oldv,newv){
+        if(!oldv||!newv){ toast("Заполните оба поля"); return false; }
+        if(oldv.toLowerCase()===newv.toLowerCase()){ toast("Старое и каноническое значения совпадают"); return false; }
+        const dup=entries.some(function(e,i){ return i!==idx && e[0].trim().toLowerCase()===oldv.toLowerCase(); });
+        if(dup){ toast("Такой алиас уже есть"); return false; }
+        return true;
+    }
+    function aliasRowChanged(target){
+        const row=target.closest(".alias-row"), kind=row.dataset.kind, idx=+row.dataset.i;
+        const inp=row.querySelectorAll("input"), oldv=inp[0].value.trim(), newv=inp[1].value.trim();
+        const entries=aliasEntries(kind);
+        if(!aliasValidate(kind,entries,idx,oldv,newv)){ render(); return; }
+        const prevTarget=entries[idx][1];
+        entries[idx]=[oldv,newv]; aliasWrite(kind,entries);
+        // если сменилось каноническое значение, записи со старым каноническим значением переезжают на новое
+        let pre=null;
+        if(prevTarget.trim().toLowerCase()!==newv.toLowerCase()){
+            if(kind==="var"){
+                pre=function(e){ if(e.variant&&e.variant.trim().toLowerCase()===prevTarget.trim().toLowerCase()) e.variant=newv; };
+            } else {
+                const po=parseAliasTarget(prevTarget), pn=parseAliasTarget(newv);
+                pre=function(e){
+                    if(!e.base||e.base.trim().toLowerCase()!==po.base.toLowerCase()) return;
+                    if(po.variant&&(e.variant||"").toLowerCase()!==po.variant.toLowerCase()) return;
+                    e.base=pn.base; if(po.variant) e.variant=pn.variant;
+                };
+            }
+        }
+        aliasCommit("Алиас изменён",pre);
+    }
     function setPage(){
         const c=data.cfg.cycle;
         let h='<div class="sec-label" style="margin-top:16px">Цикл</div><div class="card">'
@@ -2133,6 +2294,8 @@
         for(const a of ACCENT_PRESETS) h+='<button class="swatch'+(a===ac?' sel':'')+'" style="background:'+a+'" data-act="setAccent" data-accent="'+a+'"></button>';
         h+='</div></div>';
 
+        h+='<div class="sec-label">Алиасы</div><div class="card"><button class="wide-btn" style="margin-top:0" data-act="aliasOpen">'+ICON_LINK+' Алиасы упражнений и вариантов</button></div>';
+
         h+='<div class="sec-label">Данные</div><div class="card">'
             +(cs?'<button class="wide-btn" data-act="syncNow">'+ICON_SYNC+' Синхронизировать сейчас</button>':'')
             +'<button class="wide-btn" data-act="export">'+ICON_DOWNLOAD+' Скачать Excel</button>'
@@ -2201,7 +2364,8 @@
         else if(ui.tab==="prg") h+=progressPage();
         else if(ui.tab==="tpl") h+=tplPage();
         else if(ui.tab==="set"){
-            if(ui.importParsed) h+=importConfirmPage();
+            if(ui.aliasScreen) h+=aliasPageHtml();
+            else if(ui.importParsed) h+=importConfirmPage();
             else if(ui.importText) h+=importTextPage();
             else h+=setPage();
         } else h+=setPage();
@@ -2225,6 +2389,7 @@
         hap("light"); render();
     });
     app.addEventListener("change",function(e){
+        if(e.target.dataset.chg==="aliasPair"){ aliasRowChanged(e.target); return; }
         const setField=e.target.dataset.set;
         if(setField==="w"||setField==="r"){
             const d=getDay();
@@ -2395,13 +2560,13 @@
             for(const it of b.items){
                 if(!it.name) continue;
                 const fam=fullEx(it);
-                let nm=fam;
+                let vr=null;
                 if(it.vars&&it.vars.length){
                     const step=Math.max(1,it.alt||1);
-                    nm=fam+" · "+it.vars[Math.floor(countFamily(fam)/step)%it.vars.length];
+                    vr=it.vars[Math.floor(countFamily(fam)/step)%it.vars.length];
                 }
-                if(!day.exercises.some(function(x){return x.name.toLowerCase()===nm.toLowerCase();})){
-                    const ex={id:uid(),name:nm,sets:[]};
+                const ex=newEx(it.name,it.plan||null,vr);
+                if(!day.exercises.some(function(x){return x.name.toLowerCase()===ex.name.toLowerCase();})){
                     if(ssId) ex.ss=ssId;
                     day.exercises.push(ex);
                 }
@@ -2549,8 +2714,7 @@
             case "variantToggle": ui.variantOpen[ds.id]=!ui.variantOpen[ds.id]; render(); break;
             case "applyVariant":{
                 const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex) return;
-                const base=ds.base||ex.name.split(' · ')[0];
-                ex.name=ds.variant?base+' · '+ds.variant:base;
+                setExVariant(ex,ds.variant||null);
                 ui.variantOpen[ds.id]=false;
                 setDay(day); break;
             }
@@ -2558,14 +2722,14 @@
                 const inp=document.getElementById("nv-"+ds.id);
                 const v=(inp&&inp.value.trim())||''; if(!v) return;
                 const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex) return;
-                const base=ds.base||ex.name.split(' · ')[0];
-                ex.name=base+' · '+v;
+                setExVariant(ex,v);
+                const base=composeName(ex.base,ex.plan,null), cv=ex.variant||v;
                 const baseLow=base.toLowerCase();
                 for(const t of data.templates){
                     let found=false;
                     for(const b of t.blocks){
                         const it=b.items.find(function(i){return fullEx(i).toLowerCase()===baseLow;});
-                        if(it){ if(!it.vars) it.vars=[]; if(it.vars.indexOf(v)<0){ it.vars.push(v); if(!it.alt) it.alt=1; } persistTpl(t); found=true; break; }
+                        if(it){ if(!it.vars) it.vars=[]; if(it.vars.indexOf(cv)<0){ it.vars.push(cv); if(!it.alt) it.alt=1; } persistTpl(t); found=true; break; }
                     }
                     if(found) break;
                 }
@@ -2628,7 +2792,8 @@
                 for(const w of ui.importParsed){
                     if(data.log[w.date]&&w.conflicts==="skip") continue;
                     const exercises=w.exercises.map(function(e){
-                        return {id:e.id, name:e.plan?e.name+" ("+e.plan+")":e.name, sets:e.sets};
+                        const pe=parseExName(e.plan?e.name+" ("+e.plan+")":e.name);
+                        const x=newEx(pe.base,pe.plan,pe.variant,{id:e.id}); x.sets=e.sets; return x;
                     });
                     const entry={title:w.title,exercises:exercises,up:Date.now()};
                     const wi2=weekInfo(w.date); if(wi2) entry.weekType=wi2.isRest?"rest":"work";
@@ -2680,6 +2845,19 @@
                 break;
             }
             case "cloneProd": cloneFromProd(); break;
+            case "aliasOpen": ui.aliasScreen=true; render(); break;
+            case "aliasClose": ui.aliasScreen=false; render(); break;
+            case "aliasAdd":{
+                const kind=ds.kind, oldv=(document.getElementById("alias-old-"+kind).value||"").trim(), newv=(document.getElementById("alias-new-"+kind).value||"").trim();
+                const entries=aliasEntries(kind);
+                if(!aliasValidate(kind,entries,-1,oldv,newv)) return;
+                entries.push([oldv,newv]); aliasWrite(kind,entries);
+                aliasCommit("Алиас добавлен"); break;
+            }
+            case "aliasDel":{
+                const entries=aliasEntries(ds.kind); entries.splice(+ds.i,1); aliasWrite(ds.kind,entries);
+                persistCfg(); toast("Алиас удалён"); render(); break;
+            }
             case "clearTest": clearTestData(); break;
             case "diagOpen": if(ENV!=="test") break; ui.diag=true; ui.diagData=null; render(); collectDiag().then(render); break;
             case "diagClose": ui.diag=false; render(); break;
@@ -2746,7 +2924,7 @@
             case "addEx":{
                 const inp=document.getElementById("newEx");
                 const name=inp.value.trim(); if(!name) return;
-                day.exercises.push({id:uid(),name:name,sets:[]});
+                const pn=parseExName(name); day.exercises.push(newEx(pn.base,pn.plan,pn.variant));
                 hap("light"); setDay(day); break;
             }
             case "delEx":{
@@ -2827,7 +3005,7 @@
                 if(!day.title&&prev.title) day.title=prev.title;
                 for(const p of prev.exercises)
                     if(!day.exercises.some(function(x){return x.name.toLowerCase()===p.name.toLowerCase();}))
-                        day.exercises.push({id:uid(),name:p.name,sets:[]});
+                        day.exercises.push(exShell(p));
                 setDay(day); break;
             }
             case "tplStart": ui.savingTpl=true; render(); break;
@@ -2837,7 +3015,7 @@
                 if(!name||!day.exercises.length) return;
                 const old=data.templates.find(function(t){return t.name===name;});
                 if(old){ data.templates=data.templates.filter(function(t){return t.id!==old.id;}); unpersistTpl(old.id); }
-                const t=normalizeTpl({id:uid(),name:name,title:day.title||"",exercises:day.exercises.map(function(x){return x.name;})});
+                const t=normalizeTpl({id:uid(),name:name,title:day.title||"",exercises:day.exercises.map(function(x){return x.base?composeName(x.base,x.plan,null):x.name;})});
                 data.templates.push(t);
                 ui.savingTpl=false; persistTpl(t); render();
                 hap("ok"); toast("Шаблон «"+name+"» сохранён");

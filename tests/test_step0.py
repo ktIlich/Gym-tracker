@@ -22,7 +22,7 @@ def seed_prod():
                                              "blocks": [{"type": "single", "items": [{"name": "Жим", "plan": "3х8-12"}]}]})
     for d in ["2026-09-21", "2026-09-23", "2026-09-28"]:
         STORE["w_" + d] = json.dumps({"title": "T0", "up": 5, "weekType": "work",
-                                       "exercises": [{"id": "e" + d, "name": "Жим (3х8-12)", "sets": [{"w": 50, "r": 10}]}]})
+                                       "exercises": [{"id": "e" + d, "name": "Жим (3х8-12)", "base": "Жим", "plan": "3х8-12", "variant": None, "sets": [{"w": 50, "r": 10}]}]})
 
 MOCK = """
 (() => {
@@ -169,7 +169,7 @@ async def main():
             check("клон: tst_* == копия прода (ключи и значения)", copied == PROD0, (set(copied) ^ set(PROD0)))
             check("клон #2: итог в showAlert", logs_of("alert") == ["Скопировано: 3 тренировок, 3 шаблонов, 7 ключей"], LOG)
             check("клон: данные в приложении", await t.evaluate("Object.keys(data.log).length===3 && data.templates.length===3"))
-            check("клон: cfg.schema нормализован в 1", await t.evaluate("data.cfg.schema===1"))
+            check("клон: cfg.schema — информационная метка (=2)", await t.evaluate("data.cfg.schema===2"))
             check("клон: тест сохранил preclone в localStorage с префиксом", "tst_preclone" in await t.evaluate("Object.keys(localStorage)"))
             await t.screenshot(path=os.path.join(os.environ.get("TEMP","."),"gt_shot.png"))
 
@@ -245,7 +245,7 @@ async def main():
             check("миграции: восстановление из JSON (merge и replace) мигрирует записи, up сохранён", r == ["M", "M", 8], r)
             await t.evaluate("MIGRATIONS.length=0")
             check("миграции: без миграций migrateAll — no-op и без снапшота", await t.evaluate("(()=>{const r=migrateAll({cfg:{},templates:[],log:{a:{exercises:[{name:'x'}]}}}); return r.snapshot===null&&!r.days.length;})()"))
-            check("миграции: cfg.schema — информационная метка (=1 при APP_SCHEMA=1)", await t.evaluate("APP_SCHEMA===1 && normalizeData({cfg:{}}).cfg.schema===1"))
+            check("миграции: cfg.schema отсутствует → 1, APP_SCHEMA=2", await t.evaluate("APP_SCHEMA===2 && normalizeData({cfg:{}}).cfg.schema===1"))
 
             # ---------- диагностика и видимый результат клонирования ----------
             ctx2 = await browser.new_context(viewport={"width": 390, "height": 800})
@@ -439,4 +439,5 @@ async def main():
     print("\nИТОГО: %d/%d PASS" % (len(RESULTS) - len(bad), len(RESULTS)))
     sys.exit(1 if bad else 0)
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
