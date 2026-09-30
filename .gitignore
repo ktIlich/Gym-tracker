@@ -1,3 +1,6 @@
 /.idea/
 
 /claude/
+
+.dev.vars
+.wrangler/

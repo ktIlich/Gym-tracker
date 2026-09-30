@@ -1763,14 +1763,52 @@
     }
     function buildCsv(){ return "\ufeff"+buildExportRows().map(function(r){ return r.map(csvCell).join(";"); }).join("\r\n")+"\r\n"; }
     function exportFilename(ext){ return "gym-tracker-"+toKey(new Date())+"."+ext; }
-    function exportXlsx(){
-        if(typeof XLSX==="undefined"){ toast("Нет интернета — библиотека Excel не загрузилась"); return; }
+    const XLSX_MIME="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    function buildXlsxBytes(){
         const ws=XLSX.utils.aoa_to_sheet(buildExportRows());
         ws["!cols"]=[{wch:12},{wch:14},{wch:18},{wch:34},{wch:14},{wch:10},{wch:8},{wch:9},{wch:9},{wch:24}];
         const wb=XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb,ws,"Тренировки");
-        const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
-        downloadBlob(exportFilename("xlsx"),new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+        return XLSX.write(wb,{bookType:"xlsx",type:"array"});
+    }
+    function exportXlsx(){
+        if(typeof XLSX==="undefined"){ toast("Нет интернета — библиотека Excel не загрузилась"); return; }
+        downloadBlob(exportFilename("xlsx"),new Blob([buildXlsxBytes()],{type:XLSX_MIME}));
+    }
+
+    // ============ отправка копии в чат через Cloudflare Worker (worker/) ============
+    const BACKUP_ENDPOINT="";   // адрес Worker после деплоя; пусто — кнопки отправки скрыты, приложение работает без сервера
+    function bytesToBase64(u8){
+        let bin=""; const arr=new Uint8Array(u8);
+        for(let i=0;i<arr.length;i+=0x8000) bin+=String.fromCharCode.apply(null,arr.subarray(i,i+0x8000));
+        return btoa(bin);
+    }
+    function canSendBackup(){ return !!(BACKUP_ENDPOINT&&tg&&tg.initData); }
+    async function sendBackup(format){
+        if(!canSendBackup()||ui.sending) return;
+        let content, encoding="text";
+        if(format==="json") content=JSON.stringify(buildBackupDump());
+        else if(format==="csv") content=buildCsv();
+        else if(format==="xlsx"){
+            if(typeof XLSX==="undefined"){ toast("Нет интернета — библиотека Excel не загрузилась"); return; }
+            content=bytesToBase64(buildXlsxBytes()); encoding="base64";
+        } else return;
+        ui.sending=format; render();
+        const ctl=new AbortController(), timer=setTimeout(function(){ ctl.abort(); },30000);
+        try{
+            const res=await fetch(BACKUP_ENDPOINT,{ method:"POST", headers:{"Content-Type":"application/json"}, signal:ctl.signal,
+                body:JSON.stringify({ initData:tg.initData, env:ENV, format:format, filename:exportFilename(format), content:content, encoding:encoding }) });
+            let j=null; try{ j=await res.json(); }catch(parseErr){ j=null; }
+            if(res.ok&&j&&j.ok){
+                toast("Отправлено в чат");
+                if(format==="json"){ data.cfg.lastBackup=new Date().toISOString(); persistCfg(); }   // только JSON — полная копия
+            } else {
+                const why=(j&&(j.description||j.error))||("HTTP "+res.status);
+                toast(res.status===403&&j&&j.error==="expired"?"Сессия устарела — откройте приложение заново":"Не отправлено: "+why);
+            }
+        }catch(e){
+            toast(e&&e.name==="AbortError"?"Не отправлено: сервер не ответил за 30 с":"Не удалось отправить: "+errText(e));
+        }finally{ clearTimeout(timer); ui.sending=null; render(); }
     }
     function exportCsv(){ downloadBlob(exportFilename("csv"),new Blob([buildCsv()],{type:"text/csv;charset=utf-8"})); }
     function normDate(v){
@@ -2239,6 +2277,14 @@
                 +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="export">'+ICON_DOWNLOAD+' Excel</button>'
                 +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="exportCsv">'+ICON_DOWNLOAD+' CSV</button></div>'
                 +'<div class="note">JSON — полная копия (её можно восстановить). Excel и CSV — только лог, по строке на подход.</div>';
+        }
+        if(canSendBackup()){
+            const lbl={json:"JSON",xlsx:"Excel",csv:"CSV"};
+            h+='<div class="lbl" style="margin-top:8px">Отправить в чат</div><div style="display:flex;gap:8px;margin-top:4px">';
+            for(const f of ["json","xlsx","csv"])
+                h+='<button class="wide-btn" style="margin-top:0;flex:1" data-act="sendBackup" data-format="'+f+'"'+(ui.sending?' disabled':'')+'>'
+                    +(ui.sending===f?'Отправка…':ICON_UPLOAD+' '+lbl[f])+'</button>';
+            h+='</div>';
         }
         h+='<button class="wide-btn" data-act="backupCopy">'+ICON_CLIPBOARD+' Скопировать JSON</button>'
             +'<div class="row"><div class="lbl">Напоминать о копии через, дней (0 — выключено)</div>'
@@ -2989,6 +3035,7 @@
             }
             case "export": exportXlsx(); break;
             case "exportCsv": exportCsv(); break;
+            case "sendBackup": sendBackup(ds.format); break;
             case "import": document.getElementById("importFile").click(); break;
 
             case "backupDownload":{
