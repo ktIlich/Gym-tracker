@@ -207,6 +207,10 @@
         .et-row{display:flex; gap:6px; margin-top:6px; align-items:center}
         .et-row .plan{width:96px; text-align:center; flex-shrink:0}
         .et-row .plan::placeholder{text-align:center}
+        .chip-x{display:inline-flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; color:inherit; border-radius:99px}
+        .chip-x svg.icon{width:14px; height:14px}
+        .et-chip{min-height:44px; padding-top:0; padding-bottom:0; padding-right:0}
+        .et-vadd{flex-shrink:0; min-height:44px; white-space:nowrap}
         .et-vars{display:flex; gap:6px; margin-top:6px; align-items:center; font-size:13px; color:var(--mut)}
         .et-vars input.alt{width:52px; text-align:center; flex-shrink:0}
         .et-vars input.alt::placeholder{text-align:center}
@@ -372,7 +376,11 @@
             b.type=(b.type==="superset"&&b.items.length>1)?"superset":"single";
             for(const it of b.items){
                 it.name=(it.name||"").trim(); it.plan=(it.plan||"").trim();
-                if(it.vars){ it.vars=it.vars.map(function(v){return String(v).trim();}).filter(Boolean); if(!it.vars.length){ delete it.vars; delete it.alt; } }
+                if(it.vars){
+                    const seenV={};
+                    it.vars=it.vars.map(function(v){return String(v).trim();}).filter(function(v){ const k=v.toLowerCase(); if(!v||seenV[k]) return false; seenV[k]=1; return true; });
+                    if(!it.vars.length){ delete it.vars; delete it.alt; }
+                }
                 if(it.vars) it.alt=Math.max(1,parseInt(it.alt,10)||1);
             }
         }
@@ -474,14 +482,25 @@
         return changed;
     }
     function tplExCount(t){ return t.blocks.reduce(function(a,b){return a+b.items.length;},0); }
-    // сколько раз семейство упражнения встречалось до текущей даты (для чередования вариантов)
-    function countFamily(fam){
-        const low=fam.toLowerCase(); let n=0;
+    // сколько тренировок с этим упражнением (по base, без учёта плана и варианта) было строго до текущей даты
+    function countBase(base){
+        const bl=applyAliases(base,null).base.trim().toLowerCase(); let n=0;
         for(const k of Object.keys(data.log)){
             if(k>=curDate) continue;
-            if((data.log[k].exercises||[]).some(function(e){ const nm=e.name.toLowerCase(); return nm===low||nm.indexOf(low+" · ")===0; })) n++;
+            if((data.log[k].exercises||[]).some(function(e){ return exBaseOf(e).trim().toLowerCase()===bl; })) n++;
         }
         return n;
+    }
+    // Семантика alt в коде: период чередования «каждые alt тренировок» (в редакторе: «кажд. N тр.»), а не индекс.
+    // Индекс варианта = floor(count/alt) по кругу; читается всегда нормализованным: idx=((raw % n)+n)%n; при n=0 вариант = null.
+    function variantIndex(count,alt,n){
+        if(!(n>0)) return -1;
+        const step=Math.max(1,parseInt(alt,10)||1), raw=Math.floor((parseInt(count,10)||0)/step);
+        return ((raw%n)+n)%n;
+    }
+    function pickVariant(it,count){
+        const vars=it.vars||[], i=variantIndex(count,it.alt,vars.length);
+        return i<0?null:vars[i];
     }
     let data=emptyData();
     let curDate=toKey(new Date());
@@ -2059,9 +2078,22 @@
                     +(ss&&i<b.items.length-1?'<button class="mini-btn" data-act="etItemDown" data-k="'+k+'" data-i="'+i+'">'+ICON_CHEVRON_DOWN+'</button>':'')
                     +'<button class="mini-btn warn" data-act="etDelItem" data-k="'+k+'" data-i="'+i+'" style="margin-left:auto">'+ICON_CLOSE+'</button>'
                     +'</div>';
-                if(it._v===true||(it._v!==false&&!!it.vars))
-                    h+='<div class="et-vars"><input value="'+esc((it.vars||[]).join(", "))+'" placeholder="варианты через запятую" data-et="vars" data-k="'+k+'" data-i="'+i+'">'
-                        +'кажд.<input class="alt" type="number" inputmode="numeric" min="1" value="'+(it.alt||1)+'" data-et="alt" data-k="'+k+'" data-i="'+i+'">тр.</div>';
+                if(it._v===true||(it._v!==false&&!!it.vars)){
+                    const vars=it.vars||[], due=variantIndex(countBase(it.name),it.alt,vars.length);
+                    h+='<div class="et-vars2">';
+                    if(vars.length){
+                        h+='<div class="chips" style="margin-top:0">';
+                        vars.forEach(function(v,vi){
+                            h+='<span class="chip et-chip'+(vi===due?' on':'')+'" data-vi="'+vi+'">'+esc(v)
+                                +'<button class="chip-x" data-act="etVarDel" data-k="'+k+'" data-i="'+i+'" data-vi="'+vi+'" title="Удалить вариант">'+ICON_CLOSE+'</button></span>';
+                        });
+                        h+='</div><div class="note" style="margin-top:6px">Сейчас по очереди: '+esc(vars[due]||"")+'</div>';
+                    }
+                    h+='<div class="addex" style="margin-top:8px"><input id="etv-'+k+'-'+i+'" placeholder="Новый вариант…" data-enter="etVarAdd" data-k="'+k+'" data-i="'+i+'" style="flex:1;min-width:0">'
+                        +'<button class="btn-gray et-vadd" data-act="etVarAdd" data-k="'+k+'" data-i="'+i+'">'+ICON_PLUS+' вариант</button></div>'
+                        +(vars.length?'<div class="et-vars" style="margin-top:8px">чередовать каждые <input class="alt" type="number" inputmode="numeric" min="1" value="'+(it.alt||1)+'" data-et="alt" data-k="'+k+'" data-i="'+i+'"> тр.</div>':'')
+                        +'</div>';
+                }
                 h+='</div>';
             });
             h+='</div>';
@@ -2474,7 +2506,6 @@
             const it=ui.editTpl.blocks[+e.target.dataset.k].items[+e.target.dataset.i];
             if(et==="name") it.name=e.target.value.trim();
             else if(et==="plan") it.plan=e.target.value.trim();
-            else if(et==="vars"){ const v=e.target.value.split(",").map(function(s){return s.trim();}).filter(Boolean); if(v.length){it.vars=v; it.alt=it.alt||1;} else {delete it.vars; delete it.alt;} }
             else if(et==="alt") it.alt=Math.max(1,parseInt(e.target.value,10)||1);
             return;
         }
@@ -2614,11 +2645,7 @@
             for(const it of b.items){
                 if(!it.name) continue;
                 const fam=fullEx(it);
-                let vr=null;
-                if(it.vars&&it.vars.length){
-                    const step=Math.max(1,it.alt||1);
-                    vr=it.vars[Math.floor(countFamily(fam)/step)%it.vars.length];
-                }
+                const vr=pickVariant(it,countBase(it.name));
                 const ex=newEx(it.name,it.plan||null,vr);
                 if(!day.exercises.some(function(x){return x.name.toLowerCase()===ex.name.toLowerCase();})){
                     if(ssId) ex.ss=ssId;
@@ -2698,6 +2725,27 @@
                 const k=+ds.k, bl=ui.editTpl.blocks;
                 const singles=bl[k].items.map(function(it){return {type:"single",items:[it]};});
                 bl.splice.apply(bl,[k,1].concat(singles));
+                render(); break;
+            }
+            case "etVarAdd":{
+                const it=ui.editTpl.blocks[+ds.k].items[+ds.i];
+                const inp=document.getElementById("etv-"+ds.k+"-"+ds.i);
+                let v=((inp&&inp.value)||"").trim();
+                if(!v){ toast("Введите название варианта"); return; }
+                const al=aliasLookup(data.cfg.variantAliases,v); if(al) v=String(al).trim()||v;
+                const vars=it.vars||[];
+                if(vars.some(function(x){return x.trim().toLowerCase()===v.toLowerCase();})){ toast("Такой вариант уже есть"); return; }
+                it.vars=vars.concat([v]); it.alt=Math.max(1,parseInt(it.alt,10)||1); it._v=true;
+                render();
+                const again=document.getElementById("etv-"+ds.k+"-"+ds.i); if(again) again.focus();
+                break;
+            }
+            case "etVarDel":{
+                const it=ui.editTpl.blocks[+ds.k].items[+ds.i];
+                if(!it.vars) return;
+                it.vars.splice(+ds.vi,1);
+                if(!it.vars.length){ delete it.vars; delete it.alt; }
+                it._v=true;
                 render(); break;
             }
             case "etVarsToggle":{
