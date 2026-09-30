@@ -24,13 +24,24 @@
             --rest-bg: rgba(52,211,153,.10);
             --touch:44px;
             --accent:#ff9f0a; --accent-bg:rgba(255,159,10,.14);
+            /* safe-area и высота viewport: переменные Telegram, для старых клиентов — env()/100vh; JS обновляет их по событиям без render() */
+            --sa-top:var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px));
+            --sa-bottom:var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+            --sa-left:var(--tg-safe-area-inset-left, env(safe-area-inset-left, 0px));
+            --sa-right:var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px));
+            --csa-top:var(--tg-content-safe-area-inset-top, 0px);
+            --csa-bottom:var(--tg-content-safe-area-inset-bottom, 0px);
+            --stable-h:var(--tg-viewport-stable-height, 100vh);
         }
         *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
         html,body{margin:0; overflow-x:hidden; max-width:100%}
         body{background:var(--bg); color:var(--text);
             font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; font-size:15px;
-            padding-bottom:calc(64px + env(safe-area-inset-bottom))}
-        #app{max-width:480px; margin:0 auto; padding:0 14px 24px}
+            min-height:var(--stable-h);
+            padding-top:calc(var(--sa-top) + var(--csa-top));
+            padding-bottom:calc(64px + var(--sa-bottom) + var(--csa-bottom))}
+        body::before{content:""; position:fixed; top:0; left:0; right:0; height:calc(var(--sa-top) + var(--csa-top)); background:var(--bg); z-index:30; pointer-events:none}
+        #app{max-width:480px; margin:0 auto; padding:0 max(14px, var(--sa-left)) 24px max(14px, var(--sa-right))}
         button{font-family:inherit; font-size:inherit; border:none; background:none; color:inherit; cursor:pointer; padding:0}
         input{font-family:inherit; font-size:15px; color:var(--text); background:var(--card);
             border:1px solid var(--border); border-radius:12px; padding:9px 12px; outline:none; width:100%}
@@ -44,7 +55,7 @@
         .num{font-variant-numeric:tabular-nums}
         svg.icon{width:18px; height:18px; flex-shrink:0; vertical-align:-4px}
 
-        header{position:sticky; top:0; z-index:10; background:var(--bg);
+        header{position:sticky; top:calc(var(--sa-top) + var(--csa-top)); z-index:10; background:var(--bg);
             border-bottom:1px solid var(--border); margin:0 -14px; padding:10px 14px 6px}
         .strip{display:flex; gap:4px; height:8px; border-radius:99px; overflow:hidden; position:relative}
         .strip>i{flex:1}
@@ -59,8 +70,8 @@
         .alias-arrow{flex-shrink:0; color:var(--dim)}
         .alias-del{flex-shrink:0; min-width:44px; min-height:44px; justify-content:center}
         .env-fixed{position:fixed; z-index:1000; pointer-events:none;
-            top:calc(var(--tg-content-safe-area-inset-top, 0px) + var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + 4px);
-            right:calc(var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px)) + 6px)}
+            top:calc(var(--csa-top) + var(--sa-top) + 4px);
+            right:calc(var(--sa-right) + 6px)}
 
         .datenav{display:flex; align-items:center; justify-content:space-between; margin-top:12px}
         .datenav .nav{padding:6px 10px; color:var(--mut); font-size:24px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
@@ -102,21 +113,31 @@
             color:var(--red); background:rgba(248,113,113,.12); border-radius:12px}
         .del-ex:active .box{background:rgba(248,113,113,.28)}
 
-        .sets{margin-top:6px; display:flex; flex-direction:column; gap:6px}
-        .set{display:flex; align-items:center; gap:10px; min-height:var(--touch)}
-        .set .idx{width:18px; font-size:12px; color:var(--dim)}
-        .set .val{flex:1; font-weight:600; font-size:16px}
-        .set .unit{color:var(--dim); font-weight:400; font-size:14px}
-        .set .x{color:var(--dim); margin:0 6px; opacity:.6}
-        .del-set{width:44px; height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0}
-        .del-set .box{width:40px; height:40px; display:flex; align-items:center; justify-content:center;
-            color:var(--red); background:rgba(248,113,113,.12); border-radius:12px; font-size:16px}
+        /* подходы: единая сетка № | вес | повторы | действие */
+        .sets-wrap{margin-top:8px; max-width:480px; padding:0 6px}
+        .set-grid{display:grid; grid-template-columns:20px minmax(0,1fr) minmax(0,1fr) 44px; gap:6px; align-items:center}
+        .set-grid>*{min-width:0}
+        .set-labels{font-size:11px; color:var(--dim); text-align:center; margin-bottom:2px}
+        .set-row{margin-top:2px}
+        .set-row .idx{font-size:12px; color:var(--dim); text-align:center}
+        .set-row .cell{width:100%; min-height:44px; border-radius:10px; font-weight:600; font-size:16px; text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap}
+        .set-row .cell .u{color:var(--dim); font-weight:400; font-size:13px}
+        .set-next{position:relative; margin-top:10px}
+        .set-next::before{content:""; position:absolute; inset:-4px -6px; border:1.5px dashed var(--accent); border-radius:12px; pointer-events:none}
+        .set-next .idx{font-size:13px; font-weight:700; color:var(--accent); text-align:center}
+        .set-next .idx.muted{color:var(--dim); font-weight:400}
+        .stepper{display:flex; align-items:center; height:44px; background:var(--card2); border-radius:10px; min-width:0}
+        .stepper .step{flex:0 0 32px; width:32px; height:44px; display:flex; align-items:center; justify-content:center; color:var(--mut)}
+        .stepper .step:active{color:var(--text)}
+        .stepper .val{flex:1 1 0; min-width:0; height:44px; font-weight:700; font-size:15px; text-align:center; white-space:nowrap; overflow:hidden; font-variant-numeric:tabular-nums}
+        .stepper .val .u{color:var(--dim); font-weight:400; font-size:12px}
+        .num-edit{flex:1 1 0; min-width:0; width:100%; height:44px; text-align:center; background:var(--card2); border:1px solid var(--accent); border-radius:10px; padding:0 4px; font-size:16px; font-weight:700}
+        .check{width:44px; height:44px; border-radius:10px; background:var(--accent); color:var(--btn-text); display:flex; align-items:center; justify-content:center}
+        .check:active{opacity:.85}
+        .check svg.icon{width:22px; height:22px; vertical-align:0}
+        .del-set{width:44px; height:44px; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:var(--red)}
+        .del-set .box{width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:10px}
         .del-set:active .box{background:rgba(248,113,113,.28)}
-
-        .addset{display:flex; gap:6px; margin-top:10px}
-        .addset input{width:58px; padding:10px 6px; font-size:14px; background:var(--card2); border-color:transparent; text-align:center}
-        .addset input::placeholder{text-align:center}
-        .addset .btn-main{flex:1; justify-content:center}
         .addset-extras{display:flex; gap:6px; margin-top:10px; padding-top:10px; border-top:2px solid color-mix(in srgb, var(--btn) 45%, transparent)}
         .addset-extras>*{flex:1; justify-content:center}
         .btn-main{background:var(--btn); color:var(--btn-text); border-radius:12px; padding:0 10px; font-weight:700;
@@ -154,7 +175,7 @@
         .switch input:checked + i{background:var(--btn)}
         .switch input:checked + i::after{transform:translateX(20px); background:var(--btn-text); opacity:1}
 
-        .setup{min-height:80vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px}
+        .setup{min-height:calc(var(--stable-h) * .8); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px}
         .setup .card.full{max-width:none}
         .diag-pre{white-space:pre-wrap; word-break:break-all; font-size:12px; line-height:1.5; user-select:text}
         .res-err{color:var(--danger,#ff453a)}
@@ -217,14 +238,14 @@
 
         .tabbar{position:fixed; left:0; right:0; bottom:0; z-index:20;
             background:var(--bg); border-top:1px solid var(--border);
-            display:flex; padding:4px 6px calc(4px + env(safe-area-inset-bottom));}
+            display:flex; padding:4px calc(6px + var(--sa-right)) calc(4px + var(--sa-bottom) + var(--csa-bottom)) calc(6px + var(--sa-left));}
         .tabbar button{flex:1; display:flex; flex-direction:column; align-items:center; gap:1px;
             padding:6px 0; color:var(--dim); font-size:9px; border-radius:12px; min-height:52px}
         .tabbar button .ti{font-size:21px; line-height:1.2}
         .tabbar button .ti svg.icon{width:22px; height:22px; vertical-align:-6px}
         .tabbar button.on{color:var(--btn)}
 
-        .toast{position:fixed; left:50%; bottom:calc(76px + env(safe-area-inset-bottom)); transform:translateX(-50%);
+        .toast{position:fixed; left:50%; bottom:calc(76px + var(--sa-bottom) + var(--csa-bottom)); transform:translateX(-50%); max-width:calc(100vw - 24px);
             background:var(--card); border:1px solid var(--border); color:var(--text);
             padding:10px 16px; border-radius:99px; font-size:13px; opacity:0; transition:opacity .2s;
             pointer-events:none; white-space:nowrap; z-index:50; display:flex; gap:12px; align-items:center;
@@ -236,10 +257,6 @@
         .rec-badge{display:inline-flex; align-items:center; background:var(--accent-bg); color:var(--accent); font-weight:600; border-radius:6px; padding:2px 8px; font-size:13px; font-variant-numeric:tabular-nums; flex-shrink:0}
         .rec-btn{display:inline-flex; align-items:center; background:var(--accent-bg); color:var(--accent); font-weight:600; border-radius:10px; padding:4px 12px; font-size:13px; min-height:40px; font-variant-numeric:tabular-nums; margin-top:4px; cursor:pointer}
         .rec-btn:active{opacity:.8}
-        .set-inp{width:auto; text-align:center; padding:5px 6px; font-size:14px; font-weight:600; background:transparent; border-color:transparent; min-width:0; border-radius:8px}
-        .set-inp::placeholder{text-align:center}
-        .set-inp:focus{background:var(--card2); border-color:var(--btn)}
-        .set-inp::-webkit-inner-spin-button,.set-inp::-webkit-outer-spin-button{-webkit-appearance:none}
         .day-ss{border-left:3px solid var(--btn); padding-left:8px; margin-top:12px}
         .day-ss>.et-btitle{display:block; margin-bottom:2px}
         .day-ss>.card{margin-top:8px}
@@ -313,10 +330,24 @@
         return out.sort();
     }
     // ============ Telegram ============
+    // числовые значения из Telegram.WebApp → CSS-переменные на :root (без render())
+    function applyTgInsets(){
+        if(!tg) return;
+        const st=document.documentElement.style, px=function(v){ return (typeof v==="number"&&isFinite(v))?v+"px":null; };
+        for(const side of ["top","bottom","left","right"]){
+            if(tg.safeAreaInset&&px(tg.safeAreaInset[side])!==null) st.setProperty("--sa-"+side,px(tg.safeAreaInset[side]));
+            if(tg.contentSafeAreaInset&&px(tg.contentSafeAreaInset[side])!==null) st.setProperty("--csa-"+side,px(tg.contentSafeAreaInset[side]));
+        }
+        if(px(tg.viewportStableHeight)!==null) st.setProperty("--stable-h",px(tg.viewportStableHeight));
+    }
+    function subscribeTgInsets(){
+        if(!tg||!tg.onEvent) return;
+        for(const ev of ["viewportChanged","safeAreaChanged","contentSafeAreaChanged"]) tg.onEvent(ev,applyTgInsets);
+    }
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
     let cs = null;
     try{
-        if(tg){ tg.ready(); tg.expand();
+        if(tg){ tg.ready(); tg.expand(); applyTgInsets(); subscribeTgInsets();
             if(tg.isVersionAtLeast && tg.isVersionAtLeast("6.9") && tg.CloudStorage) cs = tg.CloudStorage;
             if(tg.isVersionAtLeast && tg.isVersionAtLeast("7.7") && tg.disableVerticalSwipes) tg.disableVerticalSwipes();
             document.documentElement.style.colorScheme = tg.colorScheme || "dark";
@@ -504,7 +535,7 @@
     }
     let data=emptyData();
     let curDate=toKey(new Date());
-    let ui={ drafts:{}, tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null, editTpl:null, histEx:null, importText:false, importParsed:null, dayNoteOpen:false, exNoteOpen:{}, variantOpen:{}, weekTypeOpen:false,
+    let ui={ nextSet:{}, drafts:{}, tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null, editTpl:null, histEx:null, importText:false, importParsed:null, dayNoteOpen:false, exNoteOpen:{}, variantOpen:{}, weekTypeOpen:false,
         backupRestoreOpen:false, backupParsed:null, backupParsedSrc:null, backupMode:"merge", backupConfirmStep:0,
         progMode:"ex", progPeriod:"3m" };
     let calMonth=curDate.slice(0,7);
@@ -2026,6 +2057,8 @@
     const ICON_GEAR=svgIcon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>');
     const ICON_PENCIL=svgIcon('<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>');
     const ICON_CLOUD=svgIcon('<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>');
+    const ICON_CHEVRON=svgIcon('<polyline points="6 9 12 15 18 9"/>');
+    const ICON_MINUS=svgIcon('<line x1="5" y1="12" x2="19" y2="12"/>');
     const ICON_CHEVRON_UP=svgIcon('<polyline points="18 15 12 9 6 15"/>');
     const ICON_CHEVRON_DOWN=svgIcon('<polyline points="6 9 12 15 18 9"/>');
     const ICON_CHEVRON_LEFT=svgIcon('<polyline points="15 18 9 12 15 6"/>');
@@ -2051,6 +2084,100 @@
         if(p.step===3) return ' ('+'другой вариант: '+esc(p.variant||'без варианта')+')';
         return p.variant?' · '+esc(p.variant):'';
     }
+    // ============ подходы: сетка, степперы, строка следующего подхода ============
+    function r2(v){ return Math.round(v*100)/100; }
+    function fmtNum(v){ return String(r2(v)); }   // без артефактов float (37.5, а не 37.50000001)
+    function nextSetDefaults(ex,isRest){
+        if(ex.sets.length){ const l=ex.sets[ex.sets.length-1]; return {w:l.w,r:l.r}; }
+        const rec=data.cfg.view.viewRec?calcRec(ex,isRest):null;
+        if(rec) return {w:rec.w,r:rec.r};
+        const pv=findPrev(exBaseOf(ex),exVariantOf(ex),isRest?"rest":"work",2);
+        if(pv&&pv.sets.length) return {w:pv.sets[0].w,r:pv.sets[0].r};
+        return {w:null,r:null};
+    }
+    function nextSetState(ex,isRest){ return ui.nextSet[ex.id]||(ui.nextSet[ex.id]=nextSetDefaults(ex,isRest)); }
+    function wText(v){ return v==null?'—':fmtNum(v)+' <span class="u">кг</span>'; }
+    function rText(v){ return v==null?'—':String(v); }
+    function setRowHtml(ex,i){
+        const s=ex.sets[i];
+        return '<div class="set-grid set-row" data-i="'+i+'"><span class="idx num">'+(i+1)+'</span>'
+            +'<button class="cell" data-act="editNum" data-kind="w" data-id="'+ex.id+'" data-i="'+i+'">'+wText(s.w)+'</button>'
+            +'<button class="cell" data-act="editNum" data-kind="r" data-id="'+ex.id+'" data-i="'+i+'">'+rText(s.r)+'</button>'
+            +'<button class="del-set" data-act="delSet" data-id="'+ex.id+'" data-i="'+i+'" title="Удалить подход"><i class="box">'+ICON_CLOSE+'</i></button></div>';
+    }
+    function nextRowHtml(ex,isRest){
+        const st=nextSetState(ex,isRest), planN=planSetsCount(ex.base?ex.plan:parseExName(ex.name).plan);
+        const muted=planN!=null&&ex.sets.length>=planN;
+        return '<div class="set-grid set-next" data-ex="'+ex.id+'"><span class="idx num'+(muted?' muted':'')+'">'+(ex.sets.length+1)+'</span>'
+            +'<div class="stepper"><button class="step" data-act="stepW" data-dir="-1" data-id="'+ex.id+'" title="Меньше">'+ICON_MINUS+'</button>'
+            +'<button class="val" data-act="editNum" data-kind="nw" data-id="'+ex.id+'">'+wText(st.w)+'</button>'
+            +'<button class="step" data-act="stepW" data-dir="1" data-id="'+ex.id+'" title="Больше">'+ICON_PLUS+'</button></div>'
+            +'<div class="stepper"><button class="step" data-act="stepR" data-dir="-1" data-id="'+ex.id+'" title="Меньше">'+ICON_MINUS+'</button>'
+            +'<button class="val" data-act="editNum" data-kind="nr" data-id="'+ex.id+'">'+rText(st.r)+'</button>'
+            +'<button class="step" data-act="stepR" data-dir="1" data-id="'+ex.id+'" title="Больше">'+ICON_PLUS+'</button></div>'
+            +'<button class="check" data-act="addSet" data-id="'+ex.id+'" title="Записать подход">'+ICON_CHECK+'</button></div>';
+    }
+    function setsGridHtml(ex,isRest){
+        let h='<div class="sets-wrap" data-ex="'+ex.id+'"><div class="set-grid set-labels"><span></span><span>кг</span><span>повт.</span><span></span></div>';
+        ex.sets.forEach(function(s,i){ h+=setRowHtml(ex,i); });
+        return h+nextRowHtml(ex,isRest)+'</div>';
+    }
+    function updateNextDom(exId){
+        const row=document.querySelector('.set-next[data-ex="'+exId+'"]'); if(!row) return;
+        const st=ui.nextSet[exId]; if(!st) return;
+        row.querySelector('[data-kind="nw"]').innerHTML=wText(st.w);
+        row.querySelector('[data-kind="nr"]').innerHTML=rText(st.r);
+    }
+    // после записи подхода — без полного render(): дорисовываем строку и сдвигаем номер следующего
+    function appendSetDom(ex,isRest){
+        const wrap=document.querySelector('.sets-wrap[data-ex="'+ex.id+'"]'), next=wrap&&wrap.querySelector('.set-next');
+        if(!next){ render(); return; }
+        next.insertAdjacentHTML("beforebegin",setRowHtml(ex,ex.sets.length-1));
+        const idx=next.querySelector(".idx"), planN=planSetsCount(ex.base?ex.plan:parseExName(ex.name).plan);
+        idx.textContent=String(ex.sets.length+1);
+        idx.classList.toggle("muted",planN!=null&&ex.sets.length>=planN);
+        updateNextDom(ex.id);
+    }
+    // тап по числу → input (decimal для веса, numeric для повторов); blur/Enter применяют, запятая — десятичный разделитель
+    function startEditNum(btn){
+        const kind=btn.dataset.kind, isW=(kind==="w"||kind==="nw");
+        const ex=getDay().exercises.find(function(x){return x.id===btn.dataset.id;}); if(!ex) return;
+        let cur=null;
+        if(kind==="nw"||kind==="nr"){ const st=ui.nextSet[ex.id]; cur=st?(isW?st.w:st.r):null; }
+        else { const sv=ex.sets[+btn.dataset.i]; cur=sv?(isW?sv.w:sv.r):null; }
+        const inp=document.createElement("input");
+        inp.className="num-edit num"; inp.type="text"; inp.setAttribute("inputmode",isW?"decimal":"numeric");
+        inp.value=cur==null?"":fmtNum(cur);
+        let cancelled=false;
+        const finish=function(){
+            const raw=inp.value.trim().replace(",",".");
+            if(!cancelled&&raw!==""){
+                const v=isW?parseFloat(raw):parseInt(raw,10);
+                if(!isNaN(v)&&isFinite(v)&&(isW?v>=0:v>=1)){
+                    const val=isW?r2(v):v;
+                    if(kind==="nw"||kind==="nr"){ const st=nextSetState(ex,false); if(isW) st.w=val; else st.r=val; }
+                    else { const day=getDay(), e2=day.exercises.find(function(x){return x.id===ex.id;}), sv=e2&&e2.sets[+btn.dataset.i];
+                        if(sv){ if(isW) sv.w=val; else sv.r=val; commitDay(curDate,day); } }
+                }
+            }
+            inp.replaceWith(btn);
+            if(kind==="nw"||kind==="nr") updateNextDom(ex.id);
+            else { const sv=getDay().exercises.find(function(x){return x.id===ex.id;}); const s2=sv&&sv.sets[+btn.dataset.i]; if(s2) btn.innerHTML=isW?wText(s2.w):rText(s2.r); }
+        };
+        inp.addEventListener("blur",finish);
+        inp.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); inp.blur(); } else if(e.key==="Escape"){ cancelled=true; inp.blur(); } });
+        btn.replaceWith(inp); inp.focus(); inp.select();
+    }
+    function stepNext(exId,isWeight,dir){
+        const ex=getDay().exercises.find(function(x){return x.id===exId;}); if(!ex) return;
+        const st=nextSetState(ex,false);
+        if(isWeight){
+            const base=st.w==null?0:st.w, step=weightStep(base,null);
+            st.w=Math.max(0,r2(base+dir*step));
+        } else st.r=Math.max(1,(st.r==null?0:st.r)+dir);
+        updateNextDom(exId); hap("light");
+    }
+    let actEl=null;   // элемент, по которому нажали (для editNum)
     function exCardHtml(ex, exIdx, isRest){
         const lw=findPrev(exBaseOf(ex),exVariantOf(ex),"work"), lr=findPrev(exBaseOf(ex),exVariantOf(ex),"rest");
         const showRest=lr&&(!lw||lr.date>lw.date);
@@ -2091,29 +2218,11 @@
         if(data.cfg.view.viewNotes&&ex.note&&!exNoteOpen) h+='<div class="ex-note-text">'+esc(ex.note)+'</div>';
         if(data.cfg.view.viewPastNotes&&!ex.note){ const pn=lastExNote(ex.name); if(pn) h+='<div class="ex-last">'+ICON_NOTE+' '+fmtShort(pn.date)+': '+esc(pn.note)+'</div>'; }
         h+='</div><button class="del-ex" data-act="delEx" data-id="'+ex.id+'" title="Удалить упражнение"><i class="box">'+ICON_TRASH+'</i></button></div>';
-        if(ex.sets.length){
-            h+='<div class="sets">';
-            ex.sets.forEach(function(s,i){
-                h+='<div class="set"><span class="idx num">'+(i+1)+'</span>'
-                    +'<span style="flex:1;display:flex;align-items:center;gap:4px;justify-content:flex-start">'
-                    +'<input type="number" class="set-inp num" inputmode="decimal" min="0" style="width:68px;flex:0 0 auto" value="'+s.w+'" data-set="w" data-id="'+ex.id+'" data-i="'+i+'">'
-                    +'<span class="unit">кг</span><span class="x">×</span>'
-                    +'<input type="number" class="set-inp num" inputmode="numeric" min="1" style="width:52px;flex-shrink:0" value="'+s.r+'" data-set="r" data-id="'+ex.id+'" data-i="'+i+'">'
-                    +'</span>'
-                    +'<button class="del-set" data-act="delSet" data-id="'+ex.id+'" data-i="'+i+'"><i class="box">'+ICON_CLOSE+'</i></button></div>';
-            });
-            h+='</div>';
-        }
+        h+=setsGridHtml(ex,!!isRest);
         const timerActive=timerEnd>Date.now();
         const timerLbl=timerActive?fmtTimer(timerEnd-Date.now()):ICON_TIMER;
         const exBase=ex.base?composeName(ex.base,ex.plan,null):ex.name.split(' · ')[0];
         const curVariant=ex.base?(ex.variant||''):(ex.name.indexOf(' · ')>=0?ex.name.split(' · ').slice(1).join(' · '):'');
-        h+='<div class="addset">'
-            +'<input type="number" inputmode="decimal" placeholder="кг" min="0" id="w-'+ex.id+'">'
-            +'<input type="number" inputmode="numeric" placeholder="повт." min="1" id="r-'+ex.id+'" data-enter="addSet" data-id="'+ex.id+'">'
-            +'<button class="btn-main" data-act="addSet" data-id="'+ex.id+'">'+ICON_PLUS+'</button>'
-            +(ex.sets.length?'<button class="btn-gray" data-act="repSet" data-id="'+ex.id+'" title="Повторить последний подход">'+ICON_COPY+'</button>':'')
-            +'</div>';
         h+='<div class="addset-extras">'
             +'<button class="timer-btn'+(timerActive?' active':'')+'" data-act="timerToggle">'+timerLbl+'</button>'
             +'<button class="btn-gray variant-btn'+(curVariant?' variant-active':'')+'" data-act="variantToggle" data-id="'+ex.id+'" title="Вариант">'+esc(curVariant||'вариант')+'</button>'
@@ -2988,7 +3097,7 @@
     });
     app.addEventListener("click",function(e){
         const btn=e.target.closest("[data-act]");
-        if(btn) doAction(btn.dataset.act,btn.dataset);
+        if(btn){ actEl=btn; doAction(btn.dataset.act,btn.dataset); }
     });
 
     function applyTemplate(t){
@@ -3170,7 +3279,7 @@
             case "variantToggle": ui.variantOpen[ds.id]=!ui.variantOpen[ds.id]; render(); break;
             case "applyVariant":{
                 const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex) return;
-                setExVariant(ex,ds.variant||null);
+                setExVariant(ex,ds.variant||null); if(!ex.sets.length) delete ui.nextSet[ex.id];
                 ui.variantOpen[ds.id]=false;
                 setDay(day); break;
             }
@@ -3178,7 +3287,7 @@
                 const inp=document.getElementById("nv-"+ds.id);
                 const v=(inp&&inp.value.trim())||''; if(!v) return;
                 const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex) return;
-                setExVariant(ex,v);
+                setExVariant(ex,v); if(!ex.sets.length) delete ui.nextSet[ex.id];
                 const base=composeName(ex.base,ex.plan,null), cv=ex.variant||v;
                 const baseLow=base.toLowerCase();
                 for(const t of data.templates){
@@ -3284,10 +3393,8 @@
             case "calGo": curDate=ds.date; ui.tab="day"; ui.confirmDel=false; hap("light"); render(); break;
 
             case "applyRec":{
-                const wEl=document.getElementById("w-"+ds.id);
-                const rEl=document.getElementById("r-"+ds.id);
-                if(wEl) wEl.value=ds.w;
-                if(rEl) rEl.value=ds.r;
+                ui.nextSet[ds.id]={w:parseFloat(ds.w),r:parseInt(ds.r,10)};   // подставляется в строку следующего подхода
+                updateNextDom(ds.id);
                 hap("light"); break;
             }
             case "export": exportXlsx(); break;
@@ -3433,22 +3540,20 @@
                 break;
 
             case "addSet":{
-                const wEl=document.getElementById("w-"+ds.id), rEl=document.getElementById("r-"+ds.id);
-                const w=parseFloat(String(wEl.value).replace(",","."));
-                const r=parseInt(rEl.value,10);
-                if(isNaN(w)||w<0||isNaN(r)||r<=0) return;
                 const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex) return;
-                ex.sets.push({w:w,r:r});
+                const st=nextSetState(ex,false);
+                if(st.w==null||st.r==null||!(st.r>=1)){ toast("Задайте вес и повторы"); return; }
+                ex.sets.push({w:st.w,r:st.r});
+                ui.nextSet[ex.id]={w:st.w,r:st.r};      // следующий подход — значениями только что записанного
+                commitDay(curDate,day);                  // сохранение без полного render()
+                hap("light");
                 if(data.cfg.autoTimer) startTimer();
-                hap("light"); setDay(day);
-                const w2=document.getElementById("w-"+ds.id); if(w2) w2.value=w;
+                appendSetDom(ex,false);
                 break;
             }
-            case "repSet":{
-                const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex||!ex.sets.length) return;
-                ex.sets.push(Object.assign({},ex.sets[ex.sets.length-1]));
-                hap("light"); setDay(day); break;
-            }
+            case "editNum": startEditNum(actEl); break;
+            case "stepW": stepNext(ds.id,true,parseInt(ds.dir,10)); break;
+            case "stepR": stepNext(ds.id,false,parseInt(ds.dir,10)); break;
             case "delSet":{
                 const ex=day.exercises.find(function(x){return x.id===ds.id;}); if(!ex) return;
                 const i=Number(ds.i);

@@ -182,7 +182,7 @@ async def main():
             await page3.wait_for_timeout(300)
             check("7.3: шаблон/упражнения без подходов — записи в data.log и в облаке нет, упражнения показаны (черновик)",
                   await page3.evaluate("!data.log['2026-10-15'] && getDay().exercises.length>0 && !!ui.drafts['2026-10-15']") and not any(k == "tst_w_2026-10-15" for _, k in WRITES) and await page3.locator(".ex-name").count() > 0)
-            await page3.evaluate("(()=>{ const id=getDay().exercises[0].id; document.getElementById('w-'+id).value='50'; document.getElementById('r-'+id).value='10'; window.__exid=id; 0 })()")
+            await page3.evaluate("(()=>{ const id=getDay().exercises[0].id; ui.nextSet[id]={w:50,r:10}; updateNextDom(id); window.__exid=id; 0 })()")
             await page3.click('[data-act="addSet"]'); await page3.wait_for_timeout(400)
             rec = await page3.evaluate("data.log['2026-10-15']")
             check("7.3: первый введённый подход создаёт запись (up, weekType) и пишет её в облако", rec and rec["exercises"][0]["sets"] == [{"w": 50, "r": 10}] and rec.get("up") and rec.get("weekType") and "tst_w_2026-10-15" in STORE, rec)
