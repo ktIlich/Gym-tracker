@@ -94,7 +94,7 @@ async def main():
             seed(dump)
             c, ce = await open_tg(browser, BB)
             await c.goto(BASE + "/test/index.html"); await c.wait_for_timeout(2500)
-            await c.evaluate("curDate='2026-10-07'; data.cfg.autoTimer=false; data.cfg.restTimerSec=1; ui.tab='day'; delete data.log[curDate]; delete ui.drafts[curDate]; applyTemplate(data.templates.find(x=>x.id==='fb6c7mc')); 0")
+            await c.evaluate("curDate='2026-10-07'; data.cfg.timerMode='manual'; data.cfg.restTimerSec=1; ui.tab='day'; delete data.log[curDate]; delete ui.drafts[curDate]; applyTemplate(data.templates.find(x=>x.id==='fb6c7mc')); 0")
             body = await c.inner_text("#app")
             check("сверка «Выбор тренировки»: блок «Начать по шаблону» и поле названия тренировки есть, кнопки с названием вверху нет",
                   "НАЧАТЬ ПО ШАБЛОНУ" in body.upper() and await c.locator('[data-chg="title"]').count() == 1 and await c.locator('[data-act="tplApply"]').count() >= 3 and await c.locator("button.dtitle-btn").inner_text() != "" and await c.locator('[data-act="openCal"]').count() == 1)

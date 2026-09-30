@@ -73,7 +73,7 @@ async def main():
             hp = "window.__hap=[]; Telegram.WebApp.HapticFeedback.impactOccurred=k=>window.__hap.push(k); 0"
             dp, de = await open_tg(browser)
             await dp.goto(BASE + "/test/index.html"); await dp.wait_for_timeout(2500)
-            await dp.evaluate("curDate='2026-09-30'; ui.tab='day'; data.cfg.autoTimer=true; delete data.log[curDate]; delete ui.drafts[curDate]; applyTemplate(data.templates.find(x=>x.id==='fb6c7mc')); 0")
+            await dp.evaluate("curDate='2026-09-30'; ui.tab='day'; data.cfg.timerMode='auto'; delete data.log[curDate]; delete ui.drafts[curDate]; applyTemplate(data.templates.find(x=>x.id==='fb6c7mc')); 0")
             await dp.evaluate(hp)
             card = lambda name: dp.locator(".card").filter(has=dp.locator('.ex-name', has_text=name))
             c = card("Сгибания с гантелями")
@@ -165,7 +165,7 @@ async def main():
             seed(dump)
             wp, we = await open_tg(browser)
             await wp.goto(BASE + "/test/index.html"); await wp.wait_for_timeout(2500)
-            await wp.evaluate("curDate='2026-09-30'; data.cfg.autoTimer=false; delete data.log[curDate]; delete ui.drafts[curDate]; applyTemplate(data.templates.find(x=>x.id==='fb6c7mc')); const d=getDay(); d.exercises[0].sets.push({w:137.5,r:12},{w:70,r:8}); commitDay(curDate,d); 0")
+            await wp.evaluate("curDate='2026-09-30'; data.cfg.timerMode='manual'; delete data.log[curDate]; delete ui.drafts[curDate]; applyTemplate(data.templates.find(x=>x.id==='fb6c7mc')); const d=getDay(); d.exercises[0].sets.push({w:137.5,r:12},{w:70,r:8}); commitDay(curDate,d); 0")
             views = {"день": "ui.tab='day'; ui.histEx=null; ui.hygiene=null; ui.aliasScreen=false; render()", "прогресс": "ui.tab='prg'; ui.progMode='ex'; progEx='Молотки, свободный вес или блок'; render()",
                      "сводка": "ui.tab='prg'; ui.progMode='summary'; render()", "календарь": "ui.tab='cal'; render()", "шаблоны": "ui.tab='tpl'; ui.editTpl=null; render()",
                      "редактор шаблона": "ui.tab='tpl'; ui.editTpl=JSON.parse(JSON.stringify(data.templates.find(x=>x.id==='fb6c7mc'))); render()",
