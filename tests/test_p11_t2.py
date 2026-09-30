@@ -40,17 +40,17 @@ async def main():
             txt = await page.inner_text("#app")
             check("2.2: пояснение вверху — оба абзаца из ТЗ (всегда видно, не сворачивается)",
                   "Алиасы объединяют разные названия одного упражнения или варианта." in txt and "Без алиаса это два разных упражнения: история, графики и рекомендации разрываются." in txt
-                  and "Слева — как записано в истории, справа — как должно называться (как в шаблоне). После сохранения старые записи пересчитаются, сами тренировки не меняются." in txt
+                  and "Сверху — название, как оно записано в истории. Снизу — как оно должно называться (как в шаблоне). После сохранения старые записи пересчитаются, сами тренировки не меняются." in txt
                   and await page.locator(".al-explain [data-act]").count() == 0)
             muted = await page.evaluate("getComputedStyle(document.querySelector('.al-explain p')).color===getComputedStyle(document.documentElement).getPropertyValue('--mut').trim()||true")
             heads = await page.evaluate("[...document.querySelectorAll('#app .sec-label')].map(e=>e.textContent.replace(/\\s+/g,' ').trim())")
             check("2.2: две группы «Упражнения · 5» и «Варианты · 1» с заголовком и счётчиком", "Упражнения · 5" in heads and "Варианты · 1" in heads, heads)
             first = await page.evaluate("(()=>{ const c=document.querySelector('.al-card'); const r=c.getBoundingClientRect(); const e=document.querySelector('.al-explain').getBoundingClientRect(); return {bottom:r.bottom, h:innerHeight, ex:e.top>=0&&e.bottom<=innerHeight, nav:document.getElementById('tabbar').getBoundingClientRect().top}; })()")
             check("2.6: на первом экране iPhone 13 (390×844) видны пояснение и первая пара (над нижней навигацией)", first["ex"] and first["bottom"] <= first["nav"], first)
-            card = await page.evaluate("(()=>{ const c=[...document.querySelectorAll('.al-card')].find(x=>x.querySelector('.al-old').textContent==='Голень стоя'); return c&&{t:c.textContent.replace(/\\s+/g,' ').trim(), w:getComputedStyle(c.querySelector('.al-txt')).overflowWrap}; })()")
+            card = await page.evaluate("(()=>{ const c=[...document.querySelectorAll('.al-card')].find(x=>x.querySelector('.al-old').textContent==='Голень стоя'); return c&&{t:c.innerText.replace(/\\s+/g,' ').trim(), w:getComputedStyle(c.querySelector('.al-txt')).overflowWrap}; })()")
             n_gol = stats(dump, "Голень стоя (икры)")  # после миграции — записи с каноническим названием
             entries_gol = sum(1 for d in dump["log"].values() for e in d["exercises"] if split_name(e["name"])[0].lower() in ("голень стоя", "голень стоя (икры)"))
-            check("2.2: пара: «старое → каноническое» и «Затрагивает N записей» (N = %d)" % entries_gol, card and "Голень стоя → Голень стоя (икры)" in card["t"] and ("Затрагивает %d записей" % entries_gol) in card["t"], card)
+            check("2.2: пара: «Было в истории / Стало» и «Затрагивает N тренировок» (N = %d)" % entries_gol, card and "Было в истории Голень стоя" in card["t"] and "Стало Голень стоя (икры)" in card["t"] and ("Затрагивает %d тренировок" % entries_gol) in card["t"], card)
             check("2.2: длинные названия переносятся (overflow-wrap), зона удаления ≥ 44px", card["w"] == "anywhere" and await page.evaluate("[...document.querySelectorAll('.al-del')].every(b=>b.getBoundingClientRect().height>=43.5&&b.getBoundingClientRect().width>=43.5)"))
             check("2.2: BackButton Telegram показан на экране алиасов и закрывает его", await page.evaluate("window.__bb") is True)
             await page.evaluate("window.__bbcb()"); await page.wait_for_timeout(200)
@@ -61,8 +61,8 @@ async def main():
 
             # ---- форма
             await page.click('[data-act="aliasNew"]'); await page.wait_for_timeout(200)
-            check("2.3: форма: переключатель «Упражнение / Вариант», поля «Как записано в истории» / «Как должно называться», «Сохранить» залита акцентом",
-                  await page.locator(".seg button").count() == 2 and "Как записано в истории" in await page.inner_text("#app") and "Как должно называться" in await page.inner_text("#app")
+            check("2.3: форма: переключатель «Упражнение / Вариант», поля «Было в истории» / «Стало — как в шаблоне», «Сохранить» залита акцентом",
+                  await page.locator(".seg button").count() == 2 and "Было в истории" in await page.inner_text("#app") and "Стало — как в шаблоне" in await page.inner_text("#app")
                   and await page.evaluate("getComputedStyle(document.getElementById('alSave')).backgroundColor==='rgb(255, 159, 10)'") is True)
             check("2.3: «Сохранить» недоступна при пустых полях; BackButton закрывает форму", await page.locator("#alSave").is_disabled())
             lopts = await page.evaluate("[...document.querySelectorAll('#alias-left-list option')].map(o=>o.value)")
@@ -90,11 +90,11 @@ async def main():
 
             # ---- сценарий из приёмки: «Голень стоя (3х10-20)» → сохраняется как «Голень стоя»
             await page.click('[data-act="aliasFormCancel"]'); await page.wait_for_timeout(100)
-            await page.locator('.al-card', has_text="Голень стоя →").locator('[data-act="aliasDelAsk"]').click(); await page.wait_for_timeout(200)
+            await page.locator('.al-card', has=page.get_by_text("Голень стоя", exact=True)).locator('[data-act="aliasDelAsk"]').click(); await page.wait_for_timeout(200)
             check("2.2: удаление — с подтверждением (диалог «Удалить алиас?»)", "Удалить алиас?" in await page.inner_text("#dlg"))
             await page.click('#dlg [data-dlg="1"]'); await page.wait_for_timeout(150)
             check("2.2: «Отмена» не удаляет", "Голень стоя" in await page.evaluate("Object.keys(data.cfg.aliases)"))
-            await page.locator('.al-card', has_text="Голень стоя →").locator('[data-act="aliasDelAsk"]').click(); await page.click('#dlg [data-dlg="0"]'); await page.wait_for_timeout(600)
+            await page.locator('.al-card', has=page.get_by_text("Голень стоя", exact=True)).locator('[data-act="aliasDelAsk"]').click(); await page.click('#dlg [data-dlg="0"]'); await page.wait_for_timeout(600)
             check("2.2: после подтверждения алиас удалён, пересчёт выполнен (тост), cfg в облаке обновлён", "Голень стоя" not in await page.evaluate("Object.keys(data.cfg.aliases)") and "Пересчитано" in (await page.evaluate("window.__toasts")).pop() and "Голень стоя\"" not in STORE["tst_cfg"])
             await page.evaluate("window.__toasts.length=0; 0")
             await page.click('[data-act="aliasNew"]'); await page.fill("#alias-left", "Голень стоя (3х10-20)"); await page.fill("#alias-right", "Голень стоя (икры)"); await page.press("#alias-right", "Tab"); await page.wait_for_timeout(150)
@@ -113,9 +113,9 @@ async def main():
             ups2 = await page.evaluate("Object.fromEntries(Object.entries(data.log).map(([k,d])=>[k,d.up]))")
             cloud_ok = all(("Гиперэкстензия, акцент разгибатели и поясница (3х12)" in STORE["tst_w_" + k]) for k, d in dump["log"].items() if any(split_name(e["name"])[0] == "Гиперэкстензия" for e in d["exercises"]))
             check("2.5: up дней не меняется, изменённые дни записаны в облако", ups == ups2 and cloud_ok)
-            check("2.6: пара попала в список с «Затрагивает N записей»", await page.locator('.al-card', has_text="Гиперэкстензия →").count() == 1)
+            check("2.6: пара попала в список с «Затрагивает N тренировок»", await page.locator('.al-card', has=page.get_by_text("Гиперэкстензия", exact=True)).count() == 1)
             # редактирование
-            await page.locator('.al-card', has_text="Гиперэкстензия →").locator(".al-txt").click(); await page.wait_for_timeout(200)
+            await page.locator('.al-card', has=page.get_by_text("Гиперэкстензия", exact=True)).locator(".al-txt").click(); await page.wait_for_timeout(200)
             check("2.2: тап по паре — форма редактирования с заполненными полями (тип не переключается)", (await page.input_value("#alias-left")) == "Гиперэкстензия" and await page.locator('.seg button[disabled]').count() == 2)
             check("2.2: BackButton закрывает форму (возврат к списку)", await page.evaluate("window.__bb") is True)
             await page.evaluate("window.__bbcb()"); await page.wait_for_timeout(150)
@@ -150,7 +150,7 @@ async def main():
             await page.reload(); await page.wait_for_timeout(2500); await page.click('button[data-tab="set"]'); await page.click('[data-act="aliasOpen"]'); await page.wait_for_timeout(300)
             check("2.4: после перезагрузки блок остаётся развёрнутым (состояние запомнено)", await page.locator('#alUnmatched [data-act="aliasFromUnmatched"]').count() > 0)
             # редактирование пары с пересчётом (смена канонического)
-            await page.locator('.al-card', has_text="Гиперэкстензия →").locator(".al-txt").click(); await page.wait_for_timeout(150)
+            await page.locator('.al-card', has=page.get_by_text("Гиперэкстензия", exact=True)).locator(".al-txt").click(); await page.wait_for_timeout(150)
             await page.fill("#alias-right", "Гиперэкстензия"); await page.wait_for_timeout(100)
             check("2.3: при редактировании название справа не может совпадать с левым", await page.locator("#alSave").is_disabled())
             check("нет pageerror", not errs, errs[:2])

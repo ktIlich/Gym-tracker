@@ -95,6 +95,12 @@
         .al-card{display:flex; align-items:flex-start; gap:0.5rem; padding:0.625rem 0.75rem; background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; margin-top:0.5rem; cursor:pointer}
         .al-txt{flex:1; min-width:0; overflow-wrap:anywhere; word-break:break-word}
         .al-arrow{color:var(--text-muted)}
+        .al-cap{font-size:0.6875rem; color:var(--text-muted); margin-top:0.125rem}
+        .al-old{overflow-wrap:anywhere}
+        .al-new{font-weight:700; overflow-wrap:anywhere}
+        .al-divider{display:flex; align-items:center; gap:0.5rem; margin:0.5rem 0; color:var(--text-muted)}
+        .al-divider i{flex:1; height:1px; background:var(--text-muted)}
+        .al-divider svg.icon{width:1rem; height:1rem; vertical-align:0}
         .al-count{font-size:0.75rem; color:var(--text-muted); margin-top:2px}
         .al-del{flex:0 0 var(--touch-w); width:var(--touch-w); height:var(--touch); margin:-0.5rem -0.5rem -0.5rem 0; display:flex; align-items:center; justify-content:center; color:var(--danger)}
         .al-err{color:var(--danger); font-size:0.8125rem; margin-top:0.375rem}
@@ -2221,6 +2227,7 @@
     const ICON_CLOUD=svgIcon('<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>');
     const ICON_CHEVRON=svgIcon('<polyline points="6 9 12 15 18 9"/>');
     const ICON_MINUS=svgIcon('<line x1="5" y1="12" x2="19" y2="12"/>');
+    const ICON_ARROW_DOWN=svgIcon('<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>');
     const ICON_CHEVRON_UP=svgIcon('<polyline points="18 15 12 9 6 15"/>');
     const ICON_CHEVRON_DOWN=svgIcon('<polyline points="6 9 12 15 18 9"/>');
     const ICON_CHEVRON_LEFT=svgIcon('<polyline points="15 18 9 12 15 6"/>');
@@ -3154,12 +3161,15 @@
         return {base:base.trim(), stripped:stripped};
     }
     function entriesOfLog(){ const out=[]; for(const k of Object.keys(data.log).sort()) for(const e of (data.log[k].exercises||[])) out.push({k:k,e:e}); return out; }
+    // число тренировок (дней), затронутых алиасом: записи уже приведены к каноническому названию
     function aliasAffected(kind,val){
-        let n=0;
-        if(kind==="var"){ const v=normKey(val); for(const it of entriesOfLog()) if(normKey(exVariantOf(it.e))===v) n++; }
-        else { const t=parseAliasTarget(val), b=normKey(t.base), v=normKey(t.variant); for(const it of entriesOfLog()) if(normKey(exBaseOf(it.e))===b&&(!v||normKey(exVariantOf(it.e))===v)) n++; }
-        return n;
+        const days={};
+        if(kind==="var"){ const v=normKey(val); for(const it of entriesOfLog()) if(normKey(exVariantOf(it.e))===v) days[it.k]=1; }
+        else { const t=parseAliasTarget(val), b=normKey(t.base), v=normKey(t.variant); for(const it of entriesOfLog()) if(normKey(exBaseOf(it.e))===b&&(!v||normKey(exVariantOf(it.e))===v)) days[it.k]=1; }
+        return Object.keys(days).length;
     }
+    // разделитель «было → стало»: тонкая линия --text-muted на всю ширину со стрелкой вниз по центру
+    function aliasDividerHtml(){ return '<div class="al-divider"><i></i><span>'+ICON_ARROW_DOWN+'</span><i></i></div>'; }
     function aliasMatchStats(kind,left){
         const key=normKey(left), days={}; let sets=0;
         for(const it of entriesOfLog()){
@@ -3236,10 +3246,11 @@
         return '<div class="sec-label" style="margin-top:1rem">'+(f.editKey?'Изменить алиас':'Новый алиас')+'</div><div class="card">'
             +'<div class="seg"><button class="'+(isEx?'on':'')+'" data-act="aliasFormKind" data-kind="ex"'+(f.editKey?' disabled':'')+'>Упражнение</button>'
             +'<button class="'+(!isEx?'on':'')+'" data-act="aliasFormKind" data-kind="var"'+(f.editKey?' disabled':'')+'>Вариант</button></div>'
-            +'<div class="lbl" style="margin-top:0.75rem">Как записано в истории</div>'
+            +'<div class="lbl" style="margin-top:0.75rem">Было в истории</div>'
             +'<input id="alias-left" list="alias-left-list" autocomplete="off" value="'+esc(f.left||"")+'" placeholder="'+(isEx?'Голень стоя':'свободный вес')+'">'
             +'<datalist id="alias-left-list">'+leftOpts.map(function(o){return '<option value="'+esc(o)+'">';}).join("")+'</datalist>'
-            +'<div class="lbl" style="margin-top:0.75rem">Как должно называться</div>'
+            +aliasDividerHtml()
+            +'<div class="lbl">Стало — как в шаблоне</div>'
             +'<input id="alias-right" list="alias-right-list" autocomplete="off" value="'+esc(f.right||"")+'" placeholder="'+(isEx?'Голень стоя (икры)':'Свободный')+'">'
             +'<datalist id="alias-right-list">'+rightOpts.map(function(o){return '<option value="'+esc(o)+'">';}).join("")+'</datalist>'
             +'<div class="note">'+(isEx?'Название без плана и варианта: «Голень стоя», не «Голень стоя (3х10-20)».':'Название варианта, как оно записано в шаблоне.')+'</div>'
@@ -3253,8 +3264,11 @@
         if(!entries.length) h+='<div class="note">Пока нет алиасов.</div>';
         for(const e of entries){
             const n=aliasAffected(kind,e[1]);
-            h+='<div class="al-card" data-act="aliasEdit" data-kind="'+kind+'" data-key="'+esc(e[0])+'"><div class="al-txt"><div><span class="al-old">'+esc(e[0])+'</span> <span class="al-arrow">→</span> <b class="al-new">'+esc(e[1])+'</b></div>'
-                +'<div class="al-count">Затрагивает '+n+' '+plural(n,"запись","записи","записей")+'</div></div>'
+            h+='<div class="al-card" data-act="aliasEdit" data-kind="'+kind+'" data-key="'+esc(e[0])+'"><div class="al-txt">'
+                +'<div class="al-cap">Было в истории</div><div class="al-old">'+esc(e[0])+'</div>'
+                +aliasDividerHtml()
+                +'<div class="al-cap">Стало</div><div class="al-new">'+esc(e[1])+'</div>'
+                +'<div class="al-count">Затрагивает '+n+' '+plural(n,"тренировка","тренировки","тренировок")+'</div></div>'
                 +'<button class="al-del" data-act="aliasDelAsk" data-kind="'+kind+'" data-key="'+esc(e[0])+'" title="Удалить алиас">'+ICON_TRASH+'</button></div>';
         }
         return h;
@@ -3265,7 +3279,7 @@
         let h='<button class="hist-back" data-act="aliasClose">'+ICON_CHEVRON_LEFT+' Назад</button>'
             +'<div class="sec-label" style="margin-top:0.25rem">Алиасы</div>'
             +'<div class="card al-explain"><p>Алиасы объединяют разные названия одного упражнения или варианта. Например, в старых записях было «Голень стоя», а в шаблоне — «Голень стоя (икры)». Без алиаса это два разных упражнения: история, графики и рекомендации разрываются.</p>'
-            +'<p>Слева — как записано в истории, справа — как должно называться (как в шаблоне). После сохранения старые записи пересчитаются, сами тренировки не меняются.</p></div>'
+            +'<p>Сверху — название, как оно записано в истории. Снизу — как оно должно называться (как в шаблоне). После сохранения старые записи пересчитаются, сами тренировки не меняются.</p></div>'
             +'<button class="wide-btn primary" id="alNew" data-act="aliasNew">'+ICON_PLUS+' Алиас</button>';
         if(um.length){
             h+='<div class="card" id="alUnmatched"><button class="link-row" data-act="aliasUnmatchedToggle" style="border-top:none"><span class="lbl2">В истории есть названия, которых нет в шаблонах <span class="cnt">· '+um.length+'</span></span>'+(collapsed?ICON_CHEVRON_RIGHT:ICON_CHEVRON_DOWN)+'</button>';
@@ -3417,6 +3431,7 @@
                     +"«Восстановить из копии» — из файла или вставкой текста, с превью перед применением."; } },
             { q:"Импорт", a:"Загрузить тренировки из Excel/CSV, в том числе из версии 1.0, или из текстовых заметок. Перед применением — превью по датам." },
             { q:"Порядок в данных", a:"Чистка внутри приложения, файлы не участвуют. «Проверка данных» — пустые дни, упражнения без подходов, подходов больше плана, подозрительно малый вес. «Похожие шаблоны» — одинаковые копии удаляются, недостающие упражнения добавляются в последний использованный шаблон; перед применением можно выбрать основной и отметить упражнения. «Алиасы» — объединение разных названий одного упражнения или варианта." },
+            { q:"Алиасы", a:"Алиасы объединяют разные названия одного упражнения или варианта. Например, в старых записях было «Голень стоя», а в шаблоне — «Голень стоя (икры)». Без алиаса это два разных упражнения: история, графики и рекомендации разрываются.\nСверху — название, как оно записано в истории. Снизу — как оно должно называться (как в шаблоне). После сохранения старые записи пересчитаются, сами тренировки не меняются." },
             { q:"Тестовая среда", only:"test", a:"Скопировать данные из основной версии, очистить тестовые данные, диагностика. Основная версия не затрагивается." }
         ]}
     ];
