@@ -22,7 +22,7 @@
             --dim:    var(--mut);
             --green:#34d399; --red:#f87171;
             --rest-bg: rgba(52,211,153,.10);
-            --touch:44px;
+            --touch:44px; --warn:#fbbf24;
             --accent:#ff9f0a; --accent-bg:rgba(255,159,10,.14);
             /* safe-area и высота viewport: переменные Telegram, для старых клиентов — env()/100vh; JS обновляет их по событиям без render() */
             --sa-top:var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px));
@@ -73,6 +73,18 @@
             top:calc(var(--csa-top) + var(--sa-top) + 4px);
             right:calc(var(--sa-right) + 6px)}
 
+        .sec-sub{font-size:12px; color:var(--dim); margin:0 0 6px; line-height:1.35}
+        .warn,.note.warn{color:var(--warn)}
+        .link-row{display:flex; align-items:center; gap:8px; width:100%; min-height:var(--touch); text-align:left; padding:6px 0; border-top:1px solid var(--border)}
+        .link-row:first-child{border-top:none}
+        .link-row .lbl2{flex:1; min-width:0}
+        .link-row .cnt{color:var(--dim)}
+        .link-row svg.icon{color:var(--dim)}
+        #dlg{position:fixed; inset:0; z-index:3500; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; padding:calc(24px + var(--sa-top)) 24px calc(24px + var(--sa-bottom))}
+        .dlg-card{background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; max-width:360px; width:100%; box-shadow:0 8px 32px rgba(0,0,0,.4)}
+        .dlg-title{font-weight:800; font-size:17px; margin-bottom:8px}
+        .dlg-text{color:var(--mut); font-size:14px; line-height:1.45; white-space:pre-wrap; word-break:break-word}
+        .dlg-btns{display:flex; flex-direction:column; gap:8px; margin-top:16px}
         .datenav{display:flex; align-items:center; justify-content:space-between; margin-top:12px}
         .datenav .nav{padding:6px 10px; color:var(--mut); font-size:24px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
         .datenav .nav svg.icon{width:22px; height:22px; vertical-align:-6px}
@@ -307,7 +319,7 @@
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none"></button></div>
 <script>
     "use strict";
-    const APP_VERSION="2.10.0"; // фаза 10: test-среда, модель лога, варианты, бэкапы через Worker
+    const APP_VERSION="2.11.0"; // фаза 11: настройки, автокопия, алиасы, шаблоны, справка, приветствие
     // ============ среда: test / prod, изоляция ключей ============
     const ENV = location.pathname.includes("/test/") ? "test" : "prod";
     const KP  = ENV === "test" ? "tst_" : "";   // префикс ключей CloudStorage и localStorage
@@ -376,7 +388,7 @@
                 "Жим ногами, стандартная постановка (2х8-12)","Болгарские приседания (2х10-15)","Разгибания сидя (2х10-15)",
                 "Голень стоя (3х10-20)","Задняя дельта Пек-Дек (3х12)","Задняя дельта гантели в наклоне (2х15)"]}
     ];
-    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, defaultWeightStep:null, warmupCount:4, warmupPercent:35, restTimerSec:90, autoTimer:true, theme:"tg", accent:"#ff9f0a", weekOverrides:{}, lastBackup:null, backupReminderDays:14, backupSnooze:null, dupSnooze:null, schema:1 }, templates:[], log:{} }; }
+    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, defaultWeightStep:null, warmupCount:4, warmupPercent:35, restTimerSec:90, autoTimer:true, theme:"tg", accent:"#ff9f0a", weekOverrides:{}, lastBackup:null, backupReminderDays:14, backupSnooze:null, dupSnooze:null, autoBackup:true, schema:1 }, templates:[], log:{} }; }
     function normalizeData(d){
         const base=emptyData();
         const hadSchema=d.cfg&&d.cfg.schema;
@@ -1838,31 +1850,84 @@
         return btoa(bin);
     }
     function canSendBackup(){ return !!(BACKUP_ENDPOINT&&tg&&tg.initData); }
-    async function sendBackup(format){
-        if(!canSendBackup()||ui.sending) return;
+    // ядро отправки: {ok:true} | {ok:false, text, expired}
+    async function postBackup(format){
         let content, encoding="text";
         if(format==="json") content=JSON.stringify(buildBackupDump());
         else if(format==="csv") content=buildCsv();
         else if(format==="xlsx"){
-            if(typeof XLSX==="undefined"){ toast("Нет интернета — библиотека Excel не загрузилась"); return; }
+            if(typeof XLSX==="undefined") return {ok:false,text:"Нет интернета — библиотека Excel не загрузилась",noLib:true};
             content=bytesToBase64(buildXlsxBytes()); encoding="base64";
-        } else return;
-        ui.sending=format; render();
+        } else return {ok:false,text:"Неизвестный формат"};
         const ctl=new AbortController(), timer=setTimeout(function(){ ctl.abort(); },30000);
         try{
             const res=await fetch(BACKUP_ENDPOINT,{ method:"POST", headers:{"Content-Type":"application/json"}, signal:ctl.signal,
                 body:JSON.stringify({ initData:tg.initData, env:ENV, format:format, filename:exportFilename(format), content:content, encoding:encoding }) });
             let j=null; try{ j=await res.json(); }catch(parseErr){ j=null; }
-            if(res.ok&&j&&j.ok){
-                toast("Отправлено в чат");
-                if(format==="json"){ data.cfg.lastBackup=new Date().toISOString(); persistCfg(); }   // только JSON — полная копия
-            } else {
-                const why=(j&&(j.description||j.error))||("HTTP "+res.status);
-                toast(res.status===403&&j&&j.error==="expired"?"Сессия устарела — откройте приложение заново":"Не отправлено: "+why);
-            }
+            if(res.ok&&j&&j.ok) return {ok:true};
+            const why=(j&&(j.description||j.error))||("HTTP "+res.status);
+            if(res.status===403&&j&&j.error==="expired") return {ok:false,text:"Сессия устарела — откройте приложение заново",expired:true,reason:why};
+            return {ok:false,text:"Не отправлено: "+why,reason:why};
         }catch(e){
-            toast(e&&e.name==="AbortError"?"Не отправлено: сервер не ответил за 30 с":"Не удалось отправить: "+errText(e));
-        }finally{ clearTimeout(timer); ui.sending=null; render(); }
+            if(e&&e.name==="AbortError") return {ok:false,text:"Не отправлено: сервер не ответил за 30 с",reason:"сервер не ответил за 30 с"};
+            return {ok:false,text:"Не удалось отправить: "+errText(e),reason:errText(e)};
+        }finally{ clearTimeout(timer); }
+    }
+    async function sendBackup(format){
+        if(!canSendBackup()||ui.sending) return;
+        if(format==="xlsx"&&typeof XLSX==="undefined"){ toast("Нет интернета — библиотека Excel не загрузилась"); return; }
+        ui.sending=format; render();
+        const r=await postBackup(format);
+        ui.sending=null;
+        if(r.ok){
+            toast("Отправлено в чат");
+            if(format==="json"){ data.cfg.lastBackup=new Date().toISOString(); persistCfg(); }   // только JSON — полная копия
+        } else toast(r.text);
+        render();
+    }
+
+    // ============ диалоги и автоотправка копии ============
+    // showDialog({title,text,buttons:[{label,primary}]}) → Promise<индекс нажатой кнопки>
+    function showDialog(o){
+        return new Promise(function(res){
+            const old=document.getElementById("dlg"); if(old) old.remove();
+            const d=document.createElement("div"); d.id="dlg"; d.setAttribute("role","dialog");
+            d.innerHTML='<div class="dlg-card"><div class="dlg-title">'+esc(o.title)+'</div><div class="dlg-text">'+esc(o.text)+'</div><div class="dlg-btns">'
+                +o.buttons.map(function(b,i){ return '<button class="wide-btn'+(b.primary?' primary':'')+'" style="margin-top:0" data-dlg="'+i+'">'+esc(b.label)+'</button>'; }).join("")+'</div></div>';
+            d.addEventListener("click",function(e){ const b=e.target.closest("[data-dlg]"); if(!b) return; d.remove(); res(+b.dataset.dlg); });
+            document.body.appendChild(d);
+        });
+    }
+    function snoozeBackup(hours){ data.cfg.backupSnooze=Date.now()+hours*3600000; persistCfg(); render(); }
+    function markBackupDone(){ data.cfg.lastBackup=new Date().toISOString(); persistCfg(); }
+    async function autoBackupSend(){
+        for(;;){
+            ui.sending="json"; render();
+            const r=await postBackup("json");
+            ui.sending=null;
+            if(r.ok){ markBackupDone(); toast("Копия отправлена в чат"); render(); return; }
+            render();
+            const i=await showDialog({title:"Копия не отправлена",text:r.text,buttons:[{label:"Повторить",primary:true},{label:"Позже"}]});
+            if(i!==0){ snoozeBackup(24); return; }
+        }
+    }
+    // Проверка при запуске — только после синхронизации с CloudStorage (иначе в копию попадёт устаревший кэш); не чаще одной попытки за запуск
+    async function maybeAutoBackup(){
+        if(ui.autoBackupTried) return;
+        if(cs&&!syncState.verified) return;                       // синхронизация не завершена — копию не шлём
+        if(ui.cloneBusy||ui.cloneIncomplete||ui.tblImport||ui.backupParsed||ui.importParsed||ui.sending) return;
+        ui.autoBackupTried=true;
+        if(!canSendBackup()) return;                               // адрес не задан — прежнее напоминание (баннер)
+        const n=data.cfg.backupReminderDays;
+        if(!n||!Object.keys(data.log).length) return;
+        if(data.cfg.backupSnooze&&Date.now()<data.cfg.backupSnooze) return;
+        const last=data.cfg.lastBackup?new Date(data.cfg.lastBackup).getTime():null;
+        if(last!==null&&Date.now()-last<=n*86400000) return;
+        if(data.cfg.autoBackup!==false){ await autoBackupSend(); return; }
+        const days=daysSinceBackup();
+        const i=await showDialog({title:"Пора сделать копию",text:isFinite(days)?"Последняя была "+days+" "+ruPlural(days,"день","дня","дней")+" назад":"Копия ещё не делалась",
+            buttons:[{label:"Отправить в чат",primary:true},{label:"Позже"}]});
+        if(i===0) await sendBackup("json"); else snoozeBackup(24);
     }
     function exportCsv(){ downloadBlob(exportFilename("csv"),new Blob([buildCsv()],{type:"text/csv;charset=utf-8"})); }
     function normDate(v){
@@ -2512,17 +2577,17 @@
     function testSectionHtml(){ return cloneCardHtml(); }
     // внутри Telegram прямое скачивание blob не работает: «Скачать» показываем только вне Telegram
     function canDownload(){ return !(tg&&tg.initData); }
+    function sectionHead(title,sub,first){ return '<div class="sec-label"'+(first?' style="margin-top:16px"':'')+'>'+title+'</div><div class="sec-sub">'+sub+'</div>'; }
+    function linkRow(label,count,act,attrs){
+        return '<button class="link-row" data-act="'+act+'"'+(attrs||'')+'><span class="lbl2">'+label+(count!=null&&count!==""?' <span class="cnt">· '+count+'</span>':'')+'</span>'+ICON_CHEVRON_RIGHT+'</button>';
+    }
+    function backupStatusHtml(){
+        const lb=data.cfg.lastBackup, n=data.cfg.backupReminderDays, hasData=!!Object.keys(data.log).length;
+        const overdue=hasData&&n>0&&daysSinceBackup()>=n;
+        return '<div class="note'+(overdue?' warn':'')+'" id="backupStatus" style="margin-top:0">'+(lb?'Последняя копия: '+esc(new Date(lb).toLocaleDateString("ru-RU")):'Копий ещё не было')+'</div>';
+    }
     function backupSectionHtml(){
-        const lb=fmtBackupDate(data.cfg.lastBackup);
-        let h=(ENV==="test"?testSectionHtml():'')+'<div class="sec-label">Резервная копия</div><div class="card">'
-            +'<div class="note" style="margin-top:0">Последняя копия: '+(lb?esc(lb):'ещё не делалась')+'</div>';
-        if(canDownload()){
-            h+='<div class="lbl" style="margin-top:8px">Экспорт</div><div style="display:flex;gap:8px;margin-top:4px">'
-                +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="backupDownload">'+ICON_DOWNLOAD+' JSON</button>'
-                +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="export">'+ICON_DOWNLOAD+' Excel</button>'
-                +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="exportCsv">'+ICON_DOWNLOAD+' CSV</button></div>'
-                +'<div class="note">JSON — полная копия (её можно восстановить). Excel и CSV — только лог, по строке на подход.</div>';
-        }
+        let h=sectionHead("Резервная копия","Сохранить и вернуть все данные: тренировки, шаблоны, настройки.")+'<div class="card">'+backupStatusHtml();
         if(canSendBackup()){
             const lbl={json:"JSON",xlsx:"Excel",csv:"CSV"};
             h+='<div class="lbl" style="margin-top:8px">Отправить в чат</div><div style="display:flex;gap:8px;margin-top:4px">';
@@ -2531,9 +2596,14 @@
                     +(ui.sending===f?'Отправка…':ICON_UPLOAD+' '+lbl[f])+'</button>';
             h+='</div>';
         }
-        h+='<button class="wide-btn" data-act="backupCopy">'+ICON_CLIPBOARD+' Скопировать JSON</button>'
-            +'<div class="row"><div class="lbl">Напоминать о копии через, дней (0 — выключено)</div>'
-            +'<input type="number" inputmode="numeric" min="0" max="90" value="'+(data.cfg.backupReminderDays||0)+'" data-chg="backupReminderDays"></div>';
+        if(canDownload()){
+            h+='<div class="lbl" style="margin-top:8px">Скачать файл</div><div style="display:flex;gap:8px;margin-top:4px">'
+                +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="backupDownload">'+ICON_DOWNLOAD+' JSON</button>'
+                +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="export">'+ICON_DOWNLOAD+' Excel</button>'
+                +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="exportCsv">'+ICON_DOWNLOAD+' CSV</button></div>'
+                +'<div class="note">JSON — полная копия (её можно восстановить). Excel и CSV — только журнал, по строке на подход.</div>';
+        }
+        h+='<button class="wide-btn" data-act="backupCopy">'+ICON_CLIPBOARD+' Скопировать JSON</button>';
 
         const snap=getSnapshot();
         if(snap){
@@ -2541,10 +2611,26 @@
             h+='<div class="note">Локальный снимок от '+esc(sd.toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"}))+', дней: '+Object.keys(snap.log||{}).length+'</div>'
                 +'<button class="wide-btn" data-act="backupSnapshotRestore">'+ICON_SYNC+' Восстановить из снимка</button>';
         }
-
-        h+='<button class="wide-btn" data-act="import">'+ICON_UPLOAD+' Импорт из Excel/CSV</button>'
-            +'<button class="wide-btn" data-act="backupRestoreToggle">'+ICON_UPLOAD+' Восстановить из копии</button>';
-
+        h+='<button class="wide-btn" data-act="backupRestoreToggle">'+ICON_UPLOAD+' Восстановить из копии</button>';
+        h+=restorePanelHtml();
+        h+='<div class="switch-row" style="margin-top:12px"><span>Автоотправка в чат</span>'
+            +'<label class="switch"><input type="checkbox" '+(data.cfg.autoBackup!==false?'checked':'')+' data-chg="autoBackup"><i></i></label></div>'
+            +'<div class="note" style="margin-top:0">'+(BACKUP_ENDPOINT?'При запуске, если копия старше интервала. Выключишь — приложение только напомнит.':'Заработает после подключения сервера отправки.')+'</div>'
+            +'<div class="row"><div class="lbl">Интервал, дней (0 — выключено)</div>'
+            +'<input type="number" inputmode="numeric" min="0" max="90" value="'+(data.cfg.backupReminderDays||0)+'" data-chg="backupReminderDays"></div>';
+        h+=syncRowHtml()+'</div>';
+        return h;
+    }
+    function syncRowHtml(){
+        let note;
+        if(cs){
+            note=ICON_CLOUD+' Синхронизация через Telegram включена.';
+            if(syncState.last) note+=' Последняя: '+syncState.last.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})+', записей в облаке: '+syncState.count+'.';
+        } else note='Режим браузера: данные хранятся локально, синхронизации нет. Откройте приложение внутри Telegram (кнопка меню у бота).';
+        return (cs?'<button class="wide-btn" data-act="syncNow">'+ICON_SYNC+' Синхронизировать сейчас</button>':'')+'<div class="note">'+note+'</div>';
+    }
+    function restorePanelHtml(){
+        let h="";
         if(ui.backupRestoreOpen&&!ui.backupParsed){
             h+='<label class="wide-btn" for="backupFile" style="cursor:pointer">'+ICON_UPLOAD+' Загрузить файл</label>'
                 +'<input type="file" id="backupFile" accept=".json,application/json" style="display:none">'
@@ -2552,7 +2638,6 @@
                 +'<textarea id="backupText" placeholder="Вставьте сюда JSON резервной копии…" style="margin-top:6px;min-height:100px"></textarea>'
                 +'<button class="wide-btn primary" data-act="backupParseText">Проверить</button>';
         }
-
         if(ui.backupParsed){
             const s=backupSummary(ui.backupParsed), plan=mergePlan(ui.backupParsed);
             const created=s.created?fmtBackupDate(s.created):'дата неизвестна';
@@ -2573,9 +2658,7 @@
                     h+='<div class="confirm" style="margin-top:10px"><span><b>Последнее подтверждение.</b> Текущие тренировки, шаблоны и настройки будут удалены и заменены копией. Перед этим сохраняется локальный снимок.</span>'
                         +'<span class="btns"><button class="btn-red" data-act="backupApplyGo">Заменить всё</button>'
                         +'<button class="btn-gray" data-act="backupConfirmCancel">Отмена</button></span></div>';
-                } else {
-                    h+='<button class="wide-btn danger" data-act="backupReplaceAsk">Заменить всё</button>';
-                }
+                } else h+='<button class="wide-btn danger" data-act="backupReplaceAsk">Заменить всё</button>';
             } else {
                 h+='<div class="note">Добавится дней — '+plan.days.add.length+', заменят текущие (новее в копии) — '+plan.days.take.length+', останутся текущие — '+plan.days.keep.length
                     +'; шаблонов добавится — '+plan.tpl.add.length+', обновится — '+plan.tpl.take.length+'.</div>'
@@ -2583,10 +2666,27 @@
             }
             h+='<button class="wide-btn" data-act="backupApplyCancel">Отмена</button></div>';
         }
-
-        h+='</div>';
         return h;
     }
+    function importSectionHtml(){
+        return sectionHead("Импорт","Загрузить тренировки из внешнего файла, например из старой версии.")+'<div class="card">'
+            +'<button class="wide-btn" style="margin-top:0" data-act="import">'+ICON_UPLOAD+' Импорт журнала из Excel/CSV</button>'
+            +'<button class="wide-btn" data-act="importTextOpen">'+ICON_CLIPBOARD+' Импорт из заметок</button></div>';
+    }
+    function orderSectionHtml(){
+        const issues=findDataIssues(), nIssues=Object.keys(issues).reduce(function(a,k){return a+issues[k].length;},0);
+        const nDup=findDupGroups().length, nAl=Object.keys(data.cfg.aliases||{}).length+Object.keys(data.cfg.variantAliases||{}).length;
+        return sectionHead("Порядок в данных","Чистка и объединение записей внутри приложения.")+'<div class="card">'
+            +linkRow("Проверка данных",nIssues||"",'hygOpen',' data-screen="check"')
+            +linkRow("Похожие шаблоны",nDup||"",'hygOpen',' data-screen="dups"')
+            +linkRow("Алиасы",nAl||"",'aliasOpen')+'</div>';
+    }
+    function testSectionLinkHtml(){
+        if(ENV!=="test") return "";
+        return sectionHead("Тестовая среда","Служебные действия. Основная версия не затрагивается.")+'<div class="card">'+linkRow("Тестовая среда",null,'testOpen')+'</div>';
+    }
+    function testScreenHtml(){ return '<button class="hist-back" data-act="testClose">'+ICON_CHEVRON_LEFT+' Назад</button>'+cloneCardHtml(); }
+    function testSectionHtml(){ return cloneCardHtml(); }
 
     // ============ гигиена данных ============
     function tplBaseKey(t){
@@ -2850,15 +2950,7 @@
         for(const a of ACCENT_PRESETS) h+='<button class="swatch'+(a===ac?' sel':'')+'" style="background:'+a+'" data-act="setAccent" data-accent="'+a+'"></button>';
         h+='</div></div>';
 
-        h+=hygieneSectionHtml();
-        h+='<div class="sec-label">Алиасы</div><div class="card"><button class="wide-btn" style="margin-top:0" data-act="aliasOpen">'+ICON_LINK+' Алиасы упражнений и вариантов</button></div>';
-
-        h+='<div class="sec-label">Данные</div><div class="card">'
-            +(cs?'<button class="wide-btn" data-act="syncNow">'+ICON_SYNC+' Синхронизировать сейчас</button>':'')
-            +'<button class="wide-btn" data-act="importTextOpen">'+ICON_CLIPBOARD+' Импорт из заметок</button>'
-            +'<div class="note">'+syncNote+'</div></div>';
-
-        h+=backupSectionHtml();
+        h+=backupSectionHtml()+importSectionHtml()+orderSectionHtml()+testSectionLinkHtml();
 
         h+='<div class="sec-label">Опасная зона</div><div class="card">';
         if(ui.wipeStep===1){
@@ -2919,7 +3011,8 @@
         else if(ui.tab==="prg") h+=progressPage();
         else if(ui.tab==="tpl") h+=tplPage();
         else if(ui.tab==="set"){
-            if(ui.hygiene==='dups') h+=dupsPageHtml();
+            if(ui.testScreen) h+=testScreenHtml();
+            else if(ui.hygiene==='dups') h+=dupsPageHtml();
             else if(ui.hygiene==='check') h+=checkPageHtml();
             else if(ui.aliasScreen) h+=aliasPageHtml();
             else if(ui.tblImport) h+=tblImportPage();
@@ -2940,7 +3033,7 @@
     document.getElementById("tabbar").addEventListener("click",function(e){
         const b=e.target.closest("button[data-tab]"); if(!b) return;
         ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null; ui.wipeStep=0; ui.tplFromText=false; ui.tplParsed=null; ui.editTpl=null;
-        ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.tblImport=null; ui.hygiene=null; ui.dupConfirm=null; ui.dayNoteOpen=false; ui.weekTypeOpen=false;
+        ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.tblImport=null; ui.hygiene=null; ui.testScreen=false; ui.dupConfirm=null; ui.dayNoteOpen=false; ui.weekTypeOpen=false;
         ui.backupRestoreOpen=false; ui.backupParsed=null; ui.backupParsedSrc=null; ui.backupMode="merge"; ui.backupConfirmStep=0;
         summaryCache.period=null;
         if(ui.tab==="cal") calMonth=curDate.slice(0,7);
@@ -3080,6 +3173,7 @@
         }
         if(chg==="backupReminderDays"){ data.cfg.backupReminderDays=Math.min(90,Math.max(0,parseInt(e.target.value,10)||0)); persistCfg(); render(); return; }
         if(chg==="tblAction"){ const d=ui.tblImport&&ui.tblImport.days[+e.target.dataset.i]; if(d){ d.action=e.target.value; render(); } return; }
+        if(chg==="autoBackup"){ data.cfg.autoBackup=e.target.checked; persistCfg(); return; }
         if(chg==="backupMode"){ ui.backupMode=e.target.value; ui.backupConfirmStep=0; render(); return; }
     });
     app.addEventListener("keydown",function(e){
@@ -3414,6 +3508,8 @@
             case "cloneProd": cloneFromProd(); break;
             case "bannerDupOpen": ui.tab="set"; ui.hygiene="dups"; ui.dupConfirm=null; ui.aliasScreen=false; hap("light"); render(); break;
             case "bannerDupSnooze": data.cfg.dupSnooze=Date.now()+3*86400000; persistCfg(); render(); break;
+            case "testOpen": ui.testScreen=true; render(); break;
+            case "testClose": ui.testScreen=false; render(); break;
             case "hygOpen": ui.hygiene=ds.screen; ui.dupConfirm=null; render(); break;
             case "hygClose": ui.hygiene=null; ui.dupConfirm=null; render(); break;
             case "hygOpenDay": curDate=ds.date; ui.hygiene=null; ui.tab="day"; ui.histEx=null; render(); break;
@@ -3657,7 +3753,7 @@
         const cloudChecked=function(){ if(!ui.cloudChecked){ ui.cloudChecked=true; render(); } };
         setTimeout(function(){ ui.stateChecked=true; cloudChecked(); },6000);
         checkCloneState().then(function(){ ui.stateChecked=true; },function(e){ ui.stateChecked=true; ui.lastCloneError="Шаг «Проверка маркера клонирования»: "+errText(e); })
-            .then(function(){ render(); return cloudLoad(); }).then(cloudChecked,cloudChecked); // фоновая синхронизация с Telegram CloudStorage
+            .then(function(){ render(); return cloudLoad(); }).then(cloudChecked,cloudChecked).then(maybeAutoBackup); // фоновая синхронизация с Telegram CloudStorage
     })();
 </script>
 </body>

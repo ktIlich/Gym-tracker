@@ -158,7 +158,7 @@ async def main():
             check("клон #1: showAlert с итогом «Скопировано: 3 тренировок, 3 шаблонов, 7 ключей»", logs_of("alert") == ["Скопировано: 3 тренировок, 3 шаблонов, 7 ключей"], LOG)
             check("клон #1: после showAlert выполнена перезагрузка страницы", await t.evaluate("window.__marker===undefined"))
             check("после клона и перезагрузки: мастера нет, бейдж TEST есть", await t.locator('[data-act="setupNext"]').count() == 0 and await t.evaluate("!!document.getElementById('envBadge')"))
-            await t.click('button[data-tab="set"]'); await t.wait_for_timeout(300)
+            await t.click('button[data-tab="set"]'); await t.wait_for_timeout(300); await t.click('[data-act="testOpen"]'); await t.wait_for_timeout(200)
             check("test: кнопка клонирования в настройках", await t.locator('[data-act="cloneProd"]').count() == 1)
             WRITES.clear(); LOG.clear()
             await t.click('[data-act="cloneProd"]'); await t.wait_for_timeout(2500)
@@ -296,7 +296,7 @@ async def main():
             check("клон: итог в showAlert и перезагрузка", logs_of("alert") == ["Скопировано: 3 тренировок, 3 шаблонов, 7 ключей"] and await f.evaluate("window.__marker===undefined"), LOG)
             # отмена подтверждения тоже сообщает результат
             await f.evaluate("Telegram.WebApp.showConfirm=(m,cb)=>cb(false); 0")
-            await f.click('button[data-tab="set"]'); await f.wait_for_timeout(300)
+            await f.click('button[data-tab="set"]'); await f.wait_for_timeout(300); await f.click('[data-act="testOpen"]'); await f.wait_for_timeout(200)
             check("настройки: есть «Диагностика»", await f.locator('[data-act="diagOpen"]').count() == 1)
             await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(800)
             check("клон: отмена → сообщение «Отменено»", await f.evaluate("document.body.innerText.includes('Отменено: тестовые данные не изменены')"))
@@ -349,7 +349,7 @@ async def main():
 
             # ---------- очистка тестовых данных ----------
             await f.evaluate("Telegram.WebApp.showConfirm=(m,cb)=>{ window.__log('confirm', m); cb(false); }; 0")
-            await f.click('button[data-tab="set"]'); await f.wait_for_timeout(300)
+            await f.click('button[data-tab="set"]'); await f.wait_for_timeout(300); await f.click('[data-act="testOpen"]'); await f.wait_for_timeout(200)
             check("настройки: кнопка «Очистить тестовые данные»", await f.locator('[data-act="clearTest"]').count() == 1)
             before = {k: v for k, v in STORE.items()}
             LOG.clear(); await f.click('[data-act="clearTest"]'); await f.wait_for_timeout(500)
@@ -419,7 +419,7 @@ async def main():
             raw_ls = [m.start() for m in re.finditer(r"localStorage\.", src)]
             check("статика: прямой localStorage только внутри lsGet/lsSet/lsDel/lsKeys", len(raw_ls) == 5, len(raw_ls))
             check("статика: прямых cs.* нет вне raw-слоя", len(re.findall(r"\bcs\.(setItem|removeItem|getKeys|getItems)", src)) == 5)
-            check("статика: APP_VERSION 2.10.0", 'APP_VERSION="2.10.0"' in src)
+            check("статика: APP_VERSION 2.11.0", 'APP_VERSION="2.11.0"' in src)
 
             # холодный старт в test без Telegram/облака не падает
             plain = await browser.new_context(viewport={"width": 390, "height": 800})

@@ -95,7 +95,7 @@ async def main():
             await page.click('button[data-tab="set"]'); await page.wait_for_timeout(300)
             exp = expected_dups(dump["templates"])
             btn = await page.locator('[data-act="hygOpen"][data-screen="dups"]').inner_text()
-            check("7.1: в настройках «Найдены похожие шаблоны (N)», N = числу групп (%d)" % len(exp), ("(%d)" % len(exp)) in btn and len(exp) >= 1, (btn, exp))
+            check("7.1: в настройках строка «Похожие шаблоны · N», N = числу групп (%d)" % len(exp), ("· %d" % len(exp)) in btn and len(exp) >= 1, (btn, exp))
             await page.click('[data-act="hygOpen"][data-screen="dups"]'); await page.wait_for_timeout(200)
             groups = await page.evaluate("findDupGroups().map(g=>({keep:g.keep.id,drop:g.drop.map(t=>t.id)}))")
             check("7.1: группировка по множеству канонических base; остаётся шаблон с максимальным up (нет up = 0)", sorted(groups, key=lambda g: g["keep"]) == sorted(exp, key=lambda g: g["keep"]), (groups, exp))

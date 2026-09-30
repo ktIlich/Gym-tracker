@@ -27,9 +27,9 @@ async def main():
             browser = await p.chromium.launch(channel="msedge", headless=True)
             page, errs = await new_page(browser, dump)
             await page.click('button[data-tab="set"]'); await page.wait_for_timeout(300)
-            check("кнопка «Импорт из Excel/CSV» в блоке «Резервная копия», старая кнопка в «Данные» убрана",
-                  await page.locator('[data-act="import"]').count() == 1 and "Импорт из Excel/CSV" in await page.locator('[data-act="import"]').inner_text()
-                  and await page.evaluate("document.querySelector('[data-act=import]').closest('.card').previousElementSibling.textContent.includes('Резервная копия')"))
+            check("кнопка «Импорт журнала из Excel/CSV» в разделе «Импорт»",
+                  await page.locator('[data-act="import"]').count() == 1 and "Импорт журнала из Excel/CSV" in await page.locator('[data-act="import"]').inner_text()
+                  and await page.evaluate("document.querySelector('[data-act=import]').closest('.card').previousElementSibling.previousElementSibling.textContent.includes('Импорт')"))
             acc = await page.get_attribute("#importFile", "accept")
             check("файловый input принимает .xlsx, .xls и .csv", ".xlsx" in acc and ".csv" in acc, acc)
 
