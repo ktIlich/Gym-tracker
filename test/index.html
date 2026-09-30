@@ -606,32 +606,46 @@
     function backupSummary(dump){
         const days=Object.keys(dump.log||{});
         let nEx=0; for(const k of days) nEx+=((dump.log[k].exercises||[]).length);
-        return { days:days.length, ex:nEx, tpl:(dump.templates||[]).length, created:dump.created||null };
+        return { days:days.length, ex:nEx, tpl:(dump.templates||[]).length, created:dump.created||null, version:dump.version||null };
     }
-    // «merge»: добавляются только дни/шаблоны, которых нет сейчас; «replace»: данные и облако перетираются полностью
+    // «merge» — по датам: конфликтная дата (есть и в копии, и сейчас) → берётся запись с бо́льшим up (при равенстве остаётся текущая);
+    // «replace» — данные и облако перетираются полностью
+    function mergePlan(dump){
+        const days={add:[],take:[],keep:[]};
+        for(const k of Object.keys(dump.log||{}).sort()){
+            const loc=data.log[k];
+            if(!loc) days.add.push(k);
+            else if(((dump.log[k]||{}).up||0)>(loc.up||0)) days.take.push(k);
+            else days.keep.push(k);
+        }
+        const tpl={add:[],take:[],keep:[],skipName:[]};
+        for(const t of (dump.templates||[])){
+            const same=data.templates.find(function(x){return x.id===t.id;});
+            if(same){ ((t.up||0)>(same.up||0)?tpl.take:tpl.keep).push(t.id); }
+            else if(data.templates.some(function(x){return x.name===t.name;})) tpl.skipName.push(t.id);
+            else tpl.add.push(t.id);
+        }
+        return {days:days,tpl:tpl,conflicts:days.take.length+days.keep.length};
+    }
     function applyBackupDump(dump, mode){
-        const toSyncDays=[], toSyncTpl=[];
         if(mode==="replace"){
             data=normalizeData({ cfg:dump.cfg||{}, templates:(dump.templates||[]).slice(), log:dump.log||{} });
+            data.cfg.up=Date.now();
             applyMigrations(); saveCache();
             return { mode:mode, days:Object.keys(data.log).length, tpl:data.templates.length, cloudReplace:true };
         }
-        let nDays=0, nTpl=0;
-        for(const k of Object.keys(dump.log||{})){
-            if(data.log[k]) continue;
-            data.log[k]=dump.log[k]; nDays++; toSyncDays.push(k);
-        }
+        const plan=mergePlan(dump), toSyncDays=[], toSyncTpl=[];
+        for(const k of plan.days.add.concat(plan.days.take)){ data.log[k]=JSON.parse(JSON.stringify(dump.log[k])); toSyncDays.push(k); }
         for(const t of (dump.templates||[])){
-            const exists=data.templates.some(function(x){return x.id===t.id||x.name===t.name;});
-            if(exists) continue;
             const nt=normalizeTpl(JSON.parse(JSON.stringify(t)));
-            data.templates.push(nt); nTpl++; toSyncTpl.push(nt);
+            if(plan.tpl.add.indexOf(t.id)>=0){ data.templates.push(nt); toSyncTpl.push(nt); }
+            else if(plan.tpl.take.indexOf(t.id)>=0){ const i=data.templates.findIndex(function(x){return x.id===t.id;}); data.templates[i]=nt; toSyncTpl.push(nt); }
         }
         applyMigrations(); saveCache();
-        return { mode:mode, days:nDays, tpl:nTpl, toSyncDays:toSyncDays, toSyncTpl:toSyncTpl };
+        return { mode:mode, days:plan.days.add.length, replaced:plan.days.take.length, kept:plan.days.keep.length, tpl:toSyncTpl.length, toSyncDays:toSyncDays, toSyncTpl:toSyncTpl };
     }
-    function downloadJson(filename, text){
-        const blob=new Blob([text],{type:"application/json"});
+    function downloadJson(filename, text){ downloadBlob(filename,new Blob([text],{type:"application/json"})); }
+    function downloadBlob(filename, blob){
         const url=URL.createObjectURL(blob);
         const a=document.createElement("a");
         a.href=url; a.download=filename; document.body.appendChild(a); a.click();
@@ -1719,20 +1733,46 @@
     }
 
     // ============ Excel ============
+    // плоская таблица «одна строка на подход»: Дата | Тренировка | Неделя цикла | Упражнение(base) | Вариант | План | Подход | Вес, кг | Повторы | Заметка
+    const EXPORT_HEADER=["Дата","Тренировка","Неделя цикла","Упражнение","Вариант","План","Подход","Вес, кг","Повторы","Заметка"];
+    // формат как в v1: «Рабочая · неделя N» / «Отдых»; если тип, записанный в дне, расходится с текущим циклом — верим записанному
+    function exportWeekLabel(k){
+        const day=data.log[k], wi=weekInfo(k), wt=day&&day.weekType;
+        if(wt&&(!wi||(wi.isRest?"rest":"work")!==wt)) return wt==="rest"?"Отдых":"Рабочая";
+        return weekLabel(wi);
+    }
+    function buildExportRows(){
+        const rows=[EXPORT_HEADER.slice()];
+        for(const k of Object.keys(data.log).sort()){
+            const day=data.log[k], wl=exportWeekLabel(k);
+            for(const ex of (day.exercises||[])){
+                const plan=ex.base?ex.plan:parseExName(ex.name).plan;
+                (ex.sets||[]).forEach(function(st,i){
+                    rows.push([k, day.title||"", wl, exBaseOf(ex), exVariantOf(ex)||"", plan||"", i+1, st.w, st.r, i===0?(ex.note||""):""]);
+                });
+            }
+        }
+        return rows;
+    }
+    // CSV для русского Excel: UTF-8 с BOM, разделитель «;», десятичная запятая
+    function csvCell(v){
+        if(v==null) return "";
+        let str=typeof v==="number"?String(v).replace(".",","):String(v);
+        if(/[;"\r\n]/.test(str)) str='"'+str.replace(/"/g,'""')+'"';
+        return str;
+    }
+    function buildCsv(){ return "\ufeff"+buildExportRows().map(function(r){ return r.map(csvCell).join(";"); }).join("\r\n")+"\r\n"; }
+    function exportFilename(ext){ return "gym-tracker-"+toKey(new Date())+"."+ext; }
     function exportXlsx(){
         if(typeof XLSX==="undefined"){ toast("Нет интернета — библиотека Excel не загрузилась"); return; }
-        const rows=[["Дата","Тренировка","Неделя цикла","Упражнение","Подход","Вес, кг","Повторы","Заметка дня","Заметка упражнения"]];
-        for(const k of Object.keys(data.log).sort()){
-            const wi=weekInfo(k), day=data.log[k];
-            for(const ex of day.exercises)
-                ex.sets.forEach(function(s,i){ rows.push([k, day.title||"", wi?weekLabel(wi):"", ex.name, i+1, s.w, s.r, i===0?day.note||"":"", i===0?ex.note||"":""]); });
-        }
-        const ws=XLSX.utils.aoa_to_sheet(rows);
-        ws["!cols"]=[{wch:12},{wch:14},{wch:18},{wch:28},{wch:8},{wch:9},{wch:9},{wch:22},{wch:22}];
+        const ws=XLSX.utils.aoa_to_sheet(buildExportRows());
+        ws["!cols"]=[{wch:12},{wch:14},{wch:18},{wch:34},{wch:14},{wch:10},{wch:8},{wch:9},{wch:9},{wch:24}];
         const wb=XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb,ws,"Тренировки");
-        XLSX.writeFile(wb,"Тренировки.xlsx");
+        const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+        downloadBlob(exportFilename("xlsx"),new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
     }
+    function exportCsv(){ downloadBlob(exportFilename("csv"),new Blob([buildCsv()],{type:"text/csv;charset=utf-8"})); }
     function normDate(v){
         if(v instanceof Date && !isNaN(v)) return toKey(new Date(v.getTime()+12*3600000));
         if(typeof v==="number"){ const d=new Date(Math.round((v-25569)*86400000)); return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")+"-"+String(d.getUTCDate()).padStart(2,"0"); }
@@ -2187,14 +2227,20 @@
         return d.toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric"})+' '+d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
     }
     function testSectionHtml(){ return cloneCardHtml(); }
+    // внутри Telegram прямое скачивание blob не работает: «Скачать» показываем только вне Telegram
+    function canDownload(){ return !(tg&&tg.initData); }
     function backupSectionHtml(){
         const lb=fmtBackupDate(data.cfg.lastBackup);
         let h=(ENV==="test"?testSectionHtml():'')+'<div class="sec-label">Резервная копия</div><div class="card">'
-            +'<div class="note" style="margin-top:0">Последняя копия: '+(lb?esc(lb):'ещё не делалась')+'</div>'
-            +'<div style="display:flex;gap:8px;margin-top:8px">'
-            +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="backupDownload">'+ICON_DOWNLOAD+' Скачать файл</button>'
-            +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="backupCopy">'+ICON_CLIPBOARD+' Скопировать</button>'
-            +'</div>'
+            +'<div class="note" style="margin-top:0">Последняя копия: '+(lb?esc(lb):'ещё не делалась')+'</div>';
+        if(canDownload()){
+            h+='<div class="lbl" style="margin-top:8px">Экспорт</div><div style="display:flex;gap:8px;margin-top:4px">'
+                +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="backupDownload">'+ICON_DOWNLOAD+' JSON</button>'
+                +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="export">'+ICON_DOWNLOAD+' Excel</button>'
+                +'<button class="wide-btn" style="margin-top:0;flex:1" data-act="exportCsv">'+ICON_DOWNLOAD+' CSV</button></div>'
+                +'<div class="note">JSON — полная копия (её можно восстановить). Excel и CSV — только лог, по строке на подход.</div>';
+        }
+        h+='<button class="wide-btn" data-act="backupCopy">'+ICON_CLIPBOARD+' Скопировать JSON</button>'
             +'<div class="row"><div class="lbl">Напоминать о копии через, дней (0 — выключено)</div>'
             +'<input type="number" inputmode="numeric" min="0" max="90" value="'+(data.cfg.backupReminderDays||0)+'" data-chg="backupReminderDays"></div>';
 
@@ -2208,34 +2254,40 @@
         h+='<button class="wide-btn" data-act="backupRestoreToggle">'+ICON_UPLOAD+' Восстановить из копии</button>';
 
         if(ui.backupRestoreOpen&&!ui.backupParsed){
-            h+='<textarea id="backupText" placeholder="Вставьте сюда JSON резервной копии…" style="margin-top:10px;min-height:100px"></textarea>'
-                +'<input type="file" id="backupFile" accept=".json" style="margin-top:8px">'
-                +'<button class="wide-btn primary" data-act="backupParseText">Разобрать</button>';
+            h+='<label class="wide-btn" for="backupFile" style="cursor:pointer">'+ICON_UPLOAD+' Загрузить файл</label>'
+                +'<input type="file" id="backupFile" accept=".json,application/json" style="display:none">'
+                +'<div class="note">или вставьте текст копии:</div>'
+                +'<textarea id="backupText" placeholder="Вставьте сюда JSON резервной копии…" style="margin-top:6px;min-height:100px"></textarea>'
+                +'<button class="wide-btn primary" data-act="backupParseText">Проверить</button>';
         }
 
         if(ui.backupParsed){
-            const s=backupSummary(ui.backupParsed);
+            const s=backupSummary(ui.backupParsed), plan=mergePlan(ui.backupParsed);
             const created=s.created?fmtBackupDate(s.created):'дата неизвестна';
-            h+='<div class="card" style="background:var(--card2);margin-top:10px">'
-                +'<div class="note" style="margin-top:0">Копия от '+esc(created)+': дней — '+s.days+', упражнений — '+s.ex+', шаблонов — '+s.tpl+'</div>'
+            h+='<div class="card" id="backupPreview" style="background:var(--card2);margin-top:10px">'
+                +'<div class="note" style="margin-top:0">Копия от '+esc(created)+' · версия приложения '+esc(s.version||'неизвестна')+'</div>'
+                +'<div class="note">Дней в логе — <b>'+s.days+'</b>, шаблонов — <b>'+s.tpl+'</b>, конфликтующих дат — <b>'+plan.conflicts+'</b></div>'
                 +'<div class="theme-radios" style="margin-top:8px">'
-                +'<label class="theme-radio"><input type="radio" name="backupMode" value="merge" '+(ui.backupMode==='merge'?'checked':'')+' data-chg="backupMode"><span>Объединить — добавить недостающее</span></label>'
+                +'<label class="theme-radio"><input type="radio" name="backupMode" value="merge" '+(ui.backupMode==='merge'?'checked':'')+' data-chg="backupMode"><span>Объединить — по датам, при конфликте побеждает запись с большим up</span></label>'
                 +'<label class="theme-radio"><input type="radio" name="backupMode" value="replace" '+(ui.backupMode==='replace'?'checked':'')+' data-chg="backupMode"><span>Заменить всё</span></label>'
                 +'</div>';
             if(ui.backupMode==='replace'){
+                h+='<div class="note">Текущие данные (дней — '+Object.keys(data.log).length+') будут заменены копией.</div>';
                 if(ui.backupConfirmStep===1){
                     h+='<div class="confirm" style="margin-top:10px"><span>Это перезапишет текущие данные и данные в облаке Telegram. Продолжить?</span>'
                         +'<span class="btns"><button class="btn-red" data-act="backupConfirmNext">Продолжить</button>'
                         +'<button class="btn-gray" data-act="backupConfirmCancel">Отмена</button></span></div>';
                 } else if(ui.backupConfirmStep===2){
-                    h+='<div class="confirm" style="margin-top:10px"><span><b>Последнее подтверждение.</b> Текущие тренировки, шаблоны и настройки будут удалены и заменены копией.</span>'
+                    h+='<div class="confirm" style="margin-top:10px"><span><b>Последнее подтверждение.</b> Текущие тренировки, шаблоны и настройки будут удалены и заменены копией. Перед этим сохраняется локальный снимок.</span>'
                         +'<span class="btns"><button class="btn-red" data-act="backupApplyGo">Заменить всё</button>'
                         +'<button class="btn-gray" data-act="backupConfirmCancel">Отмена</button></span></div>';
                 } else {
                     h+='<button class="wide-btn danger" data-act="backupReplaceAsk">Заменить всё</button>';
                 }
             } else {
-                h+='<button class="wide-btn primary" data-act="backupApplyGo">Объединить</button>';
+                h+='<div class="note">Добавится дней — '+plan.days.add.length+', заменят текущие (новее в копии) — '+plan.days.take.length+', останутся текущие — '+plan.days.keep.length
+                    +'; шаблонов добавится — '+plan.tpl.add.length+', обновится — '+plan.tpl.take.length+'.</div>'
+                    +'<button class="wide-btn primary" data-act="backupApplyGo">Объединить</button>';
             }
             h+='<button class="wide-btn" data-act="backupApplyCancel">Отмена</button></div>';
         }
@@ -2384,7 +2436,6 @@
 
         h+='<div class="sec-label">Данные</div><div class="card">'
             +(cs?'<button class="wide-btn" data-act="syncNow">'+ICON_SYNC+' Синхронизировать сейчас</button>':'')
-            +'<button class="wide-btn" data-act="export">'+ICON_DOWNLOAD+' Скачать Excel</button>'
             +'<button class="wide-btn" data-act="import">'+ICON_UPLOAD+' Импорт из Excel-файла</button>'
             +'<button class="wide-btn" data-act="importTextOpen">'+ICON_CLIPBOARD+' Импорт из заметок</button>'
             +'<div class="note">'+syncNote+'</div></div>';
@@ -2937,6 +2988,7 @@
                 hap("light"); break;
             }
             case "export": exportXlsx(); break;
+            case "exportCsv": exportCsv(); break;
             case "import": document.getElementById("importFile").click(); break;
 
             case "backupDownload":{
@@ -3001,6 +3053,9 @@
                 if(!ui.backupParsed) return;
                 const mode=ui.backupMode;
                 if(mode==="replace"&&ui.backupConfirmStep!==2) return;
+                // снимок текущих данных перед применением: K("prerestore") в localStorage; без него не применяем
+                try{ lsSet("prerestore", JSON.stringify(buildBackupDump())); }
+                catch(err){ toast("Не удалось сохранить снимок перед восстановлением: "+errText(err)); return; }
                 const res=applyBackupDump(ui.backupParsed, mode);
                 ui.backupParsed=null; ui.backupParsedSrc=null; ui.backupRestoreOpen=false; ui.backupConfirmStep=0; ui.backupMode="merge";
                 applyTheme(); render();
@@ -3009,10 +3064,10 @@
                     toast("Данные заменены: дней — "+res.days+", шаблонов — "+res.tpl+". Синхронизация с облаком…");
                     cloudReplaceAll().then(function(){ toast("Облако обновлено"); });
                 } else {
-                    toast("Объединено: добавлено дней — "+res.days+", шаблонов — "+res.tpl);
+                    toast("Объединено: добавлено дней — "+res.days+", заменено — "+res.replaced+", шаблонов — "+res.tpl);
                     (async function(){
                         for(const dk of res.toSyncDays) await csSet("w_"+dk, JSON.stringify(data.log[dk]));
-                        for(const t of res.toSyncTpl) await csSet("tpl_"+t.id, JSON.stringify(t));
+                        for(const t of res.toSyncTpl){ const cur=data.templates.find(function(x){return x.id===t.id;})||t; await csSet("tpl_"+t.id, JSON.stringify(cur)); }
                     })();
                 }
                 break;
