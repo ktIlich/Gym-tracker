@@ -132,15 +132,20 @@
         .help-ic{display:inline-block; color:var(--text)}
         .help-ic svg.icon{width:1rem; height:1rem; vertical-align:-0.1875rem}
         #tour{position:fixed; inset:0; z-index:2700; touch-action:none; user-select:none; -webkit-user-select:none}
-        .tour-banner{position:absolute; top:calc(var(--csa-top) + var(--sa-top) + 0.25rem); left:calc(var(--sa-left) + 0.375rem); z-index:3; padding:0.25rem 0.625rem; border-radius:1rem; background:var(--accent); color:var(--on-accent); font-size:0.75rem; font-weight:700; max-width:calc(100vw - 6rem)}
+        .tour-banner{position:absolute; top:calc(var(--csa-top) + var(--sa-top)); left:0; right:0; z-index:3; box-sizing:border-box; background:var(--tour-bg); color:var(--tour-ink); box-shadow:0 0.25rem 1rem color-mix(in srgb, var(--black) 45%, transparent);
+            padding:0 max(0.875rem, var(--sa-right)) 0.375rem max(0.875rem, var(--sa-left))}
+        .tour-bar-row{display:flex; align-items:center; gap:0.5rem; min-height:var(--touch)}
+        .tour-screen{flex:1; min-width:0; font-weight:800; font-size:0.9375rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+        .tour-exit{min-height:var(--touch); padding:0 0.625rem; margin-right:-0.625rem; color:var(--tour-ink); font-weight:600; font-size:0.875rem}
+        .tour-example{font-size:0.6875rem; color:var(--tour-muted); margin-top:-0.25rem}
+        .in-tour .env-fixed{display:none}
         .tour-hole{position:absolute; z-index:1; pointer-events:none; box-sizing:border-box; border-radius:0.75rem; outline:2px solid var(--accent); box-shadow:0 0 0 9999px color-mix(in srgb, var(--black) 72%, transparent); transition:left .2s ease, top .2s ease, width .2s ease, height .2s ease}
         .tour-tip{position:absolute; z-index:2; box-sizing:border-box; width:20rem; max-width:calc(100vw - 1.5rem); padding:0.875rem; border-radius:0.875rem; background:var(--tour-bg); color:var(--tour-ink); box-shadow:0 0.5rem 2rem color-mix(in srgb, var(--black) 45%, transparent); transition:left .2s ease, top .2s ease}
         #tour.noanim .tour-hole, #tour.noanim .tour-tip{transition:none}
-        .tour-title{font-weight:800; font-size:1rem; padding-right:5.5rem; line-height:1.25}
+        .tour-title{font-weight:800; font-size:1rem; line-height:1.25}
         .tour-text{font-size:0.875rem; line-height:1.45; margin-top:0.25rem; color:var(--tour-ink-2)}
-        .tour-skip{position:absolute; top:0.25rem; right:0.375rem; min-height:var(--touch); padding:0 0.5rem; font-size:0.8125rem; color:var(--tour-muted)}
-        .tour-foot{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.5rem; margin-top:0.75rem}
-        .tour-count{font-size:0.75rem; color:var(--tour-muted)}
+        .tour-foot{display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:0.5rem; margin-top:0.75rem}
+        .tour-count{font-size:0.8125rem; color:var(--tour-muted); white-space:nowrap}
         .tour-btns{display:flex; flex-wrap:wrap; gap:0.375rem; justify-content:flex-end}
         .tour-btns button{min-height:var(--touch); padding:0 0.875rem; border-radius:0.625rem; background:var(--tour-btn); color:var(--tour-ink); font-weight:600; font-size:0.875rem}
         .tour-btns button.primary{background:var(--accent); color:var(--on-accent)}
@@ -3765,7 +3770,7 @@
             { target:"set-help", title:"Помощь", text:"Тур, справочник и приветствие — здесь." }
         ]
     };
-    const TOUR_ORDER=[["day","today"],["tpl","templates"],["cal","calendar"],["prg","progress"],["set","settings"]];
+    const TOUR_ORDER=[["day","today","Сегодня"],["tpl","templates","Шаблоны"],["cal","calendar","Календарь"],["prg","progress","Прогресс"],["set","settings","Настройки"]];
     // демо-данные тура: фиксированный набор (интерфейс рендерится на нём, хранилище не трогается)
     const TOUR_DEMO={
         name:"Пример: Тяговая",
@@ -3803,7 +3808,7 @@
         const out=[];
         for(const pair of TOUR_ORDER){
             if(mode!=="all"&&pair[0]!==ui.tab) continue;
-            for(const s of TOUR[pair[1]]) out.push(Object.assign({tab:pair[0]},s));
+            for(const s of TOUR[pair[1]]) out.push(Object.assign({tab:pair[0],tabName:pair[2]},s));
         }
         return out;
     }
@@ -3822,9 +3827,9 @@
         fillTourLog();
         applyTheme();
         const el=document.createElement("div"); el.id="tour";
-        el.innerHTML='<div class="tour-banner">Пример — данные не сохраняются</div><div class="tour-hole"></div>'
-            +'<div class="tour-tip" role="dialog"><button class="tour-skip" data-t="skip">Пропустить</button><div class="tour-title"></div><div class="tour-text"></div>'
-            +'<div class="tour-foot"><span class="tour-count"></span><span class="tour-btns"><button data-t="prev">Назад</button><button data-t="help">Вся справка</button><button class="primary" data-t="next">Далее</button></span></div>'
+        el.innerHTML='<div class="tour-banner"><div class="tour-bar-row"><span class="tour-screen"></span><span class="tour-count"></span><button class="tour-exit" data-t="skip">Выйти</button></div><div class="tour-example">Пример — данные не сохраняются</div></div><div class="tour-hole"></div>'
+            +'<div class="tour-tip" role="dialog"><div class="tour-title"></div><div class="tour-text"></div>'
+            +'<div class="tour-foot"><span class="tour-btns"><button data-t="prev">Назад</button><button data-t="help">Вся справка</button><button class="primary" data-t="next">Далее</button></span></div>'
             +'<i class="tour-arrow"></i></div>';
         tour={ el:el, steps:steps, idx:-1, path:[], cur:null, saved:saved, mode:mode, x0:null };
         el.addEventListener("click",function(e){
@@ -3846,7 +3851,7 @@
         window.addEventListener("resize",tour.onPlace); window.addEventListener("scroll",tour.onPlace,true);
         document.addEventListener("visibilitychange",tour.onHide); document.addEventListener("keydown",tour.onKey);
         if(tg&&tg.onEvent) for(const ev of ["viewportChanged","safeAreaChanged","contentSafeAreaChanged"]) tg.onEvent(ev,tour.onPlace);
-        document.body.appendChild(el);
+        document.body.appendChild(el); document.body.classList.add("in-tour");
         el.classList.add("noanim");
         if(!tourShow(0,1)){ tourEnd(); return; }
         syncBackButton();
@@ -3863,7 +3868,13 @@
                 t.idx=i; t.cur=s; if(!noPush) t.path.push(i);
                 t.el.classList.toggle("noanim",!t.shown); t.shown=true;
                 tourFill(s);
-                if(getComputedStyle(tgt).position!=="fixed") tgt.scrollIntoView({block:"center",inline:"nearest",behavior:"instant"});
+                if(getComputedStyle(tgt).position!=="fixed"){
+                    const barH=t.el.querySelector(".tour-banner").getBoundingClientRect().bottom;
+                    tgt.style.scrollMarginTop=barH+"px";   // плашка не перекрывает цель
+                    tgt.scrollIntoView({block:"center",inline:"nearest",behavior:"instant"});
+                    const top=tgt.getBoundingClientRect().top-6-(barH+8);
+                    if(top<0) window.scrollBy(0,top);   // цель в верхней части экрана — сдвигаем страницу, чтобы она оказалась ниже плашки
+                }
                 tourPlace(true);
                 syncBackButton();
                 return true;
@@ -3884,10 +3895,10 @@
         const t=tour, tip=t.el.querySelector(".tour-tip"), last=t.idx===t.steps.length-1;
         tip.querySelector(".tour-title").textContent=s.title;
         tip.querySelector(".tour-text").textContent=typeof s.text==="function"?s.text():s.text;
-        tip.querySelector(".tour-count").textContent=(t.idx+1)+" / "+t.steps.length;
+        t.el.querySelector(".tour-screen").textContent="Тур · "+s.tabName;
+        t.el.querySelector(".tour-count").textContent=(t.idx+1)+" / "+t.steps.length;
         tip.querySelector('[data-t="prev"]').style.display=t.path.length>1?"":"none";
         tip.querySelector('[data-t="help"]').style.display=last?"":"none";
-        tip.querySelector('[data-t="skip"]').style.display=last?"none":"";
         tip.querySelector('[data-t="next"]').textContent=last?"Готово":"Далее";
     }
     function tourNext(){
@@ -3935,7 +3946,7 @@
         window.removeEventListener("resize",t.onPlace); window.removeEventListener("scroll",t.onPlace,true);
         document.removeEventListener("visibilitychange",t.onHide); document.removeEventListener("keydown",t.onKey);
         if(tg&&tg.offEvent) for(const ev of ["viewportChanged","safeAreaChanged","contentSafeAreaChanged"]) tg.offEvent(ev,t.onPlace);
-        t.el.remove();
+        t.el.remove(); document.body.classList.remove("in-tour");
         tour=null; TOUR_MODE=false;
         data=t.saved.data; ui=t.saved.ui; curDate=t.saved.cur; calMonth=t.saved.cal; progEx=t.saved.prog;
         applyTheme(); render(); window.scrollTo(0,t.saved.scroll);

@@ -81,7 +81,7 @@ async def main():
                 check("6.7: [%s] тур показал шаги: %s" % (tab, names), len(steps) >= 2, names)
                 check("6.7: [%s] окно точно вокруг цели (отступ 6px), подсказка не выходит за экран и не заходит под шапку/навигацию, стрелка на цель (390×844)" % tab, not bad, bad[:3])
                 last = steps[-1]
-                check("6.1: [%s] последний шаг: «Готово» и «Вся справка», «Пропустить» скрыт, счётчик «N / M»" % tab, last["nextText"] == "Готово" and last["helpShown"] and not last["skipShown"] and re.match(r"^\d+ / \d+$", last["count"]), last)
+                check("6.1: [%s] последний шаг: «Готово» и «Вся справка», «Выйти» остаётся в верхней плашке, счётчик «N / M»" % tab, last["nextText"] == "Готово" and last["helpShown"] and last["skipShown"] and re.match(r"^\d+ / \d+$", last["count"]), last)
                 check("6: [%s] на первом шаге нет «Назад»" % tab, not steps[0]["prevShown"] and steps[0]["count"].startswith("1 /"))
                 await page.click('#tour [data-t="help"]'); await page.wait_for_timeout(300)
                 sec = await page.evaluate("Object.keys(ui.help.open)")
