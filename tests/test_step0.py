@@ -1,3 +1,4 @@
+import re
 import os
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 import asyncio, json, subprocess, sys, time, copy
@@ -31,12 +32,14 @@ MOCK = """
     getItems: (keys, cb) => call('getItems', [keys]).then(v => cb(null, v)),
     setItem: (k, v, cb) => call('setItem', [k, v]).then(v => cb(null, v)),
     removeItem: (k, cb) => call('removeItem', [k]).then(v => cb(null, v)),
+    removeItems: (keys, cb) => call('removeItems', [keys]).then(v => cb(null, v)),
   };
   window.__toasts = [];
   window.Telegram = { WebApp: { ready(){}, expand(){}, isVersionAtLeast: () => true, disableVerticalSwipes(){},
     platform: 'ios', version: '8.0', initData: 'user=%7B%22id%22%3A4242%7D', initDataUnsafe: { user: { id: 4242 } },
     colorScheme: 'dark', CloudStorage: cs, showConfirm(msg, cb){ window.__log('confirm', msg); cb(true); },
-    showAlert(msg, cb){ window.__log('alert', msg); if (cb) cb(); },
+    showAlert(msg, cb){ window.__log('alert_cache', localStorage.getItem('tst_gt2:cache') || ''); window.__log('alert', msg); if (cb) cb(); },
+    enableClosingConfirmation(){ window.__log('closing', 'on'); }, disableClosingConfirmation(){ window.__log('closing', 'off'); },
     HapticFeedback: { impactOccurred(){}, notificationOccurred(){} } } };
 })();
 """
@@ -46,16 +49,33 @@ async def log_handler(source, kind, msg):
     LOG.append((kind, msg))
 def logs_of(kind): return [m for k, m in LOG if k == kind]
 
+INFLIGHT = {"cur": 0, "max": 0}
+DELAY = {"set": 0.0}
+GET_SIZES = []
+REMOVE_MANY = []   # списки ключей каждого вызова removeItems
+
 async def cs_handler(source, op, args_json):
     a = json.loads(args_json)
     if op == "getKeys":
         return json.dumps(list(STORE.keys()))
     if op == "getItems":
+        GET_SIZES.append(len(a[0]))
         return json.dumps({k: STORE.get(k, "") for k in a[0]})
     if op == "setItem":
-        WRITES.append(("set", a[0])); STORE[a[0]] = a[1]; return "true"
+        INFLIGHT["cur"] += 1; INFLIGHT["max"] = max(INFLIGHT["max"], INFLIGHT["cur"])
+        try:
+            if DELAY["set"]: await asyncio.sleep(DELAY["set"])
+            WRITES.append(("set", a[0])); STORE[a[0]] = a[1]
+        finally:
+            INFLIGHT["cur"] -= 1
+        return "true"
     if op == "removeItem":
         WRITES.append(("del", a[0])); STORE.pop(a[0], None); return "true"
+    if op == "removeItems":
+        REMOVE_MANY.append(list(a[0]))
+        for k in a[0]:
+            WRITES.append(("del", k)); STORE.pop(k, None)
+        return "true"
 
 async def open_page(ctx, path, mock=True):
     page = await ctx.new_page()
@@ -145,7 +165,7 @@ async def main():
             check("клон #2 (тестовые данные есть): запрошено подтверждение", any("Перезаписать" in m for m in logs_of("confirm")), LOG)
             check("клон: все записи/удаления — только tst_", all(k.startswith("tst_") for _, k in WRITES) and len(WRITES) > 0, [w for w in WRITES if not w[1].startswith("tst_")])
             check("клон: прод-ключи не тронуты", {k: v for k, v in STORE.items() if not k.startswith("tst_")} == PROD0)
-            copied = {k[4:]: v for k, v in STORE.items() if k.startswith("tst_")}
+            copied = {k[4:]: v for k, v in STORE.items() if k.startswith("tst_") and k != "tst_clone_state"}
             check("клон: tst_* == копия прода (ключи и значения)", copied == PROD0, (set(copied) ^ set(PROD0)))
             check("клон #2: итог в showAlert", logs_of("alert") == ["Скопировано: 3 тренировок, 3 шаблонов, 7 ключей"], LOG)
             check("клон: данные в приложении", await t.evaluate("Object.keys(data.log).length===3 && data.templates.length===3"))
@@ -286,10 +306,31 @@ async def main():
             await f.evaluate("window.__origSet=Telegram.WebApp.CloudStorage.setItem; Telegram.WebApp.CloudStorage.setItem=(k,v,cb)=>cb(null,false); 0")
             await f.evaluate("Telegram.WebApp.showConfirm=(m,cb)=>cb(true); 0")
             await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(1200)
-            check("клон: сбой записи → showAlert «Шаг «Запись копии»»", any("Шаг «Запись копии»" in m for m in logs_of("alert")), LOG)
-            await f.evaluate("Telegram.WebApp.CloudStorage.setItem=window.__origSet; 0")
-            LOG.clear(); await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(2500)   # восстановить tst-данные
-            check("клон: повторная попытка после сбоя проходит", logs_of("alert") == ["Скопировано: 3 тренировок, 3 шаблонов, 7 ключей"], LOG)
+            check("клон: сбой записи маркера → showAlert «Шаг «Запись маркера «running»»»", any("Шаг «Запись маркера «running»»" in m for m in logs_of("alert")), LOG)
+            check("клон: маркер не записан → экрана «не завершено» нет", await f.locator('[data-act="setupNext"], header').count() >= 1 and "Копирование не завершено" not in await f.evaluate("document.body.innerText"))
+            # сбой записи данных при записанном маркере → «Копирование не завершено»
+            await f.evaluate("""Telegram.WebApp.CloudStorage.setItem=(k,v,cb)=>{ if(k.includes('_w_')||k.includes('tst_w_')) cb(null,false); else window.__origSet.call(Telegram.WebApp.CloudStorage,k,v,cb); }; 0""")
+            LOG.clear()
+            await f.evaluate("window.__marker=1; 0")
+            await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(1500)
+            check("клон: сбой записи данных → showAlert «Шаг «Запись копии»»", any("Шаг «Запись копии»" in m for m in logs_of("alert")), LOG)
+            check("клон: closing confirmation включён и выключен после сбоя", logs_of("closing")[:2] == ["on", "off"], LOG)
+            check("клон: при сбое экран «Копирование не завершено» и кнопка «Повторить»", "Копирование не завершено" in await f.evaluate("document.body.innerText") and await f.locator('[data-act="cloneProd"]').inner_text() != "")
+            check("клон: маркер tst_clone_state = running", STORE.get("tst_clone_state") == "running", STORE.get("tst_clone_state"))
+            await f.reload(); await f.wait_for_timeout(1500)
+            check("старт с маркером running: экран «Копирование не завершено», в приложение не пускает",
+                  "Копирование не завершено" in await f.evaluate("document.body.innerText") and await f.locator('[data-tab]').first.is_hidden())
+            LOG.clear(); WRITES.clear(); await f.evaluate("window.__marker=1; 0")
+            await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(3000)   # «Повторить»: без подтверждения перезаписи
+            check("«Повторить»: подтверждение перезаписи не спрашивается, итог в showAlert", not logs_of("confirm") and logs_of("alert") == ["Скопировано: 3 тренировок, 3 шаблонов, 7 ключей"], LOG)
+            check("«Повторить»: после reload приложение открыто (нет экрана «не завершено»)", await f.evaluate("window.__marker===undefined") and "Копирование не завершено" not in await f.evaluate("document.body.innerText"))
+            check("«Повторить»: маркер done;<дата>;7", STORE.get("tst_clone_state", "").startswith("done;") and STORE["tst_clone_state"].endswith(";7"), STORE.get("tst_clone_state"))
+            sets = [w[1] for w in WRITES if w[0] == "set"]
+            check("клон: порядок — первая запись маркер running, последняя — маркер done", sets[0] == "tst_clone_state" and sets[-1] == "tst_clone_state" and sets.count("tst_clone_state") == 2, sets[:3] + sets[-3:])
+            check("клон: closing confirmation on → off при успехе", logs_of("closing")[:2] == ["on", "off"], LOG)
+            cache = logs_of("alert_cache")[-1] if logs_of("alert_cache") else ""
+            check("клон: к моменту showAlert кэш localStorage заполнен (3 дня, 3 шаблона)", cache and len(json.loads(cache)["log"]) == 3 and len(json.loads(cache)["templates"]) == 3, cache[:80])
+            check("клон: время этапов в диагностике", (await f.evaluate("collectDiag().then(()=>diagReportText())")).count("время клонирования: чтение") == 1)
             check("диагностика/клон: нет pageerror", not [l for l in flogs if l.startswith("pageerror")], flogs[:3])
             await f.screenshot(path=os.path.join(os.environ.get("TEMP", "."), "gt_diag.png"))
 
@@ -333,13 +374,51 @@ async def main():
             LOG.clear(); await f.click('[data-act="clearTest"]'); await f.wait_for_timeout(800)
             check("очистка: сбой удаления → showAlert «Шаг «Удаление ключей облака»», без перезагрузки", any("Шаг «Удаление ключей облака»" in m for m in logs_of("alert")) and await f.evaluate("window.__marker===1"), LOG)
 
+            # ---------- оптимизация: пачки, removeItems только для лишних, пул по 6, прогресс и оверлей ----------
+            STORE.clear(); STORE.update(copy.deepcopy(PROD0))
+            for i in range(120): STORE["w_2030-01-%03d" % i] = json.dumps({"title": "x", "up": 1, "exercises": []})
+            PROD_BIG = {k: v for k, v in STORE.items()}
+            STORE["tst_junk_extra"] = "1"; STORE["tst_w_2030-01-000"] = "stale"   # лишний и устаревший (есть в новой копии)
+            DELAY["set"] = 0.04
+            cons = []
+            f.on("console", lambda m: cons.append(m.text))
+            LOG.clear()
+            await f.evaluate("Telegram.WebApp.showConfirm=(m,cb)=>{ window.__log('confirm', m); cb(true); }; window.__marker=1; 0")
+            GET_SIZES.clear(); WRITES.clear(); REMOVE_MANY.clear(); INFLIGHT["max"] = 0
+            click = asyncio.ensure_future(f.click('[data-act="cloneProd"]'))
+            seen = None
+            for _ in range(80):
+                await asyncio.sleep(0.05)
+                try:
+                    seen = await f.evaluate("""(()=>{ const o=document.getElementById('cloneOverlay'); if(!o) return null; const b=document.querySelector('[data-act=cloneProd]');
+                        const top=document.elementFromPoint(innerWidth/2, innerHeight/2);
+                        return {text:document.getElementById('cloneOverlayText').textContent, btn:b?b.textContent.trim():null, blocks: top===o||o.contains(top)}; })()""")
+                except Exception:
+                    seen = None
+                if seen and re.match(r"Копирование [1-9]\d*/127$", seen["text"]): break
+            await click
+            check("прогресс: оверлей «Копирование N/127» блокирует интерфейс", bool(seen) and re.match(r"Копирование \d+/127$", seen["text"]) is not None and seen["blocks"], seen)
+            check("прогресс: на кнопке «Копирование N/127»", bool(seen) and seen["btn"] is not None and re.match(r"Копирование \d+/127$", seen["btn"]) is not None, seen)
+            await f.wait_for_timeout(3500)
+            check("чтение: getItems пачками ≤50 ключей (127 ключей → 3 пачки)", GET_SIZES[:3] == [50, 50, 27], GET_SIZES)
+            check("удаление: один вызов removeItems, только лишний tst_-ключ; устаревший w_ не удаляется заранее", REMOVE_MANY == [["tst_junk_extra"]], REMOVE_MANY)
+            check("удаление: поштучных removeItem во время клонирования нет", not [w for w in WRITES if w[0] == "del" and w[1] != "tst_junk_extra"], WRITES[:3])
+            check("запись: параллельно (>1), но не более 6 одновременных запросов", 1 < INFLIGHT["max"] <= 6, INFLIGHT)
+            check("запись: tst_* == копия прода после клона (127 ключей)", {k[4:]: v for k, v in STORE.items() if k.startswith("tst_") and k != "tst_clone_state"} == PROD_BIG)
+            check("время этапов выведено в console", any(c.startswith("[clone] чтение") and "удаление" in c and "запись" in c for c in cons), cons[-3:])
+            rep_text = await f.evaluate("collectDiag().then(()=>diagReportText())")
+            check("время этапов выведено на экране диагностики", "время клонирования: чтение" in rep_text and "запись" in rep_text and "tst_clone_state: done;" in rep_text, rep_text[-400:])
+            DELAY["set"] = 0.0
+            for k in list(STORE):
+                if k.startswith("w_2030") or k.startswith("tst_w_2030"): STORE.pop(k)
+            STORE.update(copy.deepcopy(PROD0))
+
             # ---------- статический контроль ----------
             src = open(REPO+"/test/index.html", encoding="utf-8").read()
-            import re
-            check("статика: нет localStorage.clear / removeItems", "localStorage.clear" not in src and "removeItems" not in src)
+            check("статика: нет localStorage.clear; removeItems — один вызов, только в rawDelMany с guardKey по каждому ключу", "localStorage.clear" not in src and src.count("cs.removeItems(") == 1 and "keys.forEach(guardKey)" in src)
             raw_ls = [m.start() for m in re.finditer(r"localStorage\.", src)]
             check("статика: прямой localStorage только внутри lsGet/lsSet/lsDel/lsKeys", len(raw_ls) == 5, len(raw_ls))
-            check("статика: прямых cs.* нет вне raw-слоя", len(re.findall(r"\bcs\.(setItem|removeItem|getKeys|getItems)", src)) == 4)
+            check("статика: прямых cs.* нет вне raw-слоя", len(re.findall(r"\bcs\.(setItem|removeItem|getKeys|getItems)", src)) == 5)
             check("статика: APP_VERSION 2.10.0", 'APP_VERSION="2.10.0"' in src)
 
             # холодный старт в test без Telegram/облака не падает

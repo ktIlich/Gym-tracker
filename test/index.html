@@ -536,8 +536,17 @@
     // низкоуровневый слой (полные ключи). Запись/удаление — только через guardKey
     let lastCsErr="";
     function rawGetItems(keys){ return new Promise(function(res){ if(!cs||!keys.length) return res({}); cs.getItems(keys,function(e,v){ if(e) lastCsErr="getItems: "+String(e); res(e?{}:(v||{})); }); }); }
-    function rawSet(k,v){ return new Promise(function(res){ if(!cs||frozen) return res(false); guardKey(k); try{ cs.setItem(k,v,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
-    function rawDel(k){ return new Promise(function(res){ if(!cs) return res(false); guardKey(k); try{ cs.removeItem(k,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
+    function rawSet(k,v){ return new Promise(function(res){ if(!cs||frozen) return res(false); guardKey(k); try{ cs.setItem(k,v,function(e,ok){ if(e) lastCsErr="setItem: "+String(e); res(!e&&!!ok); }); }catch(err){ lastCsErr="setItem: "+String(err&&err.message||err); res(false); } }); }
+    function rawDel(k){ return new Promise(function(res){ if(!cs) return res(false); guardKey(k); try{ cs.removeItem(k,function(e,ok){ if(e) lastCsErr="removeItem: "+String(e); res(!e&&!!ok); }); }catch(err){ lastCsErr="removeItem: "+String(err&&err.message||err); res(false); } }); }
+    // одним вызовом, но только по явному списку: каждый ключ проходит guardKey, «все ключи» не удаляются никогда
+    function rawDelMany(keys){ return new Promise(function(res){ if(!keys.length) return res(true); if(!cs) return res(false); keys.forEach(guardKey); try{ cs.removeItems(keys,function(e,ok){ if(e) lastCsErr="removeItems: "+String(e); res(!e&&!!ok); }); }catch(err){ lastCsErr="removeItems: "+String(err&&err.message||err); res(false); } }); }
+    // простой пул: не больше limit одновременных задач; onDone(i) вызывается после каждой
+    async function runPool(items,limit,worker,onDone){
+        let next=0, done=0; const results=new Array(items.length);
+        async function lane(){ while(next<items.length){ const i=next++; results[i]=await worker(items[i],i); done++; if(onDone) onDone(done,items.length); } }
+        const lanes=[]; for(let i=0;i<Math.min(limit,items.length);i++) lanes.push(lane());
+        await Promise.all(lanes); return results;
+    }
     function rawKeys(){ return new Promise(function(res){ if(!cs) return res(null); try{ cs.getKeys(function(e,k){ if(e) lastCsErr="getKeys: "+String(e); res(e?null:(k||[])); }); }catch(err){ lastCsErr="getKeys: "+String(err&&err.message||err); res(null); } }); }
     // логический слой: приложение работает с именами без префикса ("cfg", "w_2026-09-28"), K() добавляется здесь
     function csGetItems(keys){
@@ -656,22 +665,45 @@
     }
     // результат клонирования показывается всегда: успех — showAlert с итогом и перезагрузка, ошибка — showAlert с названием шага
     function cloneDone(msg,isErr){
-        ui.cloneBusy=false; ui.cloneMsg=msg; ui.cloneIsErr=!!isErr;
+        ui.cloneBusy=false; ui.cloneProgress=null; ui.cloneMsg=msg; ui.cloneIsErr=!!isErr;
         if(isErr) ui.lastCloneError=msg;
         render();
         if(isErr) hap("error");
     }
+    // маркер состояния клонирования (tst_clone_state): "running" → "done;<дата>;<число ключей>"
+    const CLONE_STATE="clone_state", CLONE_BATCH=50, CLONE_PARALLEL=6;
+    function cloneOverlay(text){
+        let o=document.getElementById("cloneOverlay");
+        if(text===null){ if(o) o.remove(); return; }
+        if(!o){
+            o=document.createElement("div"); o.id="cloneOverlay";
+            o.style.cssText="position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.78);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#fff;font-size:20px;font-weight:700;text-align:center;padding:24px;touch-action:none";
+            o.innerHTML='<div id="cloneOverlayText"></div><div style="font-size:13px;font-weight:400;opacity:.8">Не закрывайте приложение до окончания копирования</div>';
+            document.body.appendChild(o);
+        }
+        document.getElementById("cloneOverlayText").textContent=text;
+    }
+    function cloneProgress(done,total){
+        ui.cloneProgress={done:done,total:total};
+        const txt="Копирование "+done+"/"+total;
+        cloneOverlay(txt);
+        const btn=document.querySelector('[data-act="cloneProd"]'); if(btn) btn.innerHTML=ICON_SYNC+" "+txt;
+    }
+    function ms(t0){ return Math.round(performance.now()-t0); }
     async function cloneFromProd(){
         if(ui.cloneBusy) return;
         ui.cloneBusy=true; ui.cloneMsg="Копирование…"; ui.cloneIsErr=false; render();
-        let step="Проверка среды", ownBusy=false, success=null;
+        let step="Проверка среды", ownBusy=false, success=null, closingOn=false, markerWritten=false;
+        const T={ read:0, del:0, write:0, total:0, keys:0, batches:0, deleted:0, parallel:CLONE_PARALLEL };
+        const tAll=performance.now();
         try{
             if(ENV!=="test") throw new Error("клонирование доступно только в test");
             if(!cs) throw new Error("CloudStorage недоступен (открыто не в Telegram или версия клиента ниже 6.9). См. «Диагностика».");
             if(syncState.busy) throw new Error("идёт синхронизация с облаком, повторите через несколько секунд");
             syncState.busy=true; ownBusy=true;
-            // чтение: все ключи без префикса tst_ (в них ничего не пишем)
+            // ---- чтение: все ключи без префикса tst_ (в них ничего не пишем), значения пачками
             step="Чтение списка ключей"; lastCsErr="";
+            let t0=performance.now();
             const all=await rawKeys();
             if(all===null) throw new Error("не удалось прочитать список ключей CloudStorage"+(lastCsErr?" — "+lastCsErr:""));
             const prod=all.filter(function(k){ return k.indexOf(KP)!==0; });
@@ -681,40 +713,84 @@
             // лимит CloudStorage: 1024 ключа на бота и пользователя
             if(prod.length*2>=1000) throw new Error("слишком много ключей ("+prod.length+"): копия не поместится в лимит 1024 (нужно: прод-ключи × 2 < 1000)");
             step="Чтение значений"; const items={};
-            for(let i=0;i<prod.length;i+=50){
-                const part=prod.slice(i,i+50); lastCsErr="";
-                const got=await rawGetItems(part);
+            for(let i=0;i<prod.length;i+=CLONE_BATCH){
+                const part=prod.slice(i,i+CLONE_BATCH); lastCsErr="";
+                const got=await rawGetItems(part); T.batches++;
                 for(const k of part){ if(got[k]==null) throw new Error("не удалось прочитать значение ключа «"+k+"»"+(lastCsErr?" — "+lastCsErr:"")+". Тестовые данные не тронуты."); items[k]=got[k]; }
             }
-            // подтверждение, если тестовые данные уже есть
+            T.read=ms(t0); T.keys=prod.length;
+            // ---- подтверждение (после прерванного копирования — не спрашиваем)
             step="Подтверждение";
             const hasTestData=mine.some(function(k){ return k.indexOf(KP+"w_")===0; })||!!data.cfg.cycle.anchorDate;
-            if(hasTestData && !(await askConfirm("Перезаписать тестовые данные копией основных?"))){ cloneDone("Отменено: тестовые данные не изменены",false); return; }
+            if(hasTestData && !ui.cloneIncomplete && !(await askConfirm("Перезаписать тестовые данные копией основных?"))){ cloneDone("Отменено: тестовые данные не изменены",false); return; }
             step="Снимок текущих тестовых данных";
             lsSet("preclone", JSON.stringify(data));
-            step="Удаление старых тестовых ключей"; let delFail=[];
-            for(const k of mine) if(!(await rawDel(k))) delFail.push(k);
-            if(delFail.length) throw new Error("не удалены ключи: "+delFail.slice(0,5).join(", ")+(delFail.length>5?" и ещё "+(delFail.length-5):""));
-            step="Запись копии"; const wrFail=[];
-            for(const k of prod) if(!(await rawSet(KP+k, items[k]))) wrFail.push(k);
-            if(wrFail.length) throw new Error("не записано ключей: "+wrFail.length+" из "+prod.length+" (например, "+wrFail.slice(0,3).join(", ")+")");
-            step="Применение данных";
+            // ---- с этого момента пользователь не должен уйти: оверлей + подтверждение закрытия
+            if(tg&&tg.enableClosingConfirmation){ tg.enableClosingConfirmation(); closingOn=true; }
+            cloneProgress(0,prod.length);
+            step="Запись маркера «running»";
+            if(!(await rawSet(KP+CLONE_STATE,"running"))) throw new Error("не удалось записать маркер состояния"+(lastCsErr?" — "+lastCsErr:""));
+            markerWritten=true;
+            // ---- удаление: только лишние tst_-ключи (которых нет в новой копии); остальные перезапишутся
+            step="Удаление лишних тестовых ключей"; t0=performance.now();
+            const target={}; for(const k of prod) target[KP+k]=1;
+            const extra=mine.filter(function(k){ return k!==KP+CLONE_STATE && !target[k]; });
+            lastCsErr="";
+            if(!(await rawDelMany(extra))) throw new Error("не удалены ключи ("+extra.length+"): "+extra.slice(0,5).join(", ")+(lastCsErr?" — "+lastCsErr:""));
+            T.del=ms(t0); T.deleted=extra.length;
+            // ---- запись: параллельно, не более CLONE_PARALLEL одновременных запросов
+            step="Запись копии"; t0=performance.now(); lastCsErr="";
+            const wr=await runPool(prod,CLONE_PARALLEL,function(k){ return rawSet(KP+k,items[k]); },cloneProgress);
+            T.write=ms(t0);
+            const wrFail=prod.filter(function(k,i){ return !wr[i]; });
+            if(wrFail.length) throw new Error("не записано ключей: "+wrFail.length+" из "+prod.length+" (например, "+wrFail.slice(0,3).join(", ")+")"+(lastCsErr?" — "+lastCsErr:""));
+            step="Запись маркера «done»";
+            if(!(await rawSet(KP+CLONE_STATE,"done;"+new Date().toISOString()+";"+prod.length))) throw new Error("не удалось записать маркер завершения"+(lastCsErr?" — "+lastCsErr:""));
+            // ---- кэш localStorage из только что записанных значений: первый рендер после перезагрузки сразу покажет новые данные
+            step="Заполнение локального кэша";
             data=normalizeData(cloudObjFromItems(prod,items));
-            saveCache(); applyMigrations();
+            applyMigrations(); saveCache();
+            T.total=ms(tAll);
+            ui.cloneTimings=T;
+            lsSet("clone_timings",JSON.stringify(T));
+            console.log("[clone] чтение "+T.read+" мс ("+T.keys+" ключей, пачек: "+T.batches+"), удаление "+T.del+" мс ("+T.deleted+" ключей), запись "+T.write+" мс (параллельно "+T.parallel+"), всего "+T.total+" мс");
             const nW=prod.filter(function(k){return k.indexOf("w_")===0;}).length, nT=prod.filter(function(k){return k.indexOf("tpl_")===0;}).length;
             success="Скопировано: "+nW+" тренировок, "+nT+" шаблонов, "+prod.length+" ключей";
         }catch(e){
             const full="Шаг «"+step+"»: "+errText(e)+(lastCsErr&&errText(e).indexOf(lastCsErr)<0?" ("+lastCsErr+")":"");
+            if(markerWritten) ui.cloneIncomplete=true;   // облако могло остаться с неполной копией
+            cloneOverlay(null);
+            if(closingOn){ tg.disableClosingConfirmation(); closingOn=false; }
             cloneDone(full,true);
             await showAlertP("Ошибка клонирования. "+full);
             return;
         }
-        finally{ if(ownBusy) syncState.busy=false; ui.cloneBusy=false; }
-        if(success){
-            ui.cloneMsg=success; ui.cloneIsErr=false;
-            await showAlertP(success);
-            location.reload();
+        finally{
+            if(ownBusy) syncState.busy=false; ui.cloneBusy=false;
+            if(closingOn&&!success) tg.disableClosingConfirmation();
         }
+        ui.cloneIncomplete=false; ui.cloneMsg=success; ui.cloneIsErr=false;
+        cloneOverlay(null);
+        if(closingOn){ tg.disableClosingConfirmation(); }
+        await showAlertP(success);
+        location.reload();
+    }
+    // при старте test: если клонирование было прервано, в приложение не пускаем
+    async function checkCloneState(){
+        if(ENV!=="test"||!cs) return;
+        const got=await rawGetItems([KP+CLONE_STATE]);
+        ui.cloneStateValue=got[KP+CLONE_STATE]||null;
+        if(got[KP+CLONE_STATE]==="running") ui.cloneIncomplete=true;
+    }
+    function incompleteHtml(){
+        return '<div class="setup"><div class="card full" style="width:100%">'
+            +'<div style="font-weight:800; font-size:17px; margin-bottom:10px">Копирование не завершено</div>'
+            +'<p>Предыдущее копирование данных из основной версии было прервано, тестовые данные неполные. Повторите копирование или очистите тестовые данные.</p>'
+            +'<button class="wide-btn primary" data-act="cloneProd"'+(ui.cloneBusy?' disabled':'')+'>'+ICON_SYNC+' Повторить</button>'
+            +'<button class="wide-btn" data-act="diagOpen">'+ICON_INFO+' Диагностика</button>'
+            +'<button class="wide-btn danger" data-act="clearTest"'+(ui.cloneBusy?' disabled':'')+'>'+ICON_TRASH+' Очистить тестовые данные</button>'
+            +(ui.cloneMsg?'<div class="note'+(ui.cloneIsErr?' res-err':'')+'" style="user-select:text">'+esc(ui.cloneMsg)+'</div>':'')
+            +'</div></div>';
     }
 
     // ============ test: очистка тестовых данных (только tst_) ============
@@ -764,6 +840,8 @@
                 d.hasCS=!!tg.CloudStorage;
             }
         }catch(e){ d.keysErr="сбор данных Telegram: "+(e&&e.message||e); }
+        d.cloneState=ui.cloneStateValue||null;
+        try{ d.timings=ui.cloneTimings||JSON.parse(lsGet("clone_timings")||"null"); }catch(e){ d.timings=null; d.timingsErr=errText(e); }
         if(tg&&tg.CloudStorage){
             const r=await withTimeout(new Promise(function(res){
                 try{ tg.CloudStorage.getKeys(function(e,k){ res(e?{err:String(e)}:{keys:k||[]}); }); }
@@ -788,6 +866,9 @@
             L.push("CloudStorage.getKeys: всего "+d.keys.length+", без префикса tst_: "+(d.keys.length-pref)+", с префиксом tst_: "+pref);
             L.push("первые 10 ключей: "+(d.keys.slice(0,10).join(", ")||"—"));
         } else L.push("CloudStorage.getKeys: ОШИБКА — "+d.keysErr);
+        L.push("tst_clone_state: "+(d.cloneState||"нет"));
+        const T=d.timings;
+        L.push(T?"время клонирования: чтение "+T.read+" мс ("+T.keys+" ключей, пачек по "+CLONE_BATCH+": "+T.batches+"), удаление "+T.del+" мс ("+T.deleted+" ключей), запись "+T.write+" мс (параллельно "+T.parallel+"), всего "+T.total+" мс":"время клонирования: нет данных"+(d.timingsErr?" ("+d.timingsErr+")":""));
         L.push("последняя ошибка клонирования: "+(ui.lastCloneError||"нет"));
         return L.join("\n");
     }
@@ -823,7 +904,7 @@
     }
     let syncState={ last:null, count:null, busy:false };
     async function cloudLoad(){
-        if(!cs||syncState.busy) return;
+        if(!cs||syncState.busy||ui.cloneIncomplete) return;
         syncState.busy=true;
         try{
             const keys=await csKeys();
@@ -2105,8 +2186,10 @@
     }
 
     function render(){
-        if(ENV==="test"&&cs&&!ui.cloudChecked&&!data.cfg.cycle.anchorDate){ app.innerHTML='<div class="setup"><div class="note">Загрузка тестовых данных…</div></div>'; return; }
+        if(ENV==="test"&&cs&&!ui.stateChecked){ document.getElementById("tabbar").style.display="none"; app.innerHTML='<div class="setup"><div class="note">Загрузка тестовых данных…</div></div>'; return; }
         if(ENV==="test"&&ui.diag){ document.getElementById("tabbar").style.display="none"; app.innerHTML=diagPageHtml(); return; }
+        if(ENV==="test"&&ui.cloneIncomplete){ document.getElementById("tabbar").style.display="none"; app.innerHTML=incompleteHtml(); return; }
+        if(ENV==="test"&&cs&&!ui.cloudChecked&&!data.cfg.cycle.anchorDate){ app.innerHTML='<div class="setup"><div class="note">Загрузка тестовых данных…</div></div>'; return; }
         if(!data.cfg.cycle.anchorDate){ renderSetup(); return; }
         document.getElementById("tabbar").style.display="";
         const tb=document.getElementById("tabbar");
@@ -2820,8 +2903,9 @@
         render();
         // до первой проверки облака мастер в test не показываем: тестовые данные могут уже лежать в tst_-ключах
         const cloudChecked=function(){ if(!ui.cloudChecked){ ui.cloudChecked=true; render(); } };
-        setTimeout(cloudChecked,6000);
-        cloudLoad().then(cloudChecked,cloudChecked); // фоновая синхронизация с Telegram CloudStorage
+        setTimeout(function(){ ui.stateChecked=true; cloudChecked(); },6000);
+        checkCloneState().then(function(){ ui.stateChecked=true; },function(e){ ui.stateChecked=true; ui.lastCloneError="Шаг «Проверка маркера клонирования»: "+errText(e); })
+            .then(function(){ render(); return cloudLoad(); }).then(cloudChecked,cloudChecked); // фоновая синхронизация с Telegram CloudStorage
     })();
 </script>
 </body>
