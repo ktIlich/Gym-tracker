@@ -182,6 +182,11 @@
         .swatch .sw-edit{position:absolute; right:-0.125rem; bottom:-0.125rem; width:1rem; height:1rem; border-radius:50%; background:var(--surface); color:var(--text); display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 1px var(--border)}
         .swatch .sw-edit svg.icon{width:0.625rem; height:0.625rem}
         .sw-picked{margin-top:0.5rem}
+        .br-warn{display:flex; align-items:flex-start; gap:0.5rem; margin-top:0.5rem; padding:0.5rem 0.25rem 0.5rem 0.75rem; border-radius:0.75rem; background:color-mix(in srgb, var(--warn) 14%, transparent); border:1px solid color-mix(in srgb, var(--warn) 35%, transparent); font-size:0.8125rem; line-height:1.35}
+        .br-ic{color:var(--warn); display:flex; padding-top:0.125rem}
+        .br-txt{flex:1; min-width:0}
+        .br-x{width:var(--touch-w); height:var(--touch); margin:-0.5rem 0; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted)}
+        .br-info{display:flex; align-items:center; justify-content:center; width:var(--touch-w); height:var(--touch); margin:0.25rem 0 0 -0.625rem; color:var(--warn)}
         .fld{position:relative; width:100%}
         .fld-ic{position:absolute; right:0.75rem; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--text-muted); display:flex}
         .fld-ic svg.icon{width:1.125rem; height:1.125rem; vertical-align:0}
@@ -533,6 +538,8 @@
         for(const ev of ["viewportChanged","safeAreaChanged","contentSafeAreaChanged"]) tg.onEvent(ev,applyTgInsets);
     }
     const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+    // режим браузера: вне Telegram нет initData — нет CloudStorage и проверки пользователя, данные только в localStorage этого браузера
+    const IN_TG = !!(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
     let cs = null;
     try{
         if(tg){ tg.ready(); tg.expand(); applyTgInsets(); subscribeTgInsets();
@@ -1187,7 +1194,7 @@
         return '<div class="card full" style="width:100%">'
             +'<div class="sec-label" style="margin-top:0">Тестовая среда <span class="env-badge">TEST</span></div>'
             +'<div class="note" style="margin-top:0">Ключи хранилища с префиксом «'+KP+'». Основные данные не изменяются.</div>'
-            +'<button class="wide-btn" data-act="cloneProd"'+(ui.cloneBusy?' disabled':'')+'>'+ICON_SYNC+' Скопировать данные из основной версии</button>'
+            +(IN_TG?'<button class="wide-btn" data-act="cloneProd"'+(ui.cloneBusy?' disabled':'')+'>'+ICON_SYNC+' Скопировать данные из основной версии</button>':'')
             +'<button class="wide-btn" data-act="diagOpen">'+ICON_INFO+' Диагностика</button>'
             +'<button class="wide-btn danger" data-act="clearTest"'+(ui.cloneBusy?' disabled':'')+'>'+ICON_TRASH+' Очистить тестовые данные</button>'
             +(ui.cloneMsg?'<div class="note'+(ui.cloneIsErr?' res-err':'')+'" style="user-select:text">'+esc(ui.cloneMsg)+'</div>':'')
@@ -2036,7 +2043,7 @@
         for(let i=0;i<arr.length;i+=0x8000) bin+=String.fromCharCode.apply(null,arr.subarray(i,i+0x8000));
         return btoa(bin);
     }
-    function canSendBackup(){ return !!(BACKUP_ENDPOINT&&tg&&tg.initData); }
+    function canSendBackup(){ return !!(BACKUP_ENDPOINT&&IN_TG); }
     // ядро отправки: {ok:true} | {ok:false, text, expired}
     async function postBackup(format){
         let content, encoding="text";
@@ -2098,6 +2105,18 @@
             if(i!==0){ snoozeBackup(24); return; }
         }
     }
+    // браузер: копия просрочена → диалог «Пора сделать копию» («Скачать JSON» / «Позже», snooze 24 ч); lastBackup обновляется после «Скачать»
+    async function browserBackupPrompt(){
+        const n=data.cfg.backupReminderDays;
+        if(!n||!Object.keys(data.log).length) return;
+        if(data.cfg.backupSnooze&&Date.now()<data.cfg.backupSnooze) return;
+        const last=data.cfg.lastBackup?new Date(data.cfg.lastBackup).getTime():null;
+        if(last!==null&&Date.now()-last<=n*86400000) return;
+        const days=daysSinceBackup();
+        const i=await showDialog({title:"Пора сделать копию",text:isFinite(days)?"Последняя была "+days+" "+ruPlural(days,"день","дня","дней")+" назад":"Копия ещё не делалась",
+            buttons:[{label:"Скачать JSON",primary:true},{label:"Позже"}]});
+        if(i===0) doAction("backupDownload",{}); else snoozeBackup(24);
+    }
     // Проверка при запуске — только после синхронизации с CloudStorage (иначе в копию попадёт устаревший кэш); не чаще одной попытки за запуск
     async function maybeAutoBackup(){
         if(TOUR_MODE) return;
@@ -2106,6 +2125,7 @@
         if(ui.onb||onboardingDue()) return;                        // сначала приветствие; после закрытия проверка повторится
         if(ui.cloneBusy||ui.cloneIncomplete||ui.tblImport||ui.backupParsed||ui.importParsed||ui.sending) return;
         ui.autoBackupTried=true;
+        if(!IN_TG){ await browserBackupPrompt(); return; }          // браузер: отправки в чат нет — предлагаем скачать файл
         if(!canSendBackup()) return;                               // адрес не задан — прежнее напоминание (баннер)
         const n=data.cfg.backupReminderDays;
         if(!n||!Object.keys(data.log).length) return;
@@ -2327,6 +2347,14 @@
     const ICON_CHECK=svgIcon('<polyline points="20 6 9 17 4 12"/>');
     const ICON_CLOSE=svgIcon('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>');
 
+    // под шапкой в браузере: данные локальные; строка сворачивается до значка ⓘ (состояние — в localStorage)
+    function browserWarnCollapsed(){ try{ return lsGet("br_warn")==="0"; }catch(e){ return false; } }
+    function browserWarnHtml(){
+        if(IN_TG) return "";
+        if(browserWarnCollapsed()) return '<button class="br-info" id="brWarn" data-act="brWarnToggle" aria-label="Открыто в браузере: данные хранятся только здесь" title="Открыто в браузере">'+ICON_INFO+'</button>';
+        return '<div class="br-warn" id="brWarn" role="note"><span class="br-ic">'+ICON_INFO+'</span><span class="br-txt">Открыто в браузере: данные хранятся только здесь и не синхронизируются с Telegram</span>'
+            +'<button class="br-x" data-act="brWarnToggle" aria-label="Свернуть">'+ICON_CLOSE+'</button></div>';
+    }
     function headerHtml(){
         const c=data.cfg.cycle, wi=weekInfo(curDate);
         let segs="", labels="";
@@ -3028,7 +3056,7 @@
     }
     function testSectionHtml(){ return cloneCardHtml(); }
     // внутри Telegram прямое скачивание blob не работает: «Скачать» показываем только вне Telegram
-    function canDownload(){ return !(tg&&tg.initData); }
+    function canDownload(){ return !IN_TG; }
     function sectionHead(title,sub,first){ return '<div class="sec-label"'+(first?' style="margin-top:1rem"':'')+'>'+title+'</div><div class="sec-sub">'+sub+'</div>'; }
     function linkRow(label,count,act,attrs){
         return '<button class="link-row" data-act="'+act+'"'+(attrs||'')+'><span class="lbl2">'+label+(count!=null&&count!==""?' <span class="cnt">· '+count+'</span>':'')+'</span>'+ICON_CHEVRON_RIGHT+'</button>';
@@ -4109,7 +4137,7 @@
         document.getElementById("tabbar").style.display="";
         const tb=document.getElementById("tabbar");
         for(const b of tb.querySelectorAll("button")) b.classList.toggle("on", b.dataset.tab===ui.tab);
-        let h=headerHtml();
+        let h=headerHtml()+browserWarnHtml();
         if(ui.histEx) h+=histPage();
         else if(ui.tab==="day") h+=dayPage();
         else if(ui.tab==="cal") h+=calPage();
@@ -4612,6 +4640,7 @@
                 toast("Копия сохранена");
                 break;
             }
+            case "brWarnToggle":{ try{ lsSet("br_warn",browserWarnCollapsed()?"1":"0"); }catch(e){} render(); break; }
             case "cloneProd": cloneFromProd(); break;
             case "bannerDupOpen": ui.tab="set"; ui.hygiene="dups"; ui.dupConfirm=null; ui.aliasScreen=false; hap("light"); render(); break;
             case "bannerDupSnooze": data.cfg.dupSnooze=Date.now()+3*86400000; persistCfg(); render(); break;
