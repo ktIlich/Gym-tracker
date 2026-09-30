@@ -102,20 +102,16 @@ async def main():
             total_drop = sum(len(g["drop"]) for g in exp)
             ups = {t["id"]: (t.get("up") or 0) for t in dump["templates"]}
             check("7.1: в каждой группе оставленный up ≥ up удаляемых", all(all(ups[g["keep"]] >= ups[d] for d in g["drop"]) for g in exp))
-            check("7.1: экран показывает «останется» и «будет удалён» для каждой группы", await page.locator(".dup-group").count() == len(exp) and await page.locator("text=останется").count() >= len(exp) and await page.locator("text=будет удалён").count() == total_drop)
+            check("7.1: экран показывает «Остаётся» и «Будут удалены» для каждой группы", await page.locator(".dup-group").count() == len(exp) and await page.locator("text=Остаётся").count() >= len(exp) and await page.locator(".dup-drop").count() == total_drop)
             # ссылки на удаляемые id: cfg, дни, состояние экрана
             g0 = exp[0]; drop0, keep0 = g0["drop"][0], g0["keep"]
             await page.evaluate("data.cfg.schedule={mon:%s,tue:'other',nested:{x:%s}}; data.log['2026-09-28'].tplId=%s; ui.tplDelId=%s; 0" % (json.dumps(drop0), json.dumps(drop0), json.dumps(drop0), json.dumps(drop0)))
             n_before = await page.evaluate("data.templates.length")
-            await page.locator('[data-act="dupDelAsk"]').first.click(); await page.wait_for_timeout(200)
-            check("7.1: удаление — с подтверждением (кнопка «Удалить» появляется после запроса)", await page.locator('[data-act="dupDelGo"]').count() == 1 and await page.evaluate("data.templates.length") == n_before)
-            await page.click('[data-act="dupDelNo"]'); await page.wait_for_timeout(150)
-            check("7.1: «Отмена» ничего не удаляет", await page.evaluate("data.templates.length") == n_before)
             first_key = await page.evaluate("findDupGroups()[0].key")
             drops_first = await page.evaluate("findDupGroups()[0].drop.map(t=>t.id)")
             keep_first = await page.evaluate("findDupGroups()[0].keep.id")
             await page.evaluate("data.cfg.schedule={mon:%s,tue:'other',nested:{x:%s}}; data.log['2026-09-28'].tplId=%s; ui.tplDelId=%s; 0" % ((json.dumps(drops_first[0]),) * 4))
-            await page.locator('[data-act="dupDelAsk"]').first.click(); await page.click('[data-act="dupDelGo"]'); await page.wait_for_timeout(700)
+            await page.locator('[data-act="tplMergeGo"]').first.click(); await page.wait_for_timeout(700)
             ids = await page.evaluate("data.templates.map(t=>t.id)")
             check("7.1: лишние шаблоны удалены, оставленный на месте", not any(d in ids for d in drops_first) and keep_first in ids and len(ids) == n_before - len(drops_first), (ids, drops_first))
             refs = await page.evaluate("({s:data.cfg.schedule, t:data.log['2026-09-28'].tplId, d:ui.tplDelId})")
@@ -138,7 +134,7 @@ async def main():
             await pb.click('[data-act="bannerDupOpen"]'); await pb.wait_for_timeout(300)
             check("баннер: «Разобрать» открывает экран удаления лишних шаблонов (настройки → дубли)", await pb.evaluate("ui.tab==='set' && ui.hygiene==='dups'") and await pb.locator(".dup-group").count() == len(exp))
             for _ in range(len(exp)):
-                await pb.locator('[data-act="dupDelAsk"]').first.click(); await pb.click('[data-act="dupDelGo"]'); await pb.wait_for_timeout(300)
+                await pb.locator('[data-act="tplMergeGo"]').first.click(); await pb.wait_for_timeout(300)
             await pb.click('[data-act="hygClose"]'); await pb.click('button[data-tab="day"]'); await pb.wait_for_timeout(300)
             check("баннер: после удаления всех лишних шаблонов исчезает", await pb.locator("#dupBanner").count() == 0 and await pb.evaluate("findDupGroups().length") == 0)
             STORE.clear(); pn, en = await open_tg(browser); await pn.goto(BASE + "/test/index.html"); await pn.wait_for_timeout(2000)

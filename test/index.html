@@ -2703,21 +2703,55 @@
     function testSectionHtml(){ return cloneCardHtml(); }
 
     // ============ гигиена данных ============
-    function tplBaseKey(t){
-        const set={};
-        for(const b of (t.blocks||[])) for(const it of (b.items||[])) set[applyAliases(it.name,null).base.trim().toLowerCase()]=1;
-        return Object.keys(set).sort().join("|");
+    // канонические base упражнений шаблона, по порядку (без учёта регистра)
+    function tplBaseList(t){
+        const out=[];
+        for(const b of (t.blocks||[])) for(const it of (b.items||[])){ const k=normKey(applyAliases(it.name,null).base); if(k&&out.indexOf(k)<0) out.push(k); }
+        return out;
     }
-    // группы шаблонов с одинаковым множеством канонических base; оставляем максимальный up (нет = 0)
+    // «Жимовая грудь (пн)» → «жимовая»: первое слово без учёта регистра после удаления хвоста в скобках
+    function tplNormName(t){ return String(t.name||"").toLowerCase().replace(/\s*\([^()]*\)\s*$/,"").trim().split(/\s+/)[0]||""; }
+    function jaccard(a,b){
+        if(!a.length&&!b.length) return 0;
+        const sb={}; for(const x of b) sb[x]=1;
+        const inter=a.filter(function(x){return sb[x];}).length;
+        return inter/(a.length+b.length-inter);
+    }
+    // дата самой поздней тренировки, чей title совпадает с именем шаблона
+    function lastUsedDate(name){
+        const n=normKey(name); if(!n) return null;
+        const keys=Object.keys(data.log).sort().reverse();
+        for(const k of keys) if(normKey(data.log[k].title)===n) return k;
+        return null;
+    }
+    // основной — последний использованный: имя совпадает с title самой поздней тренировки; если таких несколько или нет — максимальный up
+    function pickMainTemplate(members){
+        const byUp=function(list){ return list.slice().sort(function(a,b){ return (b.up||0)-(a.up||0); })[0]; };
+        const names={}; members.forEach(function(t){ names[normKey(t.name)]=1; });
+        const keys=Object.keys(data.log).sort().reverse();
+        for(const k of keys){
+            const tn=normKey(data.log[k].title);
+            if(tn&&names[tn]){
+                const cand=members.filter(function(t){return normKey(t.name)===tn;});
+                return cand.length===1?cand[0]:byUp(cand);
+            }
+        }
+        return byUp(members);
+    }
+    // группы похожих шаблонов: совпало нормализованное имя ИЛИ Жаккар множеств base ≥ 0.6 (транзитивно); группы из одного шаблона не показываются
     function findDupGroups(){
+        const T=data.templates, n=T.length, parent=T.map(function(_,i){return i;});
+        const find=function(i){ while(parent[i]!==i){ parent[i]=parent[parent[i]]; i=parent[i]; } return i; };
+        const bases=T.map(tplBaseList), names=T.map(tplNormName);
+        for(let i=0;i<n;i++) for(let j=i+1;j<n;j++){
+            if((names[i]&&names[i]===names[j])||jaccard(bases[i],bases[j])>=0.6) parent[find(j)]=find(i);
+        }
         const by={};
-        data.templates.forEach(function(t,i){ const k=tplBaseKey(t); if(!k) return; (by[k]||(by[k]=[])).push({t:t,i:i}); });
-        return Object.keys(by).sort().filter(function(k){return by[k].length>1;}).map(function(k){
-            const list=by[k].slice().sort(function(a,b){
-                return ((b.t.up||0)-(a.t.up||0)) || (tplExCount(b.t)-tplExCount(a.t)) || (a.i-b.i);
-            });
-            return { key:k, keep:list[0].t, drop:list.slice(1).map(function(x){return x.t;}) };
-        });
+        for(let i=0;i<n;i++) (by[find(i)]||(by[find(i)]=[])).push(T[i]);
+        return Object.keys(by).map(function(k){return by[k];}).filter(function(m){return m.length>1;}).map(function(members){
+            const keep=pickMainTemplate(members);
+            return { key:members.map(function(t){return t.id;}).sort().join("+"), members:members, keep:keep, drop:members.filter(function(t){return t.id!==keep.id;}) };
+        }).sort(function(a,b){ return a.key<b.key?-1:1; });
     }
     // все ссылки на id шаблона: в коде их нет в сохранённых данных (расписания по дням недели и выбора в календаре не хранится);
     // на всякий случай перенаправляем: состояние экранов, значения-id в cfg и поля tplId/templateId в днях
@@ -2742,32 +2776,106 @@
         }
         return n;
     }
-    function removeTemplateDuplicates(groupKey){
-        const g=findDupGroups().find(function(x){return x.key===groupKey;}); if(!g) return 0;
-        for(const t of g.drop){
-            redirectTemplateRefs(t.id,g.keep.id);
+    function blockIndexOfBase(main,key){
+        for(let bi=0;bi<main.blocks.length;bi++) for(const it of main.blocks[bi].items) if(normKey(applyAliases(it.name,null).base)===key) return bi;
+        return -1;
+    }
+    function mergeVars(dst,src){
+        const add=(src.vars||[]).filter(function(v){ return !(dst.vars||[]).some(function(x){ return normKey(canonVariant(x,dst.name))===normKey(canonVariant(v,dst.name)); }); });
+        if(!add.length) return;
+        dst.vars=(dst.vars||[]).concat(add.map(function(v){return String(v).trim();}));
+        dst.alt=Math.max(1,parseInt(dst.alt,10)||1);   // alt основного не меняется
+    }
+    // кандидаты на добавление: упражнения удаляемых шаблонов, которых нет в основном (без повторов)
+    function mergeCandidates(main,drops){
+        const have=tplBaseList(main), out=[];
+        for(const t of drops) for(const b of t.blocks) for(const it of b.items){
+            const k=normKey(applyAliases(it.name,null).base);
+            if(!k||have.indexOf(k)>=0) continue;
+            have.push(k); out.push({key:k,name:it.name,plan:it.plan||"",vars:it.vars||null,from:t.name,tplId:t.id});
+        }
+        return out;
+    }
+    // применяет объединение к основному шаблону (in place); off — множество base, снятых с добавления. Возвращает число добавленных упражнений
+    function mergeTemplatesInto(main,drops,off){
+        let added=0;
+        for(const t of drops){
+            let anchor=-1;
+            for(const b of t.blocks) for(const it of b.items){
+                const k=normKey(applyAliases(it.name,null).base); if(!k) continue;
+                const bi=blockIndexOfBase(main,k);
+                if(bi>=0){
+                    const dst=main.blocks[bi].items.find(function(x){return normKey(applyAliases(x.name,null).base)===k;});
+                    mergeVars(dst,it); anchor=bi;
+                } else if(!(off&&off[k])){
+                    const item={name:it.name,plan:it.plan||""};
+                    if(it.vars&&it.vars.length){ item.vars=it.vars.slice(); item.alt=Math.max(1,parseInt(it.alt,10)||1); }
+                    const blk={type:"single",items:[item]};
+                    if(anchor>=0){ main.blocks.splice(anchor+1,0,blk); anchor=anchor+1; } else { main.blocks.push(blk); anchor=main.blocks.length-1; }
+                    added++;
+                }
+            }
+        }
+        return added;
+    }
+    function groupMainId(g){ return (ui.tplMain&&ui.tplMain[g.key])||g.keep.id; }
+    function groupPlan(g){
+        const mainId=groupMainId(g), main=g.members.find(function(t){return t.id===mainId;})||g.keep;
+        const drops=g.members.filter(function(t){return t.id!==main.id;});
+        return {main:main,drops:drops,extras:mergeCandidates(main,drops)};
+    }
+    function applyGroupMerge(g){
+        const pl=groupPlan(g), off={};
+        for(const x of pl.extras) if(ui.tplOff&&ui.tplOff[g.key+"|"+x.key]) off[x.key]=1;
+        const before=JSON.stringify(pl.main.blocks);
+        const added=mergeTemplatesInto(pl.main,pl.drops,off);
+        if(JSON.stringify(pl.main.blocks)!==before) persistTpl(pl.main);   // основной пишем, только если он изменился
+        for(const t of pl.drops){
+            redirectTemplateRefs(t.id,pl.main.id);
             data.templates=data.templates.filter(function(x){return x.id!==t.id;});
             unpersistTpl(t.id);
         }
-        return g.drop.length;
+        return {removed:pl.drops.length,added:added};
+    }
+    // перед применением — снимок K("pretplmerge"); без снимка не применяем
+    function mergeGroups(keys){
+        try{ lsSet("pretplmerge",JSON.stringify(buildBackupDump())); }
+        catch(err){ toast("Не удалось сохранить снимок перед объединением: "+errText(err)); return null; }
+        let removed=0, added=0;
+        for(const key of keys){
+            const g=findDupGroups().find(function(x){return x.key===key;}); if(!g) continue;
+            const r=applyGroupMerge(g); removed+=r.removed; added+=r.added;
+        }
+        toast("Удалено "+removed+" "+plural(removed,"шаблон","шаблона","шаблонов")+", добавлено "+added+" "+plural(added,"упражнение","упражнения","упражнений"));
+        return {removed:removed,added:added};
     }
     function fmtTplUp(t){ return t.up?new Date(t.up).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric"}):"нет даты"; }
     function dupsPageHtml(){
-        const groups=findDupGroups();
-        let h='<div class="sec-label" style="margin-top:16px">Найдены похожие шаблоны</div>';
+        const groups=findDupGroups().filter(function(g){return !(ui.tplSkip&&ui.tplSkip[g.key]);});
+        let h='<button class="hist-back" data-act="hygClose">'+ICON_CHEVRON_LEFT+' Назад</button><div class="sec-label" style="margin-top:4px">Похожие шаблоны</div>'
+            +'<div class="card al-explain"><p>Найдены копии одного тренировочного дня. Одинаковые будут удалены, недостающие упражнения — добавлены в последний использованный шаблон.</p></div>';
         if(!groups.length) h+='<div class="card" style="text-align:center;color:var(--mut);padding:20px">Похожих шаблонов нет</div>';
-        groups.forEach(function(g,gi){
-            h+='<div class="card dup-group" data-key="'+esc(g.key)+'"><div class="note" style="margin-top:0">Одинаковый набор упражнений ('+tplExCount(g.keep)+')</div>'
-                +'<div class="switch-row"><span><b>'+esc(g.keep.name)+'</b><div class="ex-last">останется · '+esc(fmtTplUp(g.keep))+'</div></span></div>';
-            for(const t of g.drop) h+='<div class="switch-row"><span>'+esc(t.name)+'<div class="ex-last">будет удалён · '+esc(fmtTplUp(t))+'</div></span></div>';
-            if(ui.dupConfirm===g.key){
-                h+='<div class="confirm" style="margin-top:8px"><span>Удалить шаблонов: '+g.drop.length+'? Ссылки на них будут перенаправлены на «'+esc(g.keep.name)+'».</span>'
-                    +'<span class="btns"><button class="btn-red" data-act="dupDelGo" data-key="'+esc(g.key)+'">Удалить</button>'
-                    +'<button class="btn-gray" data-act="dupDelNo">Отмена</button></span></div>';
-            } else h+='<button class="wide-btn danger" data-act="dupDelAsk" data-key="'+esc(g.key)+'">'+ICON_TRASH+' Удалить лишние ('+g.drop.length+')</button>';
-            h+='</div>';
+        groups.forEach(function(g){
+            const pl=groupPlan(g), last=lastUsedDate(pl.main.name);
+            h+='<div class="card dup-group" data-key="'+esc(g.key)+'">'
+                +'<div class="dup-keep">Остаётся: <b>'+esc(pl.main.name)+'</b> <span class="al-count">'+(last?'(последняя тренировка '+esc(fmtShort(last))+')':'(тренировок не было)')+'</span></div>'
+                +(g.members.length>2||true?'<div class="lbl" style="margin-top:8px">Основной шаблон</div><select class="dup-main" data-chg="tplMainPick" data-key="'+esc(g.key)+'" style="min-height:44px">'
+                    +g.members.map(function(t){ return '<option value="'+esc(t.id)+'"'+(t.id===pl.main.id?' selected':'')+'>'+esc(t.name)+' · '+tplExCount(t)+' упр. · '+esc(fmtTplUp(t))+'</option>'; }).join("")+'</select>':'')
+                +'<div class="lbl" style="margin-top:10px">Будут удалены</div>'
+                +pl.drops.map(function(t){ return '<div class="dup-drop">'+esc(t.name)+' <span class="al-count">· '+tplExCount(t)+' '+plural(tplExCount(t),"упражнение","упражнения","упражнений")+'</span></div>'; }).join("");
+            if(pl.extras.length){
+                h+='<div class="lbl" style="margin-top:10px">Будут добавлены в основной</div>'
+                    +pl.extras.map(function(x){
+                        const off=!!(ui.tplOff&&ui.tplOff[g.key+"|"+x.key]);
+                        return '<label class="dup-extra switch-row" style="min-height:44px"><span>'+esc(x.name)+(x.plan?' ('+esc(x.plan)+')':'')+' <span class="al-count">· из «'+esc(x.from)+'»</span></span>'
+                            +'<input type="checkbox" '+(off?'':'checked')+' data-chg="tplExtra" data-key="'+esc(g.key)+'" data-base="'+esc(x.key)+'" style="width:22px;height:22px"></label>';
+                    }).join("");
+            }
+            h+='<button class="wide-btn primary" data-act="tplMergeGo" data-key="'+esc(g.key)+'">Объединить</button>'
+                +'<button class="wide-btn" data-act="tplMergeSkip" data-key="'+esc(g.key)+'">Пропустить</button></div>';
         });
-        return h+'<button class="wide-btn" data-act="hygClose">Назад</button>';
+        if(groups.length) h+='<button class="wide-btn primary" id="tplMergeAll" data-act="tplMergeAllAsk">Объединить все ('+groups.length+')</button>';
+        return h;
     }
     function planSetsCount(plan){ const m=String(plan||"").match(/^\s*(\d+)\s*[хx×*]/i); return m?parseInt(m[1],10):null; }
     function medianOf(a){ const s=a.slice().sort(function(x,y){return x-y;}), n=s.length; return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2; }
@@ -3302,6 +3410,8 @@
         }
         if(chg==="backupReminderDays"){ data.cfg.backupReminderDays=Math.min(90,Math.max(0,parseInt(e.target.value,10)||0)); persistCfg(); render(); return; }
         if(chg==="tblAction"){ const d=ui.tblImport&&ui.tblImport.days[+e.target.dataset.i]; if(d){ d.action=e.target.value; render(); } return; }
+        if(chg==="tplMainPick"){ (ui.tplMain||(ui.tplMain={}))[e.target.dataset.key]=e.target.value; render(); return; }
+        if(chg==="tplExtra"){ (ui.tplOff||(ui.tplOff={}))[e.target.dataset.key+"|"+e.target.dataset.base]=!e.target.checked; return; }
         if(chg==="autoBackup"){ data.cfg.autoBackup=e.target.checked; persistCfg(); return; }
         if(chg==="backupMode"){ ui.backupMode=e.target.value; ui.backupConfirmStep=0; render(); return; }
     });
@@ -3643,9 +3753,16 @@
             case "hygOpen": ui.hygiene=ds.screen; ui.dupConfirm=null; render(); break;
             case "hygClose": ui.hygiene=null; ui.dupConfirm=null; render(); break;
             case "hygOpenDay": curDate=ds.date; ui.hygiene=null; ui.tab="day"; ui.histEx=null; render(); break;
-            case "dupDelAsk": ui.dupConfirm=ds.key; render(); break;
-            case "dupDelNo": ui.dupConfirm=null; render(); break;
-            case "dupDelGo":{ const n=removeTemplateDuplicates(ds.key); ui.dupConfirm=null; toast("Удалено шаблонов: "+n); render(); break; }
+            case "tplMergeGo":{ const r=mergeGroups([ds.key]); if(r) render(); break; }
+            case "tplMergeSkip": (ui.tplSkip||(ui.tplSkip={}))[ds.key]=true; render(); break;
+            case "tplMergeAllAsk":{
+                const keys=findDupGroups().filter(function(g){return !(ui.tplSkip&&ui.tplSkip[g.key]);}).map(function(g){return g.key;});
+                showDialog({title:"Объединить все?",text:"Групп: "+keys.length+". Перед применением сохраняется снимок данных.",buttons:[{label:"Объединить все",primary:true},{label:"Отмена"}]}).then(function(i){
+                    if(i!==0) return;
+                    if(mergeGroups(keys)) render();
+                });
+                break;
+            }
             case "aliasOpen": ui.aliasScreen=true; ui.aliasForm=null; render(); break;
             case "aliasClose": ui.aliasScreen=false; ui.aliasForm=null; render(); break;
             case "aliasNew": ui.aliasForm={kind:"ex",left:"",right:"",editKey:null}; render(); break;
