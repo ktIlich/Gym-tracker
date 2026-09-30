@@ -141,35 +141,20 @@ async def main():
             check("смена варианта: «без варианта» → variant null, name без « · »", await t.evaluate("(e=>e.variant===null && e.name==='Сгибания голени (2х8-12)')(getDay().exercises[0])"))
             await t.evaluate("doAction('copyLast',{}); 0") if False else None
 
-            # ---- экран «Алиасы»
+            # ---- экран «Алиасы» (детали — в test_p11_t2.py)
             await t.click('button[data-tab="set"]'); await t.wait_for_timeout(300)
-            check("настройки: кнопка «Алиасы»", await t.locator('[data-act="aliasOpen"]').count() == 1)
+            check("настройки: строка «Алиасы»", await t.locator('[data-act="aliasOpen"]').count() == 1)
             await t.click('[data-act="aliasOpen"]'); await t.wait_for_timeout(300)
-            rows_ex = await t.locator('.alias-row[data-kind="ex"]').count(); rows_var = await t.locator('.alias-row[data-kind="var"]').count()
-            check("«Алиасы»: показаны пары упражнений (5) и вариантов (1)", rows_ex == 5 and rows_var == 1, (rows_ex, rows_var))
-            big = await t.evaluate("[...document.querySelectorAll('.alias-row input, .alias-del')].every(e=>e.getBoundingClientRect().height>=44-0.5)")
-            check("«Алиасы»: зоны нажатия ≥ 44px", big, await t.evaluate("[...document.querySelectorAll('.alias-row input, .alias-del')].map(e=>Math.round(e.getBoundingClientRect().height)).join()"))
-            # добавить пару → пересчёт лога, в т.ч. записей, у которых base уже есть
+            check("«Алиасы»: показаны пары упражнений (5) и вариантов (1)", await t.locator('.al-card').count() == 6, await t.locator('.al-card').count())
+            # пересчёт лога отдельной функцией: записи, у которых base уже есть; up не меняется (фаза 11)
             await t.evaluate("data.log['2026-08-10']={title:'Т',up:5,weekType:'work',exercises:[{id:'z1',name:'Тест старый (2х10)',base:'Тест старый',plan:'2х10',variant:null,sets:[{w:1,r:1}]}]}; saveCache(); 0")
-            await t.fill("#alias-old-ex", "тест СТАРЫЙ"); await t.fill("#alias-new-ex", "Тест новый"); await t.click('[data-act="aliasAdd"][data-kind="ex"]'); await t.wait_for_timeout(700)
+            await t.click('[data-act="aliasNew"]'); await t.fill("#alias-left", "тест СТАРЫЙ"); await t.fill("#alias-right", "Тест новый"); await t.click('[data-act="aliasSave"]'); await t.wait_for_timeout(700)
             z = await t.evaluate("data.log['2026-08-10']")
             check("алиас добавлен: лог пересчитан отдельной функцией (base уже был), name пересобран", z["exercises"][0]["base"] == "Тест новый" and z["exercises"][0]["name"] == "Тест новый (2х10)", z)
-            check("алиас добавлен: up изменённого дня обновлён, подходы целы", z["up"] > 5 and z["exercises"][0]["sets"] == [{"w": 1, "r": 1}], z)
+            check("алиас добавлен: up дня не меняется, подходы целы", z["up"] == 5 and z["exercises"][0]["sets"] == [{"w": 1, "r": 1}], z)
             check("алиас добавлен: день и cfg записаны в облако", "Тест новый" in STORE.get("tst_w_2026-08-10", "") and "тест СТАРЫЙ" in STORE["tst_cfg"], STORE.get("tst_w_2026-08-10"))
-            check("«Алиасы»: строка добавилась в список (6)", await t.locator('.alias-row[data-kind="ex"]:not(.alias-add)').count() == 6)
-            # дубль отклоняется
-            await t.fill("#alias-old-ex", "ТЕСТ старый"); await t.fill("#alias-new-ex", "Что-то"); await t.click('[data-act="aliasAdd"][data-kind="ex"]'); await t.wait_for_timeout(200)
-            check("«Алиасы»: дубль (без учёта регистра) отклонён", await t.locator('.alias-row[data-kind="ex"]:not(.alias-add)').count() == 6 and "уже есть" in await t.inner_text("#toastMsg"))
-            # изменить пару
-            row = t.locator('.alias-row[data-kind="ex"]:not(.alias-add)').nth(5)
-            await row.locator("input").nth(1).fill("Тест итог"); await row.locator("input").nth(1).press("Tab"); await t.wait_for_timeout(700)
-            check("«Алиасы»: изменение пары применяется к логу повторно", await t.evaluate("data.log['2026-08-10'].exercises[0].name")  == "Тест итог (2х10)" and await t.evaluate("data.cfg.aliases['тест СТАРЫЙ']==='Тест итог'"), await t.evaluate("JSON.stringify([data.log['2026-08-10'].exercises[0].name, data.cfg.aliases])"))
-            # удалить
-            await t.locator('[data-act="aliasDel"][data-kind="ex"]').nth(5).click(); await t.wait_for_timeout(500)
-            check("«Алиасы»: удаление пары", await t.locator('.alias-row[data-kind="ex"]:not(.alias-add)').count() == 5 and await t.evaluate("!('тест СТАРЫЙ' in data.cfg.aliases)") and "тест СТАРЫЙ" not in STORE["tst_cfg"])
-            # алиас варианта
             await t.evaluate("data.log['2026-08-11']={title:'Т',up:5,weekType:'work',exercises:[{id:'z2',name:'Жим (2х10) · Блочный',base:'Жим',plan:'2х10',variant:'Блочный',sets:[]}]}; saveCache(); 0")
-            await t.fill("#alias-old-var", "блочный"); await t.fill("#alias-new-var", "Блок"); await t.click('[data-act="aliasAdd"][data-kind="var"]'); await t.wait_for_timeout(700)
+            await t.click('[data-act="aliasNew"]'); await t.click('[data-act="aliasFormKind"][data-kind="var"]'); await t.fill("#alias-left", "блочный"); await t.fill("#alias-right", "Блок"); await t.click('[data-act="aliasSave"]'); await t.wait_for_timeout(700)
             check("алиас варианта: variant записи пересчитан, name пересобран", await t.evaluate("(e=>e.variant==='Блок'&&e.name==='Жим (2х10) · Блок')(data.log['2026-08-11'].exercises[0])"))
             await t.click('[data-act="aliasClose"]'); await t.wait_for_timeout(200)
             check("«Алиасы»: «Назад» возвращает в настройки", await t.locator('[data-act="aliasOpen"]').count() == 1)

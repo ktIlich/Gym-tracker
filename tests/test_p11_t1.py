@@ -89,7 +89,7 @@ async def main():
             await page.locator('[data-act="hygOpen"][data-screen="dups"]').click(); await page.wait_for_timeout(150)
             ok2 = await page.locator(".dup-group").count() == 3; await page.click('[data-act="hygClose"]')
             await page.locator('[data-act="aliasOpen"]').click(); await page.wait_for_timeout(150)
-            ok3 = "алиасы упражнений" in (await page.inner_text("#app")).lower(); await page.click('[data-act="aliasClose"]')
+            ok3 = "алиасы объединяют" in (await page.inner_text("#app")).lower(); await page.click('[data-act="aliasClose"]')
             await page.locator('[data-act="testOpen"]').click(); await page.wait_for_timeout(150)
             ok4 = all([await page.locator('[data-act="%s"]' % a).count() == 1 for a in ("cloneProd", "diagOpen", "clearTest")])
             check("1.1: строки ведут на отдельные экраны (проверка, дубли, алиасы, тестовая среда с 3 действиями)", ok1 and ok2 and ok3 and ok4, (ok1, ok2, ok3, ok4))

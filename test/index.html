@@ -85,6 +85,19 @@
         .dlg-title{font-weight:800; font-size:17px; margin-bottom:8px}
         .dlg-text{color:var(--mut); font-size:14px; line-height:1.45; white-space:pre-wrap; word-break:break-word}
         .dlg-btns{display:flex; flex-direction:column; gap:8px; margin-top:16px}
+        .al-explain p{margin:0 0 8px; color:var(--mut); font-size:13px; line-height:1.45}
+        .al-explain p:last-child{margin:0}
+        .al-card{display:flex; align-items:flex-start; gap:8px; padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:12px; margin-top:8px; cursor:pointer}
+        .al-txt{flex:1; min-width:0; overflow-wrap:anywhere; word-break:break-word}
+        .al-arrow{color:var(--dim)}
+        .al-count{font-size:12px; color:var(--dim); margin-top:2px}
+        .al-del{flex:0 0 44px; width:44px; height:44px; margin:-8px -8px -8px 0; display:flex; align-items:center; justify-content:center; color:var(--red)}
+        .al-err{color:var(--red); font-size:13px; margin-top:6px}
+        .al-warn{color:var(--warn); font-size:13px; margin-top:6px}
+        .al-hint,.al-preview{color:var(--mut); font-size:13px; margin-top:6px}
+        .seg{display:flex; background:var(--card2); border-radius:10px; padding:2px; gap:2px}
+        .seg button{flex:1; min-height:44px; border-radius:8px; color:var(--mut); font-weight:600}
+        .seg button.on{background:var(--btn); color:var(--btn-text)}
         .datenav{display:flex; align-items:center; justify-content:space-between; margin-top:12px}
         .datenav .nav{padding:6px 10px; color:var(--mut); font-size:24px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
         .datenav .nav svg.icon{width:22px; height:22px; vertical-align:-6px}
@@ -509,17 +522,18 @@
     function exShell(src){ const q=ensureEx({name:src.name,base:src.base,plan:src.plan,variant:src.variant}); return newEx(q.base,q.plan,q.variant); }
     function setExVariant(ex,v){ ensureEx(ex); ex.variant=canonVariant(v,ex.base); ex.name=composeName(ex.base,ex.plan,ex.variant); }
     // повторное применение алиасов ко всему логу (не через needs(): у мигрированных записей base уже есть)
+    let recalcEntries=0;   // сколько записей упражнений изменил последний пересчёт
     function recomputeLog(pre){
-        const changed=[];
+        const changed=[]; recalcEntries=0;
         for(const k of Object.keys(data.log).sort()){
             const d=data.log[k]; let ch=false;
             for(const e of (d.exercises||[])){
                 const before=e.name+"|"+e.base+"|"+e.plan+"|"+e.variant;
                 if(pre) pre(e);
                 ensureEx(e);
-                if(before!==e.name+"|"+e.base+"|"+e.plan+"|"+e.variant) ch=true;
+                if(before!==e.name+"|"+e.base+"|"+e.plan+"|"+e.variant){ ch=true; recalcEntries++; }
             }
-            if(ch){ d.up=Date.now(); changed.push(k); }
+            if(ch) changed.push(k);   // up не меняется: пересчёт — эквивалентное преобразование
         }
         for(const k of changed) persistDay(k);
         return changed;
@@ -2814,69 +2828,166 @@
         if(data.cfg.dupSnooze&&Date.now()<data.cfg.dupSnooze) return false;
         return findDupGroups().length>0;
     }
-    function aliasRowsHtml(kind){
-        const map=kind==="var"?data.cfg.variantAliases:data.cfg.aliases;
-        const ph=kind==="var"?["Старый вариант","Каноническое значение"]:["Старое имя","Каноническое имя"];
-        let h="";
-        Object.keys(map).forEach(function(k,i){
-            h+='<div class="alias-row" data-kind="'+kind+'" data-i="'+i+'">'
-                +'<input value="'+esc(k)+'" placeholder="'+ph[0]+'" data-chg="aliasPair">'
-                +'<span class="alias-arrow">→</span>'
-                +'<input value="'+esc(map[k])+'" placeholder="'+ph[1]+'" data-chg="aliasPair">'
-                +'<button class="btn-gray alias-del" data-act="aliasDel" data-kind="'+kind+'" data-i="'+i+'" title="Удалить">'+ICON_TRASH+'</button></div>';
-        });
-        h+='<div class="alias-row alias-add">'
-            +'<input id="alias-old-'+kind+'" placeholder="'+ph[0]+'">'
-            +'<span class="alias-arrow">→</span>'
-            +'<input id="alias-new-'+kind+'" placeholder="'+ph[1]+'">'
-            +'<button class="btn-gray alias-del" data-act="aliasAdd" data-kind="'+kind+'" title="Добавить">'+ICON_PLUS+'</button></div>';
+    // ============ экран алиасов ============
+    function aliasEntries(kind){ return Object.entries(kind==="var"?data.cfg.variantAliases:data.cfg.aliases); }
+    function aliasWrite(kind,entries){ const o={}; for(const e of entries) o[e[0]]=e[1]; if(kind==="var") data.cfg.variantAliases=o; else data.cfg.aliases=o; }
+    const AL_TARGET_VARIANT_RE=/\s*·\s*вариант\s*«.+?»\s*$/i;
+    // название без плана (NхA-B) и « · вариант»; для правой части сохраняем запись вида «База · вариант «X»»
+    function stripNameExtras(str,keepVariantTarget){
+        const src=String(str||"").trim();
+        const keep=keepVariantTarget&&AL_TARGET_VARIANT_RE.test(src);
+        const pe=parseExName(keep?src.replace(AL_TARGET_VARIANT_RE,""):src);
+        let base=pe.base;
+        if(keep) base+=src.match(AL_TARGET_VARIANT_RE)[0].replace(/^\s*/," ");
+        const stripped=!!(pe.plan||(pe.variant&&!keep));
+        return {base:base.trim(), stripped:stripped};
+    }
+    function entriesOfLog(){ const out=[]; for(const k of Object.keys(data.log).sort()) for(const e of (data.log[k].exercises||[])) out.push({k:k,e:e}); return out; }
+    function aliasAffected(kind,val){
+        let n=0;
+        if(kind==="var"){ const v=normKey(val); for(const it of entriesOfLog()) if(normKey(exVariantOf(it.e))===v) n++; }
+        else { const t=parseAliasTarget(val), b=normKey(t.base), v=normKey(t.variant); for(const it of entriesOfLog()) if(normKey(exBaseOf(it.e))===b&&(!v||normKey(exVariantOf(it.e))===v)) n++; }
+        return n;
+    }
+    function aliasMatchStats(kind,left){
+        const key=normKey(left), days={}; let sets=0;
+        for(const it of entriesOfLog()){
+            const name=kind==="var"?exVariantOf(it.e):exBaseOf(it.e);
+            if(normKey(name)!==key) continue;
+            days[it.k]=1; sets+=(it.e.sets||[]).length;
+        }
+        return {days:Object.keys(days).length, sets:sets};
+    }
+    function templateNameSet(kind){
+        const set={};
+        for(const t of data.templates) for(const b of (t.blocks||[])) for(const it of (b.items||[])){
+            if(kind==="var"){ for(const v of (it.vars||[])) set[normKey(v)]=String(v).trim(); }
+            else set[normKey(applyAliases(it.name,null).base)]=applyAliases(it.name,null).base;
+        }
+        return set;
+    }
+    function logNameSet(kind){
+        const set={};
+        for(const it of entriesOfLog()){ const n=kind==="var"?exVariantOf(it.e):exBaseOf(it.e); if(n) set[normKey(n)]=String(n).trim(); }
+        return set;
+    }
+    // названия из истории, которых нет в шаблонах
+    function unmatchedNames(){
+        const tpl=templateNameSet("ex"), cnt={}, shown={};
+        for(const it of entriesOfLog()){ const n=exBaseOf(it.e).trim(), k=normKey(n); if(!k||tpl[k]) continue; cnt[k]=(cnt[k]||0)+1; shown[k]=n; }
+        return Object.keys(cnt).map(function(k){return {name:shown[k],count:cnt[k]};}).sort(function(a,b){return b.count-a.count||(a.name<b.name?-1:1);});
+    }
+    function aliasFormState(f){
+        const res={errLeft:"",errRight:"",warn:"",hint:"",preview:"",ok:false,left:"",right:""};
+        let L=String(f.left||"").trim(), R=String(f.right||"").trim();
+        if(f.kind==="ex"){
+            const sl=stripNameExtras(L,false), sr=stripNameExtras(R,true);
+            if(sl.stripped||sr.stripped||f.stripHint) res.hint="План и вариант убраны — они хранятся отдельно";
+            L=sl.base; R=sr.base;
+        }
+        res.left=L; res.right=R;
+        const entries=aliasEntries(f.kind).filter(function(e){ return e[0]!==f.editKey; });
+        if(L&&R&&normKey(L)===normKey(R)) res.errRight="Названия совпадают";
+        if(L&&entries.some(function(e){return normKey(e[0])===normKey(L);})) res.errLeft="Для этого названия алиас уже есть — отредактируй его";
+        const rTarget=f.kind==="ex"?parseAliasTarget(R).base:R;
+        if(R){
+            const hit=entries.find(function(e){return normKey(e[0])===normKey(R)||normKey(e[0])===normKey(rTarget);});
+            if(hit) res.errRight="Это название само объединено с «"+hit[1]+"» — укажи его";
+        }
+        if(L&&!res.errLeft){
+            const tgt=entries.find(function(e){ const t=f.kind==="ex"?parseAliasTarget(e[1]).base:e[1]; return normKey(t)===normKey(L); });
+            if(tgt) res.errLeft="На это название уже ссылается алиас «"+tgt[0]+"» — цепочки не поддерживаются";
+        }
+        if(R&&!res.errRight){
+            const known=Object.assign({},logNameSet(f.kind),templateNameSet(f.kind));
+            if(!known[normKey(rTarget)]) res.warn="Такого названия нет в шаблонах";
+        }
+        if(L){
+            const st=aliasMatchStats(f.kind,L);
+            res.preview=st.days?"Будет объединено: "+st.days+" "+plural(st.days,"тренировка","тренировки","тренировок")+", "+st.sets+" "+plural(st.sets,"подход","подхода","подходов"):"В истории нет записей с таким названием";
+        }
+        res.ok=!!(L&&R&&!res.errLeft&&!res.errRight);
+        return res;
+    }
+    function aliasFormMsgsHtml(f){
+        const r=aliasFormState(f);
+        return '<div id="alMsgs">'
+            +(r.errLeft?'<div class="al-err" data-e="left">'+esc(r.errLeft)+'</div>':'')
+            +(r.errRight?'<div class="al-err" data-e="right">'+esc(r.errRight)+'</div>':'')
+            +(r.warn?'<div class="al-warn">'+esc(r.warn)+'</div>':'')
+            +(r.hint?'<div class="al-hint">'+esc(r.hint)+'</div>':'')
+            +(r.preview?'<div class="al-preview">'+esc(r.preview)+'</div>':'')+'</div>';
+    }
+    function aliasFormHtml(){
+        const f=ui.aliasForm, isEx=f.kind==="ex";
+        const leftOpts=Object.values(logNameSet(f.kind)).sort(), rightOpts=Object.values(templateNameSet(f.kind)).sort();
+        const r=aliasFormState(f);
+        return '<div class="sec-label" style="margin-top:16px">'+(f.editKey?'Изменить алиас':'Новый алиас')+'</div><div class="card">'
+            +'<div class="seg"><button class="'+(isEx?'on':'')+'" data-act="aliasFormKind" data-kind="ex"'+(f.editKey?' disabled':'')+'>Упражнение</button>'
+            +'<button class="'+(!isEx?'on':'')+'" data-act="aliasFormKind" data-kind="var"'+(f.editKey?' disabled':'')+'>Вариант</button></div>'
+            +'<div class="lbl" style="margin-top:12px">Как записано в истории</div>'
+            +'<input id="alias-left" list="alias-left-list" autocomplete="off" value="'+esc(f.left||"")+'" placeholder="'+(isEx?'Голень стоя':'свободный вес')+'">'
+            +'<datalist id="alias-left-list">'+leftOpts.map(function(o){return '<option value="'+esc(o)+'">';}).join("")+'</datalist>'
+            +'<div class="lbl" style="margin-top:12px">Как должно называться</div>'
+            +'<input id="alias-right" list="alias-right-list" autocomplete="off" value="'+esc(f.right||"")+'" placeholder="'+(isEx?'Голень стоя (икры)':'Свободный')+'">'
+            +'<datalist id="alias-right-list">'+rightOpts.map(function(o){return '<option value="'+esc(o)+'">';}).join("")+'</datalist>'
+            +'<div class="note">'+(isEx?'Название без плана и варианта: «Голень стоя», не «Голень стоя (3х10-20)».':'Название варианта, как оно записано в шаблоне.')+'</div>'
+            +aliasFormMsgsHtml(f)
+            +'<button class="wide-btn primary" id="alSave" data-act="aliasSave"'+(r.ok?'':' disabled')+'>Сохранить</button>'
+            +'<button class="wide-btn" data-act="aliasFormCancel">Отмена</button></div>';
+    }
+    function aliasGroupHtml(kind,title){
+        const entries=aliasEntries(kind);
+        let h='<div class="sec-label">'+title+' <span class="cnt">· '+entries.length+'</span></div>';
+        if(!entries.length) h+='<div class="note">Пока нет алиасов.</div>';
+        for(const e of entries){
+            const n=aliasAffected(kind,e[1]);
+            h+='<div class="al-card" data-act="aliasEdit" data-kind="'+kind+'" data-key="'+esc(e[0])+'"><div class="al-txt"><div><span class="al-old">'+esc(e[0])+'</span> <span class="al-arrow">→</span> <b class="al-new">'+esc(e[1])+'</b></div>'
+                +'<div class="al-count">Затрагивает '+n+' '+plural(n,"запись","записи","записей")+'</div></div>'
+                +'<button class="al-del" data-act="aliasDelAsk" data-kind="'+kind+'" data-key="'+esc(e[0])+'" title="Удалить алиас">'+ICON_TRASH+'</button></div>';
+        }
         return h;
     }
     function aliasPageHtml(){
-        return '<div class="sec-label" style="margin-top:16px">Алиасы упражнений</div><div class="card">'
-            +'<div class="note" style="margin-top:0">Старое имя заменяется на каноническое в логе, при импорте и при поиске истории. Сравнение без учёта регистра. Изменение сразу пересчитывает лог.</div>'
-            +aliasRowsHtml("ex")+'</div>'
-            +'<div class="sec-label">Алиасы вариантов</div><div class="card">'+aliasRowsHtml("var")+'</div>'
-            +'<button class="wide-btn" data-act="aliasClose">Назад</button>';
+        if(ui.aliasForm) return aliasFormHtml();
+        const um=unmatchedNames(), collapsed=lsGet("al_unm_collapsed")!=="0";
+        let h='<button class="hist-back" data-act="aliasClose">'+ICON_CHEVRON_LEFT+' Назад</button>'
+            +'<div class="sec-label" style="margin-top:4px">Алиасы</div>'
+            +'<div class="card al-explain"><p>Алиасы объединяют разные названия одного упражнения или варианта. Например, в старых записях было «Голень стоя», а в шаблоне — «Голень стоя (икры)». Без алиаса это два разных упражнения: история, графики и рекомендации разрываются.</p>'
+            +'<p>Слева — как записано в истории, справа — как должно называться (как в шаблоне). После сохранения старые записи пересчитаются, сами тренировки не меняются.</p></div>'
+            +'<button class="wide-btn primary" id="alNew" data-act="aliasNew">'+ICON_PLUS+' Алиас</button>';
+        if(um.length){
+            h+='<div class="card" id="alUnmatched"><button class="link-row" data-act="aliasUnmatchedToggle" style="border-top:none"><span class="lbl2">В истории есть названия, которых нет в шаблонах <span class="cnt">· '+um.length+'</span></span>'+(collapsed?ICON_CHEVRON_RIGHT:ICON_CHEVRON_DOWN)+'</button>';
+            if(!collapsed) for(const u of um) h+='<div class="switch-row"><span class="al-txt">'+esc(u.name)+' <span class="al-count">· '+u.count+' '+plural(u.count,"запись","записи","записей")+'</span></span>'
+                +'<button class="btn-gray" style="min-height:44px" data-act="aliasFromUnmatched" data-name="'+esc(u.name)+'">Объединить</button></div>';
+            h+='</div>';
+        }
+        return h+aliasGroupHtml("ex","Упражнения")+aliasGroupHtml("var","Варианты");
     }
-    // сохранить изменённые алиасы и повторно применить их к логу
-    function aliasCommit(msg,pre){
+    // сохранить изменения алиасов и пересчитать лог (индикатор + итоговый тост)
+    async function aliasCommit(pre){
         persistCfg();
-        const ch=recomputeLog(pre);
-        toast(ch.length?(msg+". Пересчитано дней: "+ch.length):msg);
+        toast("Пересчёт…"); render();
+        await new Promise(function(r){ setTimeout(r,20); });
+        recomputeLog(pre);
+        const n=recalcEntries;
+        toast("Пересчитано "+n+" "+plural(n,"запись","записи","записей"));
         render();
     }
-    function aliasEntries(kind){ return Object.entries(kind==="var"?data.cfg.variantAliases:data.cfg.aliases); }
-    function aliasWrite(kind,entries){ const o={}; for(const e of entries) o[e[0]]=e[1]; if(kind==="var") data.cfg.variantAliases=o; else data.cfg.aliases=o; }
-    function aliasValidate(kind,entries,idx,oldv,newv){
-        if(!oldv||!newv){ toast("Заполните оба поля"); return false; }
-        if(oldv.toLowerCase()===newv.toLowerCase()){ toast("Старое и каноническое значения совпадают"); return false; }
-        const dup=entries.some(function(e,i){ return i!==idx && e[0].trim().toLowerCase()===oldv.toLowerCase(); });
-        if(dup){ toast("Такой алиас уже есть"); return false; }
-        return true;
+    function aliasRetarget(kind,prevTarget,newv){
+        if(normKey(prevTarget)===normKey(newv)) return null;
+        if(kind==="var") return function(e){ if(e.variant&&normKey(e.variant)===normKey(prevTarget)) e.variant=newv; };
+        const po=parseAliasTarget(prevTarget), pn=parseAliasTarget(newv);
+        return function(e){
+            if(!e.base||normKey(e.base)!==normKey(po.base)) return;
+            if(po.variant&&normKey(e.variant)!==normKey(po.variant)) return;
+            e.base=pn.base; if(po.variant) e.variant=pn.variant;
+        };
     }
-    function aliasRowChanged(target){
-        const row=target.closest(".alias-row"), kind=row.dataset.kind, idx=+row.dataset.i;
-        const inp=row.querySelectorAll("input"), oldv=inp[0].value.trim(), newv=inp[1].value.trim();
-        const entries=aliasEntries(kind);
-        if(!aliasValidate(kind,entries,idx,oldv,newv)){ render(); return; }
-        const prevTarget=entries[idx][1];
-        entries[idx]=[oldv,newv]; aliasWrite(kind,entries);
-        // если сменилось каноническое значение, записи со старым каноническим значением переезжают на новое
-        let pre=null;
-        if(prevTarget.trim().toLowerCase()!==newv.toLowerCase()){
-            if(kind==="var"){
-                pre=function(e){ if(e.variant&&e.variant.trim().toLowerCase()===prevTarget.trim().toLowerCase()) e.variant=newv; };
-            } else {
-                const po=parseAliasTarget(prevTarget), pn=parseAliasTarget(newv);
-                pre=function(e){
-                    if(!e.base||e.base.trim().toLowerCase()!==po.base.toLowerCase()) return;
-                    if(po.variant&&(e.variant||"").toLowerCase()!==po.variant.toLowerCase()) return;
-                    e.base=pn.base; if(po.variant) e.variant=pn.variant;
-                };
-            }
-        }
-        aliasCommit("Алиас изменён",pre);
+    function aliasFormRefresh(){
+        const f=ui.aliasForm; if(!f) return;
+        const box=document.getElementById("alMsgs"); if(box) box.outerHTML=aliasFormMsgsHtml(f);
+        const save=document.getElementById("alSave"); if(save) save.disabled=!aliasFormState(f).ok;
     }
     function setPage(){
         const c=data.cfg.cycle;
@@ -2995,7 +3106,25 @@
         }
     }
 
+    // системная кнопка «Назад» Telegram: закрывает верхний из открытых экранов
+    function currentBackAction(){
+        if(ui.aliasForm) return function(){ ui.aliasForm=null; render(); };
+        if(ui.tab==="set"&&ui.aliasScreen) return function(){ ui.aliasScreen=false; render(); };
+        if(ui.tab==="set"&&ui.hygiene) return function(){ ui.hygiene=null; ui.dupConfirm=null; render(); };
+        if(ui.tab==="set"&&ui.testScreen) return function(){ ui.testScreen=false; render(); };
+        return null;
+    }
+    function syncBackButton(){
+        if(!tg||!tg.BackButton) return;
+        if(currentBackAction()) tg.BackButton.show(); else tg.BackButton.hide();
+    }
     function render(){
+        renderMain(); syncBackButton();
+        // при переходе на другой экран — к началу страницы
+        const key=[ui.tab,ui.aliasScreen,!!ui.aliasForm,ui.hygiene,ui.testScreen,ui.histEx,ui.diag,ui.editTpl?1:0,ui.tblImport?1:0,ui.importParsed?1:0,ui.importText?1:0].join("|");
+        if(key!==ui._screenKey){ ui._screenKey=key; window.scrollTo(0,0); }
+    }
+    function renderMain(){
         if(ENV==="test"&&cs&&!ui.stateChecked){ document.getElementById("tabbar").style.display="none"; app.innerHTML='<div class="setup"><div class="note">Загрузка тестовых данных…</div></div>'; return; }
         if(ENV==="test"&&ui.diag){ document.getElementById("tabbar").style.display="none"; app.innerHTML=diagPageHtml(); return; }
         if(ENV==="test"&&ui.cloneIncomplete){ document.getElementById("tabbar").style.display="none"; app.innerHTML=incompleteHtml(); return; }
@@ -3033,14 +3162,14 @@
     document.getElementById("tabbar").addEventListener("click",function(e){
         const b=e.target.closest("button[data-tab]"); if(!b) return;
         ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null; ui.wipeStep=0; ui.tplFromText=false; ui.tplParsed=null; ui.editTpl=null;
-        ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.tblImport=null; ui.hygiene=null; ui.testScreen=false; ui.dupConfirm=null; ui.dayNoteOpen=false; ui.weekTypeOpen=false;
+        ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.tblImport=null; ui.hygiene=null; ui.testScreen=false; ui.aliasScreen=false; ui.aliasForm=null; ui.dupConfirm=null; ui.dayNoteOpen=false; ui.weekTypeOpen=false;
         ui.backupRestoreOpen=false; ui.backupParsed=null; ui.backupParsedSrc=null; ui.backupMode="merge"; ui.backupConfirmStep=0;
         summaryCache.period=null;
         if(ui.tab==="cal") calMonth=curDate.slice(0,7);
         hap("light"); render();
     });
     app.addEventListener("change",function(e){
-        if(e.target.dataset.chg==="aliasPair"){ aliasRowChanged(e.target); return; }
+        if(e.target.id==="alias-left"||e.target.id==="alias-right"){ const f=ui.aliasForm; if(f){ const st=aliasFormState(f); if(f.kind==="ex"){ if(st.hint) f.stripHint=true; f.left=st.left||f.left; f.right=st.right||f.right; } e.target.value=e.target.id==="alias-left"?f.left:f.right; aliasFormRefresh(); } return; }
         const setField=e.target.dataset.set;
         if(setField==="w"||setField==="r"){
             const d=getDay();
@@ -3182,6 +3311,7 @@
         if(act) doAction(act,e.target.dataset);
     });
     app.addEventListener("input",function(e){
+        if(e.target.id==="alias-left"||e.target.id==="alias-right"){ if(ui.aliasForm){ ui.aliasForm[e.target.id==="alias-left"?"left":"right"]=e.target.value; aliasFormRefresh(); } return; }
         if(e.target.id==="progSearch"){
             const q=e.target.value.toLowerCase();
             document.querySelectorAll("#progList .prog-ex-item").forEach(function(item){
@@ -3516,18 +3646,36 @@
             case "dupDelAsk": ui.dupConfirm=ds.key; render(); break;
             case "dupDelNo": ui.dupConfirm=null; render(); break;
             case "dupDelGo":{ const n=removeTemplateDuplicates(ds.key); ui.dupConfirm=null; toast("Удалено шаблонов: "+n); render(); break; }
-            case "aliasOpen": ui.aliasScreen=true; render(); break;
-            case "aliasClose": ui.aliasScreen=false; render(); break;
-            case "aliasAdd":{
-                const kind=ds.kind, oldv=(document.getElementById("alias-old-"+kind).value||"").trim(), newv=(document.getElementById("alias-new-"+kind).value||"").trim();
-                const entries=aliasEntries(kind);
-                if(!aliasValidate(kind,entries,-1,oldv,newv)) return;
-                entries.push([oldv,newv]); aliasWrite(kind,entries);
-                aliasCommit("Алиас добавлен"); break;
+            case "aliasOpen": ui.aliasScreen=true; ui.aliasForm=null; render(); break;
+            case "aliasClose": ui.aliasScreen=false; ui.aliasForm=null; render(); break;
+            case "aliasNew": ui.aliasForm={kind:"ex",left:"",right:"",editKey:null}; render(); break;
+            case "aliasEdit":{
+                const ent=aliasEntries(ds.kind).find(function(e){return e[0]===ds.key;}); if(!ent) return;
+                ui.aliasForm={kind:ds.kind,left:ent[0],right:ent[1],editKey:ent[0]}; render(); break;
             }
-            case "aliasDel":{
-                const entries=aliasEntries(ds.kind); entries.splice(+ds.i,1); aliasWrite(ds.kind,entries);
-                persistCfg(); toast("Алиас удалён"); render(); break;
+            case "aliasFromUnmatched": ui.aliasForm={kind:"ex",left:ds.name,right:"",editKey:null}; render(); break;
+            case "aliasFormKind": if(ui.aliasForm&&!ui.aliasForm.editKey){ ui.aliasForm.kind=ds.kind; render(); } break;
+            case "aliasFormCancel": ui.aliasForm=null; render(); break;
+            case "aliasUnmatchedToggle":{ const now=lsGet("al_unm_collapsed")!=="0"; try{ lsSet("al_unm_collapsed",now?"0":"1"); }catch(err){ toast("Не удалось запомнить состояние блока"); } render(); break; }
+            case "aliasSave":{
+                const f=ui.aliasForm; if(!f) return;
+                const r=aliasFormState(f); if(!r.ok) return;
+                const entries=aliasEntries(f.kind); let pre=null;
+                if(f.editKey){
+                    const i=entries.findIndex(function(e){return e[0]===f.editKey;});
+                    if(i>=0){ pre=aliasRetarget(f.kind,entries[i][1],r.right); entries[i]=[r.left,r.right]; }
+                } else entries.push([r.left,r.right]);
+                aliasWrite(f.kind,entries); ui.aliasForm=null;
+                aliasCommit(pre); break;
+            }
+            case "aliasDelAsk":{
+                const kind=ds.kind, key=ds.key;
+                showDialog({title:"Удалить алиас?",text:"«"+key+"» больше не будет объединяться. Уже пересчитанные записи сохранят каноническое название.",buttons:[{label:"Удалить",primary:true},{label:"Отмена"}]}).then(function(i){
+                    if(i!==0) return;
+                    aliasWrite(kind,aliasEntries(kind).filter(function(e){return e[0]!==key;}));
+                    aliasCommit(null);
+                });
+                break;
             }
             case "clearTest": clearTestData(); break;
             case "diagOpen": if(ENV!=="test") break; ui.diag=true; ui.diagData=null; render(); collectDiag().then(render); break;
@@ -3745,6 +3893,7 @@
         }
         applyMigrations();
         applyTheme();
+        if(tg&&tg.BackButton&&tg.BackButton.onClick) tg.BackButton.onClick(function(){ const a=currentBackAction(); if(a) a(); });
         if(ENV==="test"){
             const b=document.createElement("div"); b.id="envBadge"; b.className="env-badge env-fixed"; b.textContent="TEST"; document.body.appendChild(b);
         }
