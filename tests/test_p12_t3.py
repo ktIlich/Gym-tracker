@@ -32,7 +32,7 @@ async def main():
 
             # ---- 3.1 токены и отсутствие хардкода
             st = src[src.index("<style>"):src.index("</style>")]
-            css_rest = st[st.index("--touch:44px;"):]
+            css_rest = st[st.index("--touch-2:max(52px,3.25rem);"):]
             js = src[src.index("</style>"):]
             js_rest = js[:js.index("THEME-DATA-BEGIN")] + js[js.index("THEME-DATA-END"):]
             pat = r"#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)"

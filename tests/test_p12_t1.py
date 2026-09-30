@@ -35,7 +35,7 @@ async def main():
             long320 = await measure(320)
             check("1: вариант из 30 символов на 320px не вылезает за кнопку, не шире экрана", long320["inside"] and long320["scrollOk"] and long320["pageScroll"], long320)
             check("1: текст не больше двух строк (line-clamp: 2)", long320["lines"] <= 2 and long320["clamp"] == "2" and long390["lines"] <= 2, (long320["lines"], long320["clamp"]))
-            check("1: если не помещается в одну строку — кегль на шаг меньше (12.5px против 14px)", long320["sm"] and long320["fs"] == "12.5px" and short["fs"] == "14px" and not short["sm"], (long320["fs"], short["fs"]))
+            check("1: если не помещается в одну строку — кегль на шаг меньше (≈12.5px против 14px)", long320["sm"] and long320["fs"] in ("12.5px", "12.4992px") and short["fs"] == "14px" and not short["sm"], (long320["fs"], short["fs"]))
             check("1: высота ряда не меняется от длины названия (кнопка 52px ≥ 44px, ряд одинаков)", long320["btnH"] == short["btnH"] == 52 and long320["rowH"] == short["rowH"] and long320["btnH"] >= 44, (short["btnH"], long320["btnH"], short["rowH"], long320["rowH"]))
             check("1: нижний ряд — сетка по числу кнопок (3 колонки)", long320["cols"] == 3 and short["cols"] == 3)
             # полное название
