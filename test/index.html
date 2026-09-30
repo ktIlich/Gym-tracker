@@ -177,6 +177,15 @@
         .swatch .sw-edit{position:absolute; right:-0.125rem; bottom:-0.125rem; width:1rem; height:1rem; border-radius:50%; background:var(--surface); color:var(--text); display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 1px var(--border)}
         .swatch .sw-edit svg.icon{width:0.625rem; height:0.625rem}
         .sw-picked{margin-top:0.5rem}
+        .fld{position:relative; width:100%}
+        .fld-ic{position:absolute; right:0.75rem; top:50%; transform:translateY(-50%); pointer-events:none; color:var(--text-muted); display:flex}
+        .fld-ic svg.icon{width:1.125rem; height:1.125rem; vertical-align:0}
+        .fld input[type=date], .fld select{appearance:none; -webkit-appearance:none; display:block; width:100%; min-height:var(--touch); padding:0.5625rem 2.75rem 0.5625rem 0.75rem; font-family:inherit; font-size:0.9375rem; color:var(--text); background:var(--surface); border:1px solid var(--border); border-radius:0.75rem; outline:none; text-align:left}
+        .fld select:focus, .fld input[type=date]:focus{border-color:var(--accent)}
+        .fld input[type=date]{position:relative; -webkit-min-logical-width:calc(100% - 3.5rem)}
+        .fld input[type=date]::-webkit-date-and-time-value{text-align:left; margin:0}
+        .fld input[type=date]::-webkit-calendar-picker-indicator{position:absolute; inset:0; width:100%; height:100%; margin:0; padding:0; opacity:0; cursor:pointer}
+        td .fld{min-width:7rem}
         .chk-row{display:grid; grid-template-columns:1fr auto; align-items:center; gap:0.75rem; width:100%; min-height:3.25rem; padding:0.375rem 0; text-align:left; border-top:1px solid var(--border)}
         .chk-row:first-child{border-top:none}
         .chk-txt{min-width:0; display:flex; flex-direction:column; gap:0.125rem}
@@ -1939,14 +1948,14 @@
             const hasConflict=w.date&&data.log[w.date];
             h+='<div class="import-day">';
             h+='<div class="import-day-head">';
-            h+='<input type="date" value="'+esc(w.date||'')+'" data-chg="importDate" data-wi="'+wi+'"'+(w._dateError?' style="border-color:var(--danger)"':'')+'>';
+            h+=dateFld('<input type="date" value="'+esc(w.date||'')+'" data-chg="importDate" data-wi="'+wi+'"'+(w._dateError?' style="border-color:var(--danger)"':'')+'>');
             h+='<input value="'+esc(w.title||'')+'" placeholder="Название тренировки" data-chg="importTitle" data-wi="'+wi+'" style="flex:1;min-width:6.875rem;font-weight:600;font-size:0.875rem">';
             if(hasConflict){
                 h+='<span style="font-size:0.75rem;color:var(--danger)">'+ICON_WARNING+' есть данные</span>';
-                h+='<select data-chg="importConflict" data-wi="'+wi+'" style="font-size:0.8125rem;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:0.5rem;padding:0.25rem 0.5rem">'
+                h+=selFld('<select data-chg="importConflict" data-wi="'+wi+'">'
                     +'<option value="skip"'+(w.conflicts==='skip'?' selected':'')+'>Пропустить</option>'
                     +'<option value="replace"'+(w.conflicts==='replace'?' selected':'')+'>Заменить</option>'
-                    +'</select>';
+                    +'</select>');
             }
             h+='<button class="del-ex" data-act="importDelDay" data-wi="'+wi+'" title="Удалить день"><i class="box">'+ICON_TRASH+'</i></button>';
             h+='</div>';
@@ -2239,9 +2248,9 @@
             const wkHint=(d.exists&&d.weekFile&&d.weekNow&&d.weekFile!==d.weekNow)?'<div class="ex-last">тип недели: '+wl(d.weekNow)+' → '+wl(d.weekFile)+'</div>':'';
             h+='<tr data-date="'+d.date+'"><td style="white-space:nowrap">'+esc(fmtShort(d.date))+' <span style="color:var(--text-muted);font-size:0.6875rem">'+esc(d.title)+'</span>'+wkHint+'</td>'
                 +'<td class="num">'+d.nFile+'</td><td class="num">'+(d.exists?d.nNow:'—')+'</td>'
-                +'<td><select class="tbl-act" data-chg="tblAction" data-i="'+i+'" style="min-height:var(--touch)">'
+                +'<td>'+selFld('<select class="tbl-act" data-chg="tblAction" data-i="'+i+'">'
                 +opts.map(function(o){ return '<option value="'+o+'"'+(d.action===o?' selected':'')+'>'+tblActionLabel(o)+'</option>'; }).join("")
-                +'</select></td></tr>';
+                +'</select>')+'</td></tr>';
         });
         h+='</table>'
             +'<div class="note">Изменённые записи получают новую метку времени. Перед применением сохраняется снимок «preimport».</div>'
@@ -2996,6 +3005,9 @@
         ui.picker=null; const ov=document.getElementById("cpick"); if(ov) ov.remove();
         applyTheme(); themeMarks(); syncBackButton();
     }
+    // единое оформление полей даты и select: системная стрелка убрана, справа своя SVG-иконка (тап по всему полю открывает системный выбор)
+    function dateFld(inner,style){ return '<div class="fld fld-date"'+(style?' style="'+style+'"':'')+'>'+inner+'<span class="fld-ic">'+ICON_CALENDAR+'</span></div>'; }
+    function selFld(inner){ return '<div class="fld fld-sel">'+inner+'<span class="fld-ic">'+ICON_CHEVRON_DOWN+'</span></div>'; }
     function fontSectionHtml(){
         const fs=fontScale();
         return '<div class="sec-label">Размер шрифта</div><div class="card" data-tour="set-font">'
@@ -3283,8 +3295,8 @@
             const pl=groupPlan(g), last=lastUsedDate(pl.main.name);
             h+='<div class="card dup-group" data-key="'+esc(g.key)+'">'
                 +'<div class="dup-keep">Остаётся: <b>'+esc(pl.main.name)+'</b> <span class="al-count">'+(last?'(последняя тренировка '+esc(fmtShort(last))+')':'(тренировок не было)')+'</span></div>'
-                +(g.members.length>2||true?'<div class="lbl" style="margin-top:0.5rem">Основной шаблон</div><select class="dup-main" data-chg="tplMainPick" data-key="'+esc(g.key)+'" style="min-height:var(--touch)">'
-                    +g.members.map(function(t){ return '<option value="'+esc(t.id)+'"'+(t.id===pl.main.id?' selected':'')+'>'+esc(t.name)+' · '+tplExCount(t)+' упр. · '+esc(fmtTplUp(t))+'</option>'; }).join("")+'</select>':'')
+                +(g.members.length>2||true?'<div class="lbl" style="margin-top:0.5rem">Основной шаблон</div>'+selFld('<select class="dup-main" data-chg="tplMainPick" data-key="'+esc(g.key)+'">'
+                    +g.members.map(function(t){ return '<option value="'+esc(t.id)+'"'+(t.id===pl.main.id?' selected':'')+'>'+esc(t.name)+' · '+tplExCount(t)+' упр. · '+esc(fmtTplUp(t))+'</option>'; }).join("")+'</select>'):'')
                 +'<div class="lbl" style="margin-top:0.625rem">Будут удалены</div>'
                 +pl.drops.map(function(t){ return '<div class="dup-drop">'+esc(t.name)+' <span class="al-count">· '+tplExCount(t)+' '+plural(tplExCount(t),"упражнение","упражнения","упражнений")+'</span></div>'; }).join("");
             if(pl.extras.length){
@@ -3939,7 +3951,7 @@
             +'<div><div class="lbl">Недель отдыха</div>'
             +'<input type="number" inputmode="numeric" min="1" max="4" value="'+c.restWeeks+'" data-chg="restWeeks"></div></div>'
             +'<div class="row"><div class="lbl">Начало первой рабочей недели</div>'
-            +'<input type="date" value="'+esc(c.anchorDate||"")+'" data-chg="anchorDate"></div>'
+            +dateFld('<input type="date" value="'+esc(c.anchorDate||"")+'" data-chg="anchorDate">')+'</div>'
             +'<div class="note">Смена настроек пересчитает календарь, но уже записанные тренировки сохранят свой тип недели.</div></div>';
         const ovKeys=Object.keys(data.cfg.weekOverrides||{}).sort();
         if(ovKeys.length){
@@ -4030,7 +4042,7 @@
             app.innerHTML='<div class="setup">'+(ENV==="test"?cloneCardHtml():'')+'<div class="card">'
                 +'<div style="font-weight:800; font-size:1.0625rem; margin-bottom:0.625rem">'+ICON_DUMBBELL+' Gym Tracker</div>'
                 +'<p>'+cycleText()+' (поменять можно в настройках). Укажи дату начала первой рабочей недели.</p>'
-                +'<input type="date" id="startInput" value="'+(ui.setupDate||toKey(new Date()))+'" style="margin:0.625rem 0 0.875rem">'
+                +dateFld('<input type="date" id="startInput" value="'+(ui.setupDate||toKey(new Date()))+'">','margin:0.625rem 0 0.875rem')
                 +'<button class="wide-btn primary" data-act="setupNext">Далее</button></div></div>';
         } else {
             app.innerHTML='<div class="setup">'+(ENV==="test"?cloneCardHtml():'')+'<div class="card">'
