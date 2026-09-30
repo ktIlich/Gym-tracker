@@ -485,7 +485,7 @@
     // сколько тренировок с этим упражнением (по base, без учёта плана и варианта) было строго до текущей даты
     function countBase(base){
         const bl=applyAliases(base,null).base.trim().toLowerCase(); let n=0;
-        for(const k of Object.keys(data.log)){
+        for(const k of Object.keys(data.log).sort()){
             if(k>=curDate) continue;
             if((data.log[k].exercises||[]).some(function(e){ return exBaseOf(e).trim().toLowerCase()===bl; })) n++;
         }
@@ -504,7 +504,7 @@
     }
     let data=emptyData();
     let curDate=toKey(new Date());
-    let ui={ tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null, editTpl:null, histEx:null, importText:false, importParsed:null, dayNoteOpen:false, exNoteOpen:{}, variantOpen:{}, weekTypeOpen:false,
+    let ui={ drafts:{}, tab:"day", savingTpl:false, confirmDel:false, tplDelId:null, wipeStep:0, setupStep:1, setupDate:null, tplFromText:false, tplParsed:null, editTpl:null, histEx:null, importText:false, importParsed:null, dayNoteOpen:false, exNoteOpen:{}, variantOpen:{}, weekTypeOpen:false,
         backupRestoreOpen:false, backupParsed:null, backupParsedSrc:null, backupMode:"merge", backupConfirmStep:0,
         progMode:"ex", progPeriod:"3m" };
     let calMonth=curDate.slice(0,7);
@@ -1024,7 +1024,7 @@
     async function cloudPushAll(){
         await csSet("cfg", JSON.stringify(data.cfg));
         for(const t of data.templates) await csSet("tpl_"+t.id, JSON.stringify(t));
-        for(const k of Object.keys(data.log)) await csSet("w_"+k, JSON.stringify(data.log[k]));
+        for(const k of Object.keys(data.log).sort()) await csSet("w_"+k, JSON.stringify(data.log[k]));
     }
     async function cloudReplaceAll(){
         const keys=await csKeys();
@@ -1044,14 +1044,25 @@
         }
         return cloud;
     }
-    let syncState={ last:null, count:null, busy:false };
+    let syncState={ last:null, count:null, busy:false, verified:false };
+    function makeDefaultTemplates(){ return DEFAULT_TEMPLATES.map(function(t){return normalizeTpl({id:uid(),name:t.name,title:t.title,exercises:t.exercises.slice()});}); }
+    // шаблоны по умолчанию: только если облако проверено и шаблонов нет ни там, ни здесь; до проверки они не создаются и не пишутся
+    function maybeCreateDefaults(){
+        if(!ui.needDefaults||!syncState.verified) return;
+        ui.needDefaults=false;
+        if(data.templates.length) return;
+        data.templates=makeDefaultTemplates();
+        for(const t of data.templates) persistTpl(t);
+        render();
+    }
     async function cloudLoad(){
         if(!cs||syncState.busy||ui.cloneIncomplete) return;
         syncState.busy=true;
         try{
             const keys=await csKeys();
             if(keys===null){ syncState.busy=false; return; }
-            if(!keys.length){ await cloudPushAll(); syncState.last=new Date(); syncState.count=1+data.templates.length+Object.keys(data.log).length; syncState.busy=false; render(); return; }
+            syncState.verified=true;
+            if(!keys.length){ maybeCreateDefaults(); await cloudPushAll(); syncState.last=new Date(); syncState.count=1+data.templates.length+Object.keys(data.log).length; syncState.busy=false; render(); return; }
             const items=await csGetItems(keys);
             const cloud=cloudObjFromItems(keys,items);
             // слияние по меткам времени .up: новее — побеждает; чего нет в облаке — доливаем
@@ -1060,7 +1071,7 @@
             const merged=normalizeData({ cfg:cloud.cfg, templates:cloud.templates.slice(), log:cloud.log });
             if((data.cfg.up||0)>(merged.cfg.up||0)){ merged.cfg=data.cfg; push.push(["cfg",JSON.stringify(data.cfg)]); }
             merged.cfg=normalizeData({cfg:merged.cfg}).cfg;
-            for(const k of Object.keys(data.log)){
+            for(const k of Object.keys(data.log).sort()){
                 const loc=data.log[k], cld=merged.log[k];
                 if(!cld||(loc.up||0)>(cld.up||0)){ merged.log[k]=loc; push.push(["w_"+k,JSON.stringify(loc)]); }
             }
@@ -1070,6 +1081,7 @@
                 else if((t.up||0)>(merged.templates[i].up||0)){ merged.templates[i]=t; push.push(["tpl_"+t.id,JSON.stringify(t)]); }
             }
             data=merged;
+            maybeCreateDefaults();
             applyMigrations();
             syncState.last=new Date(); syncState.count=keys.length;
             if(JSON.stringify(data)!==before){ saveCache(); render(); }
@@ -1097,16 +1109,27 @@
         }catch(e){ return false; }
     }
 
-    function getDay(){ return data.log[curDate] || {title:"",exercises:[]}; }
-    function setDay(day){
-        const wi=weekInfo(curDate);
-        if(wi) day.weekType=wi.isRest?"rest":"work";
-        day.up=Date.now();
-        if(!day.exercises.length && !(day.title||"").trim()) delete data.log[curDate];
-        else data.log[curDate]=day;
-        persistDay(curDate); render();
+    // Запись дня попадает в хранилище только когда в ней есть подход или заметка (дня или упражнения).
+    // Упражнения без подходов живут в черновике (память) — открытие дня и добавление упражнений пустую запись не создают.
+    function dayHasContent(d){
+        return !!((d.note||"").trim()) || (d.exercises||[]).some(function(e){ return (e.sets&&e.sets.length)||(e.note||"").trim(); });
     }
-
+    function dayFor(k){ return data.log[k]||ui.drafts[k]||{title:"",exercises:[]}; }
+    function commitDay(k,d){
+        const existed=!!data.log[k];
+        if(dayHasContent(d)){
+            const wi=weekInfo(k); if(wi) d.weekType=wi.isRest?"rest":"work";
+            d.up=Date.now();
+            data.log[k]=d; delete ui.drafts[k];
+            persistDay(k);
+        } else {
+            delete data.log[k];
+            if((d.exercises||[]).length||(d.title||"").trim()) ui.drafts[k]=d; else delete ui.drafts[k];
+            if(existed) persistDay(k);   // запись, ставшая пустой, удаляется и из хранилища
+        }
+    }
+    function getDay(){ return dayFor(curDate); }
+    function setDay(day){ commitDay(curDate,day); render(); }
     // ============ шаблоны из текста ============
     // Строка с "3х8-12" → упражнение (имя до плана); строка без плана → название нового шаблона
     const PLAN_RE=/(\d+)\s*[хx×*]\s*(\d+)\s*(?:[-–—]\s*(\d+))?/i;
@@ -1210,7 +1233,7 @@
         for(const t of data.templates) for(const b of t.blocks) for(const it of b.items){
             if(normKey(it.name)===bl&&it.vars) for(const v of it.vars) add(v);
         }
-        for(const k of Object.keys(data.log)) for(const e of (data.log[k].exercises||[])){
+        for(const k of Object.keys(data.log).sort()) for(const e of (data.log[k].exercises||[])){
             if(normKey(exBaseOf(e))===bl) add(exVariantOf(e));
         }
         return out;
@@ -1461,7 +1484,7 @@
     }
     function computeRecords(){
         const best={};
-        for(const k of Object.keys(data.log)) for(const e of (data.log[k].exercises||[])){
+        for(const k of Object.keys(data.log).sort()) for(const e of (data.log[k].exercises||[])){
             if(!e.sets||!e.sets.length) continue;
             const top=e.sets.reduce(function(a,s){return s.w>a.w?s:a;});
             const b=exBaseOf(e).trim(), v=exVariantOf(e), key=b.toLowerCase()+"|"+(v||"").trim().toLowerCase();
@@ -1471,7 +1494,7 @@
     }
     function computeSummary(period){
         const cutoff=period==="1m"?Date.now()-30*86400000:period==="3m"?Date.now()-90*86400000:null;
-        const workouts=Object.keys(data.log).filter(function(k){
+        const workouts=Object.keys(data.log).sort().filter(function(k){
             const day=data.log[k];
             if(!daySetsCount(day)) return false;
             if(cutoff!==null&&parseKey(k).getTime()<cutoff) return false;
@@ -1663,7 +1686,7 @@
         for(const t of data.templates) for(const b of t.blocks) for(const it of b.items){
             const cn=fullEx(it); if(normalizeExName(cn)===norm) return cn;
         }
-        for(const k of Object.keys(data.log)) for(const e of (data.log[k].exercises||[])){
+        for(const k of Object.keys(data.log).sort()) for(const e of (data.log[k].exercises||[])){
             if(normalizeExName(e.name)===norm) return e.name;
         }
         return rawName;
@@ -2450,6 +2473,126 @@
         return h;
     }
 
+    // ============ гигиена данных ============
+    function tplBaseKey(t){
+        const set={};
+        for(const b of (t.blocks||[])) for(const it of (b.items||[])) set[applyAliases(it.name,null).base.trim().toLowerCase()]=1;
+        return Object.keys(set).sort().join("|");
+    }
+    // группы шаблонов с одинаковым множеством канонических base; оставляем максимальный up (нет = 0)
+    function findDupGroups(){
+        const by={};
+        data.templates.forEach(function(t,i){ const k=tplBaseKey(t); if(!k) return; (by[k]||(by[k]=[])).push({t:t,i:i}); });
+        return Object.keys(by).sort().filter(function(k){return by[k].length>1;}).map(function(k){
+            const list=by[k].slice().sort(function(a,b){
+                return ((b.t.up||0)-(a.t.up||0)) || (tplExCount(b.t)-tplExCount(a.t)) || (a.i-b.i);
+            });
+            return { key:k, keep:list[0].t, drop:list.slice(1).map(function(x){return x.t;}) };
+        });
+    }
+    // все ссылки на id шаблона: в коде их нет в сохранённых данных (расписания по дням недели и выбора в календаре не хранится);
+    // на всякий случай перенаправляем: состояние экранов, значения-id в cfg и поля tplId/templateId в днях
+    function redirectTemplateRefs(fromId,toId){
+        let n=0;
+        if(ui.tplDelId===fromId){ ui.tplDelId=toId; n++; }
+        if(ui.editTpl&&ui.editTpl.id===fromId){ ui.editTpl.id=toId; n++; }
+        let cfgChanged=false;
+        const scan=function(obj){
+            for(const k of Object.keys(obj)){
+                const v=obj[k];
+                if(v===fromId){ obj[k]=toId; n++; cfgChanged=true; }
+                else if(v&&typeof v==="object") scan(v);
+            }
+        };
+        scan(data.cfg);
+        if(cfgChanged) persistCfg();
+        for(const k of Object.keys(data.log).sort()){
+            const d=data.log[k]; let ch=false;
+            for(const f of ["tplId","templateId"]) if(d[f]===fromId){ d[f]=toId; ch=true; n++; }
+            if(ch) persistDay(k);
+        }
+        return n;
+    }
+    function removeTemplateDuplicates(groupKey){
+        const g=findDupGroups().find(function(x){return x.key===groupKey;}); if(!g) return 0;
+        for(const t of g.drop){
+            redirectTemplateRefs(t.id,g.keep.id);
+            data.templates=data.templates.filter(function(x){return x.id!==t.id;});
+            unpersistTpl(t.id);
+        }
+        return g.drop.length;
+    }
+    function fmtTplUp(t){ return t.up?new Date(t.up).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric"}):"нет даты"; }
+    function dupsPageHtml(){
+        const groups=findDupGroups();
+        let h='<div class="sec-label" style="margin-top:16px">Найдены похожие шаблоны</div>';
+        if(!groups.length) h+='<div class="card" style="text-align:center;color:var(--mut);padding:20px">Похожих шаблонов нет</div>';
+        groups.forEach(function(g,gi){
+            h+='<div class="card dup-group" data-key="'+esc(g.key)+'"><div class="note" style="margin-top:0">Одинаковый набор упражнений ('+tplExCount(g.keep)+')</div>'
+                +'<div class="switch-row"><span><b>'+esc(g.keep.name)+'</b><div class="ex-last">останется · '+esc(fmtTplUp(g.keep))+'</div></span></div>';
+            for(const t of g.drop) h+='<div class="switch-row"><span>'+esc(t.name)+'<div class="ex-last">будет удалён · '+esc(fmtTplUp(t))+'</div></span></div>';
+            if(ui.dupConfirm===g.key){
+                h+='<div class="confirm" style="margin-top:8px"><span>Удалить шаблонов: '+g.drop.length+'? Ссылки на них будут перенаправлены на «'+esc(g.keep.name)+'».</span>'
+                    +'<span class="btns"><button class="btn-red" data-act="dupDelGo" data-key="'+esc(g.key)+'">Удалить</button>'
+                    +'<button class="btn-gray" data-act="dupDelNo">Отмена</button></span></div>';
+            } else h+='<button class="wide-btn danger" data-act="dupDelAsk" data-key="'+esc(g.key)+'">'+ICON_TRASH+' Удалить лишние ('+g.drop.length+')</button>';
+            h+='</div>';
+        });
+        return h+'<button class="wide-btn" data-act="hygClose">Назад</button>';
+    }
+    function planSetsCount(plan){ const m=String(plan||"").match(/^\s*(\d+)\s*[хx×*]/i); return m?parseInt(m[1],10):null; }
+    function medianOf(a){ const s=a.slice().sort(function(x,y){return x-y;}), n=s.length; return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2; }
+    // проверка данных: только список, без автоисправлений
+    function findDataIssues(){
+        const today=toKey(new Date()), out={emptyDay:[],emptyEx:[],overPlan:[],lowWeight:[]};
+        const weights={};
+        const keys=Object.keys(data.log).sort();
+        for(const k of keys) for(const e of (data.log[k].exercises||[])){
+            const wk=normKey(exBaseOf(e))+"|"+(normKey(exVariantOf(e))||"");
+            for(const st of (e.sets||[])) (weights[wk]||(weights[wk]=[])).push(st.w);
+        }
+        for(const k of keys){
+            const exs=data.log[k].exercises||[];
+            const withSets=exs.filter(function(e){return e.sets&&e.sets.length;});
+            if(k<today){
+                if(exs.length&&!withSets.length) out.emptyDay.push({date:k,text:"Ни у одного упражнения нет подходов"});
+                else for(const e of exs) if(!(e.sets&&e.sets.length)) out.emptyEx.push({date:k,text:e.name+" — без подходов"});
+            }
+            for(const e of exs){
+                const planN=planSetsCount(e.base?e.plan:parseExName(e.name).plan);
+                if(planN!=null&&(e.sets||[]).length>=planN+1) out.overPlan.push({date:k,text:e.name+" — подходов "+e.sets.length+", в плане "+planN});
+                const wk=normKey(exBaseOf(e))+"|"+(normKey(exVariantOf(e))||""), ws=weights[wk];
+                if(ws&&ws.length>=3){
+                    const med=medianOf(ws), low=(e.sets||[]).find(function(st){return st.w>0&&st.w<med*0.3;});
+                    if(low) out.lowWeight.push({date:k,text:e.name+" — "+fmtW(low.w)+" кг при медиане "+fmtW(med)+" кг"});
+                }
+            }
+        }
+        return out;
+    }
+    function checkPageHtml(){
+        const r=findDataIssues();
+        const sections=[["emptyDay","Дни без подходов"],["emptyEx","Упражнения без подходов"],["overPlan","Подходов больше, чем в плане"],["lowWeight","Вес меньше 30% медианы"]];
+        let h='<div class="sec-label" style="margin-top:16px">Проверка данных</div>', total=0;
+        for(const sec of sections){
+            const list=r[sec[0]]; total+=list.length;
+            if(!list.length) continue;
+            h+='<div class="sec-label">'+sec[1]+' ('+list.length+')</div><div class="card" data-sec="'+sec[0]+'">';
+            list.forEach(function(it){
+                h+='<div class="switch-row"><span><b>'+esc(fmtShort(it.date))+'</b> — '+esc(it.text)+'</span>'
+                    +'<button class="btn-gray" style="min-height:44px" data-act="hygOpenDay" data-date="'+it.date+'">К дню</button></div>';
+            });
+            h+='</div>';
+        }
+        if(!total) h+='<div class="card" style="text-align:center;color:var(--mut);padding:20px">Замечаний нет</div>';
+        return h+'<div class="note">Экран только показывает замечания, данные не меняются.</div><button class="wide-btn" data-act="hygClose">Назад</button>';
+    }
+    function hygieneSectionHtml(){
+        const nd=findDupGroups().length;
+        return '<div class="sec-label">Гигиена данных</div><div class="card">'
+            +'<button class="wide-btn" style="margin-top:0" data-act="hygOpen" data-screen="dups">'+ICON_LINK+' Найдены похожие шаблоны'+(nd?' ('+nd+')':'')+'</button>'
+            +'<button class="wide-btn" data-act="hygOpen" data-screen="check">'+ICON_CHECK+' Проверка данных</button></div>';
+    }
     function aliasRowsHtml(kind){
         const map=kind==="var"?data.cfg.variantAliases:data.cfg.aliases;
         const ph=kind==="var"?["Старый вариант","Каноническое значение"]:["Старое имя","Каноническое имя"];
@@ -2586,6 +2729,7 @@
         for(const a of ACCENT_PRESETS) h+='<button class="swatch'+(a===ac?' sel':'')+'" style="background:'+a+'" data-act="setAccent" data-accent="'+a+'"></button>';
         h+='</div></div>';
 
+        h+=hygieneSectionHtml();
         h+='<div class="sec-label">Алиасы</div><div class="card"><button class="wide-btn" style="margin-top:0" data-act="aliasOpen">'+ICON_LINK+' Алиасы упражнений и вариантов</button></div>';
 
         h+='<div class="sec-label">Данные</div><div class="card">'
@@ -2654,7 +2798,9 @@
         else if(ui.tab==="prg") h+=progressPage();
         else if(ui.tab==="tpl") h+=tplPage();
         else if(ui.tab==="set"){
-            if(ui.aliasScreen) h+=aliasPageHtml();
+            if(ui.hygiene==='dups') h+=dupsPageHtml();
+            else if(ui.hygiene==='check') h+=checkPageHtml();
+            else if(ui.aliasScreen) h+=aliasPageHtml();
             else if(ui.tblImport) h+=tblImportPage();
             else if(ui.importParsed) h+=importConfirmPage();
             else if(ui.importText) h+=importTextPage();
@@ -2673,7 +2819,7 @@
     document.getElementById("tabbar").addEventListener("click",function(e){
         const b=e.target.closest("button[data-tab]"); if(!b) return;
         ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null; ui.wipeStep=0; ui.tplFromText=false; ui.tplParsed=null; ui.editTpl=null;
-        ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.tblImport=null; ui.dayNoteOpen=false; ui.weekTypeOpen=false;
+        ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.tblImport=null; ui.hygiene=null; ui.dupConfirm=null; ui.dayNoteOpen=false; ui.weekTypeOpen=false;
         ui.backupRestoreOpen=false; ui.backupParsed=null; ui.backupParsedSrc=null; ui.backupMode="merge"; ui.backupConfirmStep=0;
         summaryCache.period=null;
         if(ui.tab==="cal") calMonth=curDate.slice(0,7);
@@ -2698,12 +2844,7 @@
                 if(isNaN(v)||v<=0){ e.target.value=s.r; return; }
                 s.r=v;
             }
-            const wi=weekInfo(curDate);
-            if(wi) d.weekType=wi.isRest?"rest":"work";
-            d.up=Date.now();
-            if(!d.exercises.length&&!(d.title||"").trim()) delete data.log[curDate];
-            else data.log[curDate]=d;
-            persistDay(curDate);
+            commitDay(curDate,d);
             return;
         }
         const et=e.target.dataset.et;
@@ -2750,11 +2891,7 @@
         if(chg==="theme"){ data.cfg.theme=e.target.value; persistCfg(); applyTheme(); return; }
         if(chg==="dayNote"){
             const d=getDay(); d.note=e.target.value;
-            const wi=weekInfo(curDate); if(wi) d.weekType=wi.isRest?"rest":"work";
-            d.up=Date.now();
-            if(!d.exercises.length&&!(d.title||"").trim()&&!(d.note||"").trim()) delete data.log[curDate];
-            else data.log[curDate]=d;
-            persistDay(curDate);
+            commitDay(curDate,d);
             return;
         }
         if(chg==="exNote"){
@@ -2762,8 +2899,7 @@
             const ex2=d.exercises.find(function(x){return x.id===e.target.dataset.id;});
             if(ex2){
                 ex2.note=e.target.value;
-                const wi=weekInfo(curDate); if(wi) d.weekType=wi.isRest?"rest":"work";
-                d.up=Date.now(); data.log[curDate]=d; persistDay(curDate);
+                commitDay(curDate,d);
             }
             return;
         }
@@ -2862,7 +2998,7 @@
         setDay(day);
     }
     function deleteDay(){
-        delete data.log[curDate];
+        delete data.log[curDate]; delete ui.drafts[curDate];
         ui.confirmDel=false; persistDay(curDate); render();
         toast("Записи за день удалены");
     }
@@ -3157,6 +3293,12 @@
                 break;
             }
             case "cloneProd": cloneFromProd(); break;
+            case "hygOpen": ui.hygiene=ds.screen; ui.dupConfirm=null; render(); break;
+            case "hygClose": ui.hygiene=null; ui.dupConfirm=null; render(); break;
+            case "hygOpenDay": curDate=ds.date; ui.hygiene=null; ui.tab="day"; ui.histEx=null; render(); break;
+            case "dupDelAsk": ui.dupConfirm=ds.key; render(); break;
+            case "dupDelNo": ui.dupConfirm=null; render(); break;
+            case "dupDelGo":{ const n=removeTemplateDuplicates(ds.key); ui.dupConfirm=null; toast("Удалено шаблонов: "+n); render(); break; }
             case "aliasOpen": ui.aliasScreen=true; render(); break;
             case "aliasClose": ui.aliasScreen=false; render(); break;
             case "aliasAdd":{
@@ -3248,10 +3390,9 @@
                 day.exercises.splice(i,1);
                 hap("medium"); setDay(day);
                 toast("«"+removed.name.slice(0,24)+(removed.name.length>24?"…":"")+"» удалено","Вернуть",function(){
-                    const d2=data.log[remDate]||{title:"",exercises:[]};
+                    const d2=dayFor(remDate);
                     d2.exercises.splice(Math.min(i,d2.exercises.length),0,removed);
-                    data.log[remDate]=d2; d2.up=Date.now();
-                    persistDay(remDate); render();
+                    commitDay(remDate,d2); render();
                 });
                 break;
             }
@@ -3269,7 +3410,7 @@
                     if(keys) for(const k of keys) await csDel(k);
                     try{ lsDel(CACHE_KEY); lsDel(SNAPSHOT_KEY); }catch(e){}
                     data=emptyData();
-                    data.templates=DEFAULT_TEMPLATES.map(function(t){return normalizeTpl({id:uid(),name:t.name,title:t.title,exercises:t.exercises.slice()});});
+                    data.templates=makeDefaultTemplates();
                     syncState.last=null; syncState.count=null; warnedCloud=false;
                     curDate=toKey(new Date()); ui.tab="day";
                     saveCache(); render();
@@ -3302,14 +3443,12 @@
                 hap("medium"); setDay(day);
                 toast("Подход удалён","Вернуть",function(){
                     if(!lastDel) return;
-                    const d2=data.log[lastDel.date]||{title:"",exercises:[]};
+                    const d2=dayFor(lastDel.date);
                     let ex2=d2.exercises.find(function(x){return x.id===lastDel.exId;});
                     if(!ex2) return;
                     ex2.sets.splice(Math.min(lastDel.i,ex2.sets.length),0,lastDel.set);
-                    d2.up=Date.now();
-                    data.log[lastDel.date]=d2;
                     const dd=lastDel.date; lastDel=null;
-                    persistDay(dd); render();
+                    commitDay(dd,d2); render();
                 });
                 break;
             }
@@ -3386,7 +3525,8 @@
         const hadCache=loadCache();
         if(!hadCache){
             if(migrateOld()) toast("Данные перенесены из старой версии");
-            else { data.templates=DEFAULT_TEMPLATES.map(function(t){return normalizeTpl({id:uid(),name:t.name,title:t.title,exercises:t.exercises.slice()});}); saveCache(); }
+            else if(cs){ ui.needDefaults=true; saveCache(); }   // облако ещё не проверено — шаблоны по умолчанию создадим после проверки
+            else { data.templates=makeDefaultTemplates(); saveCache(); }
         }
         applyMigrations();
         applyTheme();

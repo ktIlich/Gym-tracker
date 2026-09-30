@@ -33,10 +33,10 @@ async def main():
             check("alt: при n=0 вариант равен null", r[9] == -1 and r[11] is None and r[12] is None and r[13] == "B", r[9:])
             n_mol = await t.evaluate("countBase('Молотки, свободный вес или блок')")
             check("счёт тренировок — по base, без учёта плана и варианта (8 дней «Молотков» до 30.09)", n_mol == 8, n_mol)
-            await t.evaluate("ui.tab='day'; delete data.log[curDate]; applyTemplate(data.templates.find(x=>x.id==='fb6c7mc')); 0")
-            mol = await t.evaluate("data.log[curDate].exercises.find(e=>e.base.startsWith('Молотки'))")
+            await t.evaluate("ui.tab='day'; delete data.log[curDate]; delete ui.drafts[curDate]; applyTemplate(data.templates.find(x=>x.id==='fb6c7mc')); 0")
+            mol = await t.evaluate("getDay().exercises.find(e=>e.base.startsWith('Молотки'))")
             check("applyTemplate: «Молотки» (alt 4, 2 варианта, 8 тренировок) → idx 0 = «Свободный»", mol["variant"] == "Свободный" and mol["name"] == "Молотки, свободный вес или блок (2х8-15) · Свободный", mol)
-            vert = await t.evaluate("data.log[curDate].exercises.find(e=>e.base.startsWith('Вертикальная'))")
+            vert = await t.evaluate("getDay().exercises.find(e=>e.base.startsWith('Вертикальная'))")
             check("вариант из одного значения валиден: «Прямая изогнутая» подставляется", vert["variant"] == "Прямая изогнутая", vert)
 
             # ---- редактор шаблона

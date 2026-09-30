@@ -26,7 +26,7 @@ async def main():
             await t.wait_for_timeout(2500)
             log = await t.evaluate("JSON.parse(JSON.stringify(data.log))")
             ntpl = await t.evaluate("data.templates.length"); real_ids = {x["id"] for x in dump["templates"]}; have = set(await t.evaluate("data.templates.map(x=>x.id)"))
-            check("реальные данные: загружено 35 дней и все 12 шаблонов (+3 шаблона по умолчанию от пустого локального кэша — поведение v2)", len(log) == 35 and real_ids <= have and ntpl == 15, (len(log), ntpl))
+            check("реальные данные: загружено 35 дней и все 12 шаблонов; шаблоны по умолчанию не добавлены (облако проверено, шаблоны там есть)", len(log) == 35 and have == real_ids and len([k for k in STORE if k.startswith("tst_tpl_")]) == 12, (len(log), ntpl))
 
             # ---- миграция
             exs = [(k, e) for k, d in log.items() for e in d["exercises"]]
@@ -75,9 +75,9 @@ async def main():
             check("рекомендации: только шаги 1–2 (у «Молотков» без варианта есть 05.08 rest, но не рабочая → шаг 3 → нет)", await fp("Молотки, свободный вес или блок", "Новый", "work", 2) is None)
 
             # ---- переключение варианта туда-обратно на текущем дне: записи других дат не меняются
-            await t.evaluate("ui.tab='day'; delete data.log[curDate]; applyTemplate(data.templates.find(x=>x.id==='fb6c7mc')); 0")
+            await t.evaluate("ui.tab='day'; delete data.log[curDate]; delete ui.drafts[curDate]; applyTemplate(data.templates.find(x=>x.id==='fb6c7mc')); 0")
             before = await t.evaluate("JSON.stringify(Object.fromEntries(Object.entries(data.log).filter(([k])=>k!==curDate)))")
-            ids = await t.evaluate("data.log[curDate].exercises.map(e=>({id:e.id,b:e.base,v:e.variant}))")
+            ids = await t.evaluate("getDay().exercises.map(e=>({id:e.id,b:e.base,v:e.variant}))")
             mol = [e for e in ids if e["b"].startswith("Молотки")][0]
             cards = "[...document.querySelectorAll('.card')].filter(c=>c.querySelector('.ex-name')).map(c=>({n:c.querySelector('.ex-name').textContent,l:[...c.querySelectorAll('.ex-last')].map(e=>e.textContent)}))"
             c0 = await t.evaluate("render(); " + cards)

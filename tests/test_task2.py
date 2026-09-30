@@ -83,7 +83,7 @@ async def main():
             cards = "[...document.querySelectorAll('.card')].filter(c=>c.querySelector('.ex-name')).map(c=>({n:c.querySelector('.ex-name').textContent,l:[...c.querySelectorAll('.ex-last')].map(e=>e.textContent),r:(c.querySelector('.rec-btn')||{}).textContent||''}))"
             other_before = await t.evaluate("JSON.stringify(Object.fromEntries(Object.entries(data.log).filter(([k])=>k!==curDate)))")
             cards_before = await t.evaluate(cards)
-            exid = await t.evaluate("data.log[curDate].exercises[0].id")
+            exid = await t.evaluate("getDay().exercises[0].id")
             await t.evaluate("doAction('applyVariant',{id:'%s',variant:'Свободный'}); 0" % exid)
             mid = await t.evaluate(cards)
             check("смена варианта: у переключённого упражнения «прошлая» обновилась (шаг 2: 26.08 15×12)", any("26.08" in x and "15×12" in x for x in mid[0]["l"]) and mid[0]["l"] != cards_before[0]["l"], mid[0])
@@ -93,7 +93,7 @@ async def main():
             other_after = await t.evaluate("JSON.stringify(Object.fromEntries(Object.entries(data.log).filter(([k])=>k!==curDate)))")
             check("переключение туда-обратно: записи других дат — JSON до и после равны", other_before == other_after)
             check("переключение туда-обратно: карточки как были", back == cards_before)
-            e0 = await t.evaluate("data.log[curDate].exercises[0]")
+            e0 = await t.evaluate("getDay().exercises[0]")
             check("смена варианта меняет только variant и name текущей записи", e0["variant"] == "Блок" and e0["name"] == "Сгибания с гантелями стоя по 1 руке (2х8-15) · Блок" and e0["sets"] == [])
             check("нет pageerror", not [l for l in logs if l.startswith("pageerror")], logs[:3])
             await t.screenshot(path=os.path.join(os.environ.get("TEMP", "."), "gt_prev.png"))

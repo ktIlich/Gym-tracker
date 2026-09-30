@@ -119,26 +119,26 @@ async def main():
             check("вариант: написание берётся из шаблона (блок → Блок, свободный вес → Свободный)", await t.evaluate("canonVariant('блок','Молотки')==='Блок' && canonVariant('свободный вес','Молотки')==='Свободный' && canonVariant('лёжа','Сгибания голени')==='Лёжа'"))
 
             # ---- новые записи создаются сразу с base/plan/variant
-            await t.evaluate("ui.tab='day'; ui.aliasScreen=false; curDate=toKey(new Date()); delete data.log[curDate]; render(); 0")
+            await t.evaluate("ui.tab='day'; ui.aliasScreen=false; curDate=toKey(new Date()); delete data.log[curDate]; delete ui.drafts[curDate]; render(); 0")
             before_log = await t.evaluate("JSON.stringify(data.log)")
             await t.evaluate("applyTemplate(data.templates.find(t=>t.id==='a')); 0")
-            today = await t.evaluate("JSON.parse(JSON.stringify(data.log[curDate].exercises))")
+            today = await t.evaluate("JSON.parse(JSON.stringify(getDay().exercises))")
             check("шаблон → запись: base/plan/variant и name из полей", today[0]["base"] == "Сгибания голени" and today[0]["plan"] == "2х8-12" and today[0]["variant"] in ("Лёжа", "Сидя")
                   and today[0]["name"] == "Сгибания голени (2х8-12) · " + today[0]["variant"] and today[1]["base"] == "Молотки" and today[1]["plan"] == "2х8-15", today)
             await t.fill("#newEx", "Пресс (4х12-20)"); await t.click('[data-act="addEx"]'); await t.wait_for_timeout(200)
-            press = await t.evaluate("data.log[curDate].exercises.at(-1)")
+            press = await t.evaluate("getDay().exercises.at(-1)")
             check("добавление вручную: имя разбирается на base/plan", press["base"] == "Пресс" and press["plan"] == "4х12-20" and press["variant"] is None and press["name"] == "Пресс (4х12-20)", press)
             await t.fill("#newEx", "Голень стоя (3х10-20)"); await t.click('[data-act="addEx"]'); await t.wait_for_timeout(200)
-            check("добавление вручную: алиас применяется", await t.evaluate("data.log[curDate].exercises.at(-1).name")  == "Голень стоя (икры) (3х10-20)")
+            check("добавление вручную: алиас применяется", await t.evaluate("getDay().exercises.at(-1).name")  == "Голень стоя (икры) (3х10-20)")
             exid = today[0]["id"]
             await t.evaluate("doAction('applyVariant',{id:'%s',variant:'свободный вес'}); 0" % exid)
-            e0 = await t.evaluate("data.log[curDate].exercises[0]")
+            e0 = await t.evaluate("getDay().exercises[0]")
             after_log = await t.evaluate("(()=>{const l=JSON.parse(JSON.stringify(data.log)); delete l[curDate]; return JSON.stringify(l);})()")
             check("смена варианта: меняются variant и name записи, base/plan прежние, алиас варианта применён", e0["variant"] == "Свободный" and e0["name"] == "Сгибания голени (2х8-12) · Свободный" and e0["base"] == "Сгибания голени" and e0["plan"] == "2х8-12", e0)
             before_other = json.dumps(json.loads(before_log), sort_keys=True); after_other = json.dumps(json.loads(after_log), sort_keys=True)
             check("смена варианта: записи других дат не изменились", before_other == after_other)
             await t.evaluate("doAction('applyVariant',{id:'%s',variant:''}); 0" % exid)
-            check("смена варианта: «без варианта» → variant null, name без « · »", await t.evaluate("(e=>e.variant===null && e.name==='Сгибания голени (2х8-12)')(data.log[curDate].exercises[0])"))
+            check("смена варианта: «без варианта» → variant null, name без « · »", await t.evaluate("(e=>e.variant===null && e.name==='Сгибания голени (2х8-12)')(getDay().exercises[0])"))
             await t.evaluate("doAction('copyLast',{}); 0") if False else None
 
             # ---- экран «Алиасы»
