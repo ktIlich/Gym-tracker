@@ -286,7 +286,7 @@
     <button data-tab="tpl"><span class="ti"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21 12 16 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/></svg></span>Шаблоны</button>
     <button data-tab="set"><span class="ti"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>Настройки</button>
 </nav>
-<input type="file" id="importFile" accept=".xlsx,.xls" style="display:none">
+<input type="file" id="importFile" accept=".xlsx,.xls,.csv,text/csv" style="display:none">
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none"></button></div>
 <script>
     "use strict";
@@ -1821,60 +1821,167 @@
         }
         return null;
     }
-    function importXlsx(file){
-        if(typeof XLSX==="undefined"){ toast("Нет интернета — библиотека Excel не загрузилась"); return; }
-        const reader=new FileReader();
-        reader.onload=async function(e){
-            try{
-                const wb=XLSX.read(e.target.result,{type:"array",cellDates:true});
-                const ws=wb.Sheets[wb.SheetNames[0]];
-                const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true});
-                let hi=-1, col={};
-                for(let i=0;i<Math.min(rows.length,10);i++){
-                    const low=(rows[i]||[]).map(function(c){return String(c||"").toLowerCase();});
-                    const di=low.findIndex(function(c){return c.indexOf("дата")>=0;});
-                    if(di>=0){
-                        hi=i; col.date=di;
-                        col.title=low.findIndex(function(c){return c.indexOf("трениров")>=0;});
-                        col.ex=low.findIndex(function(c){return c.indexOf("упражн")>=0;});
-                        col.w=low.findIndex(function(c){return c.indexOf("вес")>=0;});
-                        col.r=low.findIndex(function(c){return c.indexOf("повтор")>=0;});
-                        break;
-                    }
-                }
-                if(hi<0||col.ex<0||col.w<0||col.r<0){ toast("Не нашёл нужные колонки в файле"); return; }
-                const low0=(rows[hi]||[]).map(function(c){return String(c||"").toLowerCase();});
-                col.dayNote=low0.findIndex(function(c){return c.indexOf("заметка дня")>=0;});
-                col.exNote=low0.findIndex(function(c){return c.indexOf("заметка упражн")>=0;});
-                const imported={}; let nSets=0;
-                for(let i=hi+1;i<rows.length;i++){
-                    const row=rows[i]; if(!row) continue;
-                    const dk=normDate(row[col.date]); if(!dk) continue;
-                    const exName=String(row[col.ex]||"").trim(); if(!exName) continue;
-                    const w=parseFloat(String(row[col.w]).replace(",","."));
-                    const r=parseInt(row[col.r],10);
-                    if(isNaN(w)||isNaN(r)) continue;
-                    if(!imported[dk]) imported[dk]={title:"",exercises:[]};
-                    if(col.title>=0&&row[col.title]&&!imported[dk].title) imported[dk].title=String(row[col.title]).trim();
-                    if(col.dayNote>=0&&row[col.dayNote]&&!imported[dk].note) imported[dk].note=String(row[col.dayNote]).trim();
-                    const pe=parseExName(exName), cand=newEx(pe.base,pe.plan,pe.variant);
-                    let ex=imported[dk].exercises.find(function(x){return x.name.toLowerCase()===cand.name.toLowerCase();});
-                    if(!ex){ ex=cand; imported[dk].exercises.push(ex); }
-                    if(col.exNote>=0&&row[col.exNote]&&!ex.note) ex.note=String(row[col.exNote]).trim();
-                    ex.sets.push({w:w,r:r}); nSets++;
-                }
-                const days=Object.keys(imported);
-                if(!days.length){ toast("В файле не нашлось данных"); return; }
-                for(const dk of days){
-                    const wi=weekInfo(dk); if(wi) imported[dk].weekType=wi.isRest?"rest":"work";
-                    data.log[dk]=imported[dk];
-                }
-                applyMigrations(); saveCache(); render();
-                toast("Импортировано: дней — "+days.length+", подходов — "+nSets);
-                for(const dk of days) await csSet("w_"+dk, JSON.stringify(data.log[dk]));
-            }catch(err){ console.error(err); toast("Не удалось прочитать файл"); }
-        };
-        reader.readAsArrayBuffer(file);
+    // ============ импорт Excel / CSV (v1 и собственный экспорт из 4.2) ============
+    // CSV: BOM, разделитель «;» / «,» / табуляция (определяется по строке заголовка), кавычки, десятичная запятая
+    function parseCsvText(text){
+        text=String(text).replace(/^\ufeff/,"");
+        const firstLine=(function(){ let q=false,i=0; for(;i<text.length;i++){ const ch=text[i]; if(ch==='"') q=!q; else if(!q&&(ch==="\n"||ch==="\r")) break; } return text.slice(0,i); })();
+        const cnt=function(d){ let n=0,q=false; for(const ch of firstLine){ if(ch==='"') q=!q; else if(!q&&ch===d) n++; } return n; };
+        const delim=[";","\t",","].map(function(d){return [d,cnt(d)];}).sort(function(x,y){return y[1]-x[1];})[0][0];
+        const rows=[]; let row=[], cell="", q=false;
+        for(let i=0;i<text.length;i++){
+            const ch=text[i];
+            if(q){
+                if(ch==='"'){ if(text[i+1]==='"'){ cell+='"'; i++; } else q=false; }
+                else cell+=ch;
+            } else if(ch==='"') q=true;
+            else if(ch===delim){ row.push(cell); cell=""; }
+            else if(ch==="\n"||ch==="\r"){ if(ch==="\r"&&text[i+1]==="\n") i++; row.push(cell); cell=""; rows.push(row); row=[]; }
+            else cell+=ch;
+        }
+        if(cell!==""||row.length){ row.push(cell); rows.push(row); }
+        return rows.filter(function(r){ return r.some(function(c){return String(c).trim()!=="";}); });
+    }
+    function normHeader(c){ return String(c==null?"":c).trim().toLowerCase().replace(/ё/g,"е").replace(/\s+/g," "); }
+    // колонки — по заголовкам, порядок не важен
+    function findTableColumns(rows){
+        for(let i=0;i<Math.min(rows.length,10);i++){
+            const h=(rows[i]||[]).map(normHeader);
+            if(h.findIndex(function(c){return c.indexOf("дата")===0;})<0) continue;
+            const at=function(pred){ return h.findIndex(pred); };
+            const col={ hi:i,
+                date:at(function(c){return c.indexOf("дата")===0;}), title:at(function(c){return c.indexOf("трениров")===0;}),
+                week:at(function(c){return c.indexOf("недел")===0;}), ex:at(function(c){return c.indexOf("упражнени")===0;}),
+                variant:at(function(c){return c.indexOf("вариант")===0;}), plan:at(function(c){return c.indexOf("план")===0;}),
+                set:at(function(c){return c.indexOf("подход")===0;}), w:at(function(c){return c.indexOf("вес")===0;}),
+                r:at(function(c){return c.indexOf("повтор")===0;}),
+                note:at(function(c){return c==="заметка"||c.indexOf("заметка упражн")===0;}), dayNote:at(function(c){return c.indexOf("заметка дня")===0;}) };
+            return col;
+        }
+        return null;
+    }
+    function parseNum(v){
+        if(typeof v==="number") return isFinite(v)?v:NaN;
+        const t=String(v==null?"":v).replace(/\s/g,"").replace(",",".");
+        return t===""?NaN:Number(t);
+    }
+    function weekTypeFromLabel(v){ const t=normHeader(v); return t.indexOf("рабоч")===0?"work":t.indexOf("отдых")===0?"rest":null; }
+    function normPlan(v){ const t=String(v==null?"":v).trim().replace(/\s+/g,"").replace(/[xX×*]/g,"х").replace(/[–—]/g,"-"); return t||null; }
+    function dayNowSets(k){ return data.log[k]?(data.log[k].exercises||[]).reduce(function(a,e){return a+((e.sets||[]).length);},0):0; }
+    // rows → {days:[...], invalid, hasWeek} | {error}
+    function buildTableImport(rows){
+        const col=findTableColumns(rows);
+        if(!col) return {error:"Не нашёл строку заголовков (колонка «Дата»)"};
+        const need=[["date","Дата"],["title","Тренировка"],["ex","Упражнение"],["set","Подход"],["w","Вес, кг"],["r","Повторы"]];
+        const missing=need.filter(function(n){return col[n[0]]<0;}).map(function(n){return n[1];});
+        if(missing.length) return {error:"В файле нет колонок: "+missing.join(", ")};
+        const byDate={}; let invalid=0;
+        for(let i=col.hi+1;i<rows.length;i++){
+            const row=rows[i]||[];
+            const dk=normDate(row[col.date]), exCell=String(row[col.ex]==null?"":row[col.ex]).trim();
+            const w=parseNum(row[col.w]), r=parseNum(row[col.r]), sn=parseNum(row[col.set]);
+            if(!dk||!exCell||isNaN(w)||w<0||isNaN(r)||r<1){ invalid++; continue; }
+            const day=byDate[dk]||(byDate[dk]={date:dk,title:"",weekType:null,note:"",groups:[],nFile:0});
+            const t=String(row[col.title]==null?"":row[col.title]).trim(); if(t&&!day.title) day.title=t;
+            if(col.week>=0&&!day.weekType) day.weekType=weekTypeFromLabel(row[col.week]);
+            if(col.dayNote>=0&&!day.note){ const dn=String(row[col.dayNote]==null?"":row[col.dayNote]).trim(); if(dn) day.note=dn; }
+            const pe=parseExName(exCell);
+            const vCell=col.variant>=0?String(row[col.variant]==null?"":row[col.variant]).trim():"";
+            const pCell=col.plan>=0?normPlan(row[col.plan]):null;
+            const base=pe.base, plan=pCell||pe.plan, variant=vCell||pe.variant;
+            const probe=newEx(base,plan,variant);   // применяет алиасы 1.2
+            let g=day.groups.find(function(x){return x.name.toLowerCase()===probe.name.toLowerCase();});
+            if(!g){ g={name:probe.name,ex:probe,rows:[],note:""}; day.groups.push(g); }
+            g.rows.push({n:isNaN(sn)?g.rows.length+1:sn,i:g.rows.length,w:w,r:Math.round(r)});
+            if(col.note>=0&&!g.note){ const nt=String(row[col.note]==null?"":row[col.note]).trim(); if(nt) g.note=nt; }
+            day.nFile++;
+        }
+        const days=Object.keys(byDate).sort().map(function(k){
+            const d=byDate[k], nNow=dayNowSets(k), exists=!!data.log[k];
+            for(const g of d.groups) g.rows.sort(function(x,y){return x.n-y.n||x.i-y.i;});
+            d.exists=exists; d.nNow=nNow;
+            d.action=!exists?"add":(d.nFile>nNow?"replace":"skip");   // по умолчанию: нет даты — добавить; в файле больше подходов — заменить; иначе — пропустить
+            const wi=weekInfo(k);
+            d.weekFile=d.weekType||(wi?(wi.isRest?"rest":"work"):null);
+            d.weekNow=exists?dayWeekType(k):null;
+            return d;
+        });
+        return {days:days, invalid:invalid, hasWeek:col.week>=0};
+    }
+    function readTableFile(file){
+        return new Promise(function(resolve,reject){
+            const isCsv=/\.csv$/i.test(file.name)||(file.type||"").indexOf("csv")>=0;
+            const reader=new FileReader();
+            reader.onerror=function(){ reject(new Error("не удалось прочитать файл")); };
+            reader.onload=function(e){
+                try{
+                    if(isCsv) return resolve(parseCsvText(e.target.result));
+                    if(typeof XLSX==="undefined") return reject(new Error("Нет интернета — библиотека Excel не загрузилась"));
+                    const wb=XLSX.read(e.target.result,{type:"array",cellDates:true});
+                    resolve(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true}));
+                }catch(err){ reject(err); }
+            };
+            if(isCsv) reader.readAsText(file,"utf-8"); else reader.readAsArrayBuffer(file);
+        });
+    }
+    async function importTable(file){
+        try{
+            const rows=await readTableFile(file);
+            const res=buildTableImport(rows);
+            if(res.error){ toast(res.error); return; }
+            if(!res.days.length){ toast("В файле не нашлось данных"+(res.invalid?" (неразобранных строк: "+res.invalid+")":"")); return; }
+            res.fileName=file.name; ui.tblImport=res; ui.tab="set"; render();
+        }catch(err){ toast("Не удалось прочитать файл: "+errText(err)); }
+    }
+    function tblActionLabel(a){ return a==="add"?"добавить":a==="replace"?"заменить":"пропустить"; }
+    function tblImportPage(){
+        const t=ui.tblImport, nSets=t.days.reduce(function(a,d){return a+d.nFile;},0);
+        const wl=function(w){ return w==="rest"?"отдых":w==="work"?"рабочая":"—"; };
+        let h='<div class="sec-label" style="margin-top:16px">Импорт из таблицы</div><div class="card">'
+            +'<div class="note" style="margin-top:0">'+esc(t.fileName)+' · дней — <b>'+t.days.length+'</b>, подходов — <b>'+nSets+'</b>'+(t.invalid?', неразобранных строк — '+t.invalid:'')+'</div>'
+            +'<table class="hist-table" id="tblImportTable" style="margin-top:8px"><tr class="tbl-head"><td>Дата</td><td class="num">в файле</td><td class="num">сейчас</td><td>Действие</td></tr>';
+        t.days.forEach(function(d,i){
+            const opts=(d.exists?["replace","skip"]:["add","skip"]);
+            const wkHint=(d.exists&&d.weekFile&&d.weekNow&&d.weekFile!==d.weekNow)?'<div class="ex-last">тип недели: '+wl(d.weekNow)+' → '+wl(d.weekFile)+'</div>':'';
+            h+='<tr data-date="'+d.date+'"><td style="white-space:nowrap">'+esc(fmtShort(d.date))+' <span style="color:var(--mut);font-size:11px">'+esc(d.title)+'</span>'+wkHint+'</td>'
+                +'<td class="num">'+d.nFile+'</td><td class="num">'+(d.exists?d.nNow:'—')+'</td>'
+                +'<td><select class="tbl-act" data-chg="tblAction" data-i="'+i+'" style="min-height:44px">'
+                +opts.map(function(o){ return '<option value="'+o+'"'+(d.action===o?' selected':'')+'>'+tblActionLabel(o)+'</option>'; }).join("")
+                +'</select></td></tr>';
+        });
+        h+='</table>'
+            +'<div class="note">Изменённые записи получают новую метку времени. Перед применением сохраняется снимок «preimport».</div>'
+            +'<button class="wide-btn primary" data-act="tblImportApply">Применить ('+t.days.filter(function(d){return d.action!=="skip";}).length+')</button>'
+            +'<button class="wide-btn" data-act="tblImportCancel">Отмена</button></div>';
+        return h;
+    }
+    function tblImportApply(){
+        const t=ui.tblImport; if(!t) return;
+        const todo=t.days.filter(function(d){return d.action!=="skip";});
+        if(!todo.length){ toast("Нечего применять — все строки пропущены"); return; }
+        try{ lsSet("preimport", JSON.stringify(buildBackupDump())); }
+        catch(err){ toast("Не удалось сохранить снимок перед импортом: "+errText(err)); return; }
+        let nSets=0; const keys=[];
+        for(const d of todo){
+            const old=data.log[d.date];
+            const exercises=d.groups.map(function(g){
+                const ex=newEx(g.ex.base,g.ex.plan,g.ex.variant);
+                ex.sets=g.rows.slice().sort(function(x,y){return x.n-y.n||x.i-y.i;}).map(function(r){return {w:r.w,r:r.r};});
+                let note=g.note;
+                if(!note&&old){ const o=(old.exercises||[]).find(function(e){return e.note&&e.name.toLowerCase()===ex.name.toLowerCase();}); if(o) note=o.note; }
+                if(note) ex.note=note;
+                return ex;
+            });
+            const rec={ title:d.title||(old&&old.title)||"", exercises:exercises, up:Date.now() };
+            const note=d.note||(old&&old.note); if(note) rec.note=note;
+            const wt=d.weekType||(function(){ const wi=weekInfo(d.date); return wi?(wi.isRest?"rest":"work"):null; })();
+            if(wt) rec.weekType=wt;
+            data.log[d.date]=rec; keys.push(d.date); nSets+=d.nFile;
+        }
+        ui.tblImport=null;
+        applyMigrations(); saveCache(); render();
+        hap("ok"); toast("Импортировано: дней — "+keys.length+", подходов — "+nSets);
+        (async function(){ for(const k of keys) await csSet("w_"+k, JSON.stringify(data.log[k])); })();
     }
 
     // ============ render ============
@@ -2297,7 +2404,8 @@
                 +'<button class="wide-btn" data-act="backupSnapshotRestore">'+ICON_SYNC+' Восстановить из снимка</button>';
         }
 
-        h+='<button class="wide-btn" data-act="backupRestoreToggle">'+ICON_UPLOAD+' Восстановить из копии</button>';
+        h+='<button class="wide-btn" data-act="import">'+ICON_UPLOAD+' Импорт из Excel/CSV</button>'
+            +'<button class="wide-btn" data-act="backupRestoreToggle">'+ICON_UPLOAD+' Восстановить из копии</button>';
 
         if(ui.backupRestoreOpen&&!ui.backupParsed){
             h+='<label class="wide-btn" for="backupFile" style="cursor:pointer">'+ICON_UPLOAD+' Загрузить файл</label>'
@@ -2482,7 +2590,6 @@
 
         h+='<div class="sec-label">Данные</div><div class="card">'
             +(cs?'<button class="wide-btn" data-act="syncNow">'+ICON_SYNC+' Синхронизировать сейчас</button>':'')
-            +'<button class="wide-btn" data-act="import">'+ICON_UPLOAD+' Импорт из Excel-файла</button>'
             +'<button class="wide-btn" data-act="importTextOpen">'+ICON_CLIPBOARD+' Импорт из заметок</button>'
             +'<div class="note">'+syncNote+'</div></div>';
 
@@ -2548,6 +2655,7 @@
         else if(ui.tab==="tpl") h+=tplPage();
         else if(ui.tab==="set"){
             if(ui.aliasScreen) h+=aliasPageHtml();
+            else if(ui.tblImport) h+=tblImportPage();
             else if(ui.importParsed) h+=importConfirmPage();
             else if(ui.importText) h+=importTextPage();
             else h+=setPage();
@@ -2559,13 +2667,13 @@
 
     // ============ actions ============
     document.getElementById("importFile").addEventListener("change",function(){
-        if(this.files[0]) importXlsx(this.files[0]);
+        if(this.files[0]) importTable(this.files[0]);
         this.value="";
     });
     document.getElementById("tabbar").addEventListener("click",function(e){
         const b=e.target.closest("button[data-tab]"); if(!b) return;
         ui.tab=b.dataset.tab; ui.confirmDel=false; ui.tplDelId=null; ui.wipeStep=0; ui.tplFromText=false; ui.tplParsed=null; ui.editTpl=null;
-        ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.dayNoteOpen=false; ui.weekTypeOpen=false;
+        ui.histEx=null; ui.importText=false; ui.importParsed=null; ui.tblImport=null; ui.dayNoteOpen=false; ui.weekTypeOpen=false;
         ui.backupRestoreOpen=false; ui.backupParsed=null; ui.backupParsedSrc=null; ui.backupMode="merge"; ui.backupConfirmStep=0;
         summaryCache.period=null;
         if(ui.tab==="cal") calMonth=curDate.slice(0,7);
@@ -2714,6 +2822,7 @@
             return;
         }
         if(chg==="backupReminderDays"){ data.cfg.backupReminderDays=Math.min(90,Math.max(0,parseInt(e.target.value,10)||0)); persistCfg(); render(); return; }
+        if(chg==="tblAction"){ const d=ui.tblImport&&ui.tblImport.days[+e.target.dataset.i]; if(d){ d.action=e.target.value; render(); } return; }
         if(chg==="backupMode"){ ui.backupMode=e.target.value; ui.backupConfirmStep=0; render(); return; }
     });
     app.addEventListener("keydown",function(e){
@@ -3037,6 +3146,8 @@
             case "exportCsv": exportCsv(); break;
             case "sendBackup": sendBackup(ds.format); break;
             case "import": document.getElementById("importFile").click(); break;
+            case "tblImportApply": tblImportApply(); break;
+            case "tblImportCancel": ui.tblImport=null; render(); break;
 
             case "backupDownload":{
                 const dump=buildBackupDump();
