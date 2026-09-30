@@ -127,6 +127,24 @@ async def main():
             rest = await page.evaluate("findDupGroups().length")
             check("7.1: после удаления групп осталось %d (остальные группы независимы)" % (len(exp) - 1), rest == len(exp) - 1, rest)
 
+            # баннер при заходе
+            seed(dump); pb, eb = await open_tg(browser); await pb.goto(BASE + "/test/index.html"); await pb.wait_for_timeout(2500)
+            bn = await pb.evaluate("document.getElementById('dupBanner')?.textContent||''")
+            check("баннер при заходе: «Найдены похожие шаблоны: лишних — %d шаблонов» на главном экране" % total_drop, "Найдены похожие шаблоны" in bn and ("лишних — %d" % total_drop) in bn, bn)
+            await pb.click('[data-act="bannerDupSnooze"]'); await pb.wait_for_timeout(500)
+            snz = await pb.evaluate("data.cfg.dupSnooze")
+            check("баннер: «×» откладывает на 3 дня, баннер скрыт, метка в облаке", await pb.locator("#dupBanner").count() == 0 and abs(snz - (time.time() * 1000 + 3 * 86400000)) < 120000 and "dupSnooze" in STORE["tst_cfg"])
+            await pb.evaluate("data.cfg.dupSnooze=null; render(); 0")
+            await pb.click('[data-act="bannerDupOpen"]'); await pb.wait_for_timeout(300)
+            check("баннер: «Разобрать» открывает экран удаления лишних шаблонов (настройки → дубли)", await pb.evaluate("ui.tab==='set' && ui.hygiene==='dups'") and await pb.locator(".dup-group").count() == len(exp))
+            for _ in range(len(exp)):
+                await pb.locator('[data-act="dupDelAsk"]').first.click(); await pb.click('[data-act="dupDelGo"]'); await pb.wait_for_timeout(300)
+            await pb.click('[data-act="hygClose"]'); await pb.click('button[data-tab="day"]'); await pb.wait_for_timeout(300)
+            check("баннер: после удаления всех лишних шаблонов исчезает", await pb.locator("#dupBanner").count() == 0 and await pb.evaluate("findDupGroups().length") == 0)
+            STORE.clear(); pn, en = await open_tg(browser); await pn.goto(BASE + "/test/index.html"); await pn.wait_for_timeout(2000)
+            check("баннер: без дублей (3 шаблона по умолчанию) не показывается", await pn.locator("#dupBanner").count() == 0)
+            check("баннер: нет pageerror", not (eb or en), (eb[:1], en[:1]))
+
             # 7.2
             seed(dump); page2, errs2 = await open_tg(browser)
             await page2.goto(BASE + "/test/index.html"); await page2.wait_for_timeout(2500)

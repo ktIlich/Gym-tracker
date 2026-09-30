@@ -345,7 +345,7 @@
                 "Жим ногами, стандартная постановка (2х8-12)","Болгарские приседания (2х10-15)","Разгибания сидя (2х10-15)",
                 "Голень стоя (3х10-20)","Задняя дельта Пек-Дек (3х12)","Задняя дельта гантели в наклоне (2х15)"]}
     ];
-    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, defaultWeightStep:null, warmupCount:4, warmupPercent:35, restTimerSec:90, autoTimer:true, theme:"tg", accent:"#ff9f0a", weekOverrides:{}, lastBackup:null, backupReminderDays:14, backupSnooze:null, schema:1 }, templates:[], log:{} }; }
+    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, defaultWeightStep:null, warmupCount:4, warmupPercent:35, restTimerSec:90, autoTimer:true, theme:"tg", accent:"#ff9f0a", weekOverrides:{}, lastBackup:null, backupReminderDays:14, backupSnooze:null, dupSnooze:null, schema:1 }, templates:[], log:{} }; }
     function normalizeData(d){
         const base=emptyData();
         const hadSchema=d.cfg&&d.cfg.schema;
@@ -2175,6 +2175,12 @@
             if(pdn) h+='<div class="ex-last" style="white-space:normal">'+ICON_NOTE+' '+fmtShort(pdn.date)+': '+esc(pdn.note)+'</div>';
         }
         if(isRest&&!day.exercises.length) h+='<div class="rest-hint">Неделя отдыха — лёгкие веса, восстановление</div>';
+        if(shouldShowDupBanner()){
+            const dg=findDupGroups(), nd=dg.reduce(function(a,g){return a+g.drop.length;},0);
+            h+='<div class="backup-banner" id="dupBanner"><span class="txt">Найдены похожие шаблоны: лишних — '+nd+' '+ruPlural(nd,'шаблон','шаблона','шаблонов')+'</span>'
+                +'<span class="btns"><button class="save-btn" data-act="bannerDupOpen">Разобрать</button>'
+                +'<button class="close-btn" data-act="bannerDupSnooze" title="Напомнить позже через 3 дня">'+ICON_CLOSE+'</button></span></div>';
+        }
         if(shouldShowBackupBanner()){
             const nb=daysSinceBackup();
             const btxt=data.cfg.lastBackup?('Резервная копия не делалась '+nb+' '+ruPlural(nb,'день','дня','дней')):'Резервная копия ещё не делалась';
@@ -2592,6 +2598,12 @@
         return '<div class="sec-label">Гигиена данных</div><div class="card">'
             +'<button class="wide-btn" style="margin-top:0" data-act="hygOpen" data-screen="dups">'+ICON_LINK+' Найдены похожие шаблоны'+(nd?' ('+nd+')':'')+'</button>'
             +'<button class="wide-btn" data-act="hygOpen" data-screen="check">'+ICON_CHECK+' Проверка данных</button></div>';
+    }
+    // при заходе: если есть лишние шаблоны — баннер со ссылкой на экран их удаления (можно отложить на 3 дня)
+    function shouldShowDupBanner(){
+        if(ui.cloneIncomplete||(ENV==="test"&&cs&&!ui.cloudChecked)) return false;
+        if(data.cfg.dupSnooze&&Date.now()<data.cfg.dupSnooze) return false;
+        return findDupGroups().length>0;
     }
     function aliasRowsHtml(kind){
         const map=kind==="var"?data.cfg.variantAliases:data.cfg.aliases;
@@ -3293,6 +3305,8 @@
                 break;
             }
             case "cloneProd": cloneFromProd(); break;
+            case "bannerDupOpen": ui.tab="set"; ui.hygiene="dups"; ui.dupConfirm=null; ui.aliasScreen=false; hap("light"); render(); break;
+            case "bannerDupSnooze": data.cfg.dupSnooze=Date.now()+3*86400000; persistCfg(); render(); break;
             case "hygOpen": ui.hygiene=ds.screen; ui.dupConfirm=null; render(); break;
             case "hygClose": ui.hygiene=null; ui.dupConfirm=null; render(); break;
             case "hygOpenDay": curDate=ds.date; ui.hygiene=null; ui.tab="day"; ui.histEx=null; render(); break;
