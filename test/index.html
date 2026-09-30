@@ -1109,21 +1109,10 @@
         }
         return null;
     }
-    function lastSetsByType(name,type){
-        const low=name.toLowerCase();
-        const dates=Object.keys(data.log).filter(function(k){return k<curDate;}).sort().reverse();
-        for(const k of dates){
-            if(dayWeekType(k)!==type) continue;
-            const hit=(data.log[k].exercises||[]).find(function(e){return e.name.toLowerCase()===low&&e.sets.length;});
-            if(hit) return hit.sets;
-        }
-        return null;
-    }
-    function repRange(exName){
-        const base=exName.split(" · ")[0];
-        const p=splitPlan(base);
-        if(!p.plan) return null;
-        const m=p.plan.match(/\d+\s*[хx×*]\s*(\d+)\s*(?:[-–—]\s*(\d+))?/i);
+    function repRange(ex){
+        const plan=ex.base?ex.plan:parseExName(ex.name).plan;
+        if(!plan) return null;
+        const m=plan.match(/\d+\s*[хx×*]\s*(\d+)\s*(?:[-–—]\s*(\d+))?/i);
         if(!m) return null;
         const low=parseInt(m[1],10), top=m[2]?parseInt(m[2],10):low;
         return {low,top};
@@ -1137,27 +1126,31 @@
         if(raw>=1.75) return 2.5;
         return 1;
     }
-    function lastSetsAny(name){
-        const low=name.toLowerCase();
+    // ============ прошлая тренировка с учётом варианта ============
+    function normKey(v){ const k=v==null?"":String(v).trim().toLowerCase(); return k||null; }
+    // findPrev(base, variant, weekType, maxStep): даты строго раньше текущей, по убыванию; weekType "work"/"rest" (null — любой тип).
+    // Шаги (каждый — по всем датам): 1) тот же base и variant; 2) тот же base, variant=null; 3) тот же base, другой variant.
+    // Для рекомендаций maxStep=2: результат шага 3 (другой вариант) для них не годится.
+    // Возвращает {date, sets, str, variant, step, name} | null
+    function findPrev(base,variant,weekType,maxStep){
+        const bl=normKey(base), vl=normKey(variant);
+        if(!bl) return null;
+        const cand=[];
         const dates=Object.keys(data.log).filter(function(k){return k<curDate;}).sort().reverse();
         for(const k of dates){
-            const hit=(data.log[k].exercises||[]).find(function(e){return e.name.toLowerCase()===low&&e.sets.length;});
-            if(hit) return hit.sets;
+            if(weekType&&dayWeekType(k)!==weekType) continue;
+            for(const e of (data.log[k].exercises||[])){
+                if(!e.sets||!e.sets.length) continue;
+                if(normKey(exBaseOf(e))!==bl) continue;
+                cand.push({k:k,e:e,v:normKey(exVariantOf(e))});
+            }
         }
-        return null;
-    }
-    function lastByTypeFamily(name,type){
-        const base=name.split(' · ')[0].toLowerCase();
-        const dates=Object.keys(data.log).filter(function(k){return k<curDate;}).sort().reverse();
-        for(const k of dates){
-            if(dayWeekType(k)!==type) continue;
-            const hit=(data.log[k].exercises||[]).find(function(e){
-                const n=e.name.toLowerCase();
-                return (n===base||n.indexOf(base+' · ')===0)&&e.sets.length;
-            });
-            if(hit) return {date:k, str:hit.sets.map(function(s){return fmtW(s.w)+'×'+s.r;}).join(', '), name:hit.name};
-        }
-        return null;
+        let hit=cand.find(function(c){return c.v===vl;}), step=1;
+        if(!hit&&vl!==null){ hit=cand.find(function(c){return c.v===null;}); step=2; }
+        if(!hit&&(maxStep||3)>=3){ hit=cand.find(function(c){return c.v!==vl;}); step=3; }
+        if(!hit) return null;
+        return { date:hit.k, sets:hit.e.sets, str:hit.e.sets.map(function(s){return fmtW(s.w)+'×'+s.r;}).join(', '),
+                 variant:exVariantOf(hit.e), step:step, name:hit.e.name };
     }
     function lastExNote(name){
         const low=name.toLowerCase();
@@ -1178,28 +1171,29 @@
         }
         return null;
     }
-    function getExVariants(exName){
-        const base=exName.split(' · ')[0].toLowerCase();
-        const variants=new Set();
+    function getExVariants(ex){
+        const bl=normKey(exBaseOf(ex)), seen={}, out=[];
+        const add=function(v){ const k=normKey(v); if(!k||seen[k]) return; seen[k]=1; out.push(String(v).trim()); };
         for(const t of data.templates) for(const b of t.blocks) for(const it of b.items){
-            if(fullEx(it).toLowerCase()===base&&it.vars) for(const v of it.vars) variants.add(v);
+            if(normKey(it.name)===bl&&it.vars) for(const v of it.vars) add(v);
         }
         for(const k of Object.keys(data.log)) for(const e of (data.log[k].exercises||[])){
-            const n=e.name.toLowerCase();
-            if(n.indexOf(base+' · ')===0) variants.add(e.name.split(' · ').slice(1).join(' · '));
+            if(normKey(exBaseOf(e))===bl) add(exVariantOf(e));
         }
-        return Array.from(variants);
+        return out;
     }
-    function calcRec(exName,isRest){
-        const workSets=lastSetsByType(exName,"work");
-        if(!workSets||!workSets.length) return null;
-        const range=repRange(exName);
+    function calcRec(ex,isRest){
+        const b=exBaseOf(ex), v=exVariantOf(ex);
+        const wp=findPrev(b,v,"work",2);
+        if(!wp||!wp.sets.length) return null;
+        const workSets=wp.sets;
+        const range=repRange(ex);
         if(!range) return null;
         // For deload: use most recent session if its weight >= last work week weight
         // (prevents rest-week lighter loads from dragging down deload, but uses better rest results)
         let baseSets=workSets;
         if(isRest){
-            const recentSets=lastSetsAny(exName);
+            const rp=findPrev(b,v,null,2), recentSets=rp?rp.sets:null;
             if(recentSets&&recentSets.length){
                 const wb=workSets.reduce(function(b,s){return s.w>b.w||(s.w===b.w&&s.r>b.r)?s:b;});
                 const rb=recentSets.reduce(function(b,s){return s.w>b.w||(s.w===b.w&&s.r>b.r)?s:b;});
@@ -1825,17 +1819,22 @@
             +'</div><div class="strip-labels">'+labels+'</div></header>';
     }
 
+    // подпись варианта у строки «прошлая тренировка»: шаг 3 — «другой вариант: Блок»
+    function prevVariantLabel(p){
+        if(p.step===3) return ' ('+'другой вариант: '+esc(p.variant||'без варианта')+')';
+        return p.variant?' · '+esc(p.variant):'';
+    }
     function exCardHtml(ex, exIdx, isRest){
-        const lw=lastByTypeFamily(ex.name,"work"), lr=lastByTypeFamily(ex.name,"rest");
+        const lw=findPrev(exBaseOf(ex),exVariantOf(ex),"work"), lr=findPrev(exBaseOf(ex),exVariantOf(ex),"rest");
         const showRest=lr&&(!lw||lr.date>lw.date);
         const showRec=data.cfg.view.viewRec;
         const showWarmup=data.cfg.view.viewWarmup&&exIdx<(data.cfg.warmupCount||0);
-        const rec=(showRec||showWarmup)?calcRec(ex.name,!!isRest):null;
+        const rec=(showRec||showWarmup)?calcRec(ex,!!isRest):null;
         let warmup=null;
         if(showWarmup){
             let rw=rec?rec.w:null;
             if(!rw){
-                const ws=lastSetsByType(ex.name,"work");
+                const wf=findPrev(exBaseOf(ex),exVariantOf(ex),"work",2), ws=wf?wf.sets:null;
                 if(ws&&ws.length){ const b=ws.reduce(function(a,s){return s.w>a.w||(s.w===a.w&&s.r>a.r)?s:a;}); rw=b.w; }
             }
             if(rw>0){
@@ -1854,11 +1853,11 @@
         if(showRec&&rec&&!isRest)
             h+='<button class="rec-btn" data-act="applyRec" data-id="'+ex.id+'" data-w="'+rec.w+'" data-r="'+rec.r+'">Реком.: '+fmtW(rec.w)+'×'+rec.r+'</button>';
         if(data.cfg.view.lastWork&&lw){
-            const lwV=lw.name&&lw.name.indexOf(' · ')>=0?' · '+esc(lw.name.split(' · ').slice(1).join(' · ')):'';
+            const lwV=prevVariantLabel(lw);
             h+='<div class="ex-last">Рабочая '+fmtShort(lw.date)+lwV+': '+esc(lw.str)+'</div>';
         }
         if(data.cfg.view.lastRest&&showRest){
-            const lrV=lr.name&&lr.name.indexOf(' · ')>=0?' · '+esc(lr.name.split(' · ').slice(1).join(' · ')):'';
+            const lrV=prevVariantLabel(lr);
             h+='<div class="ex-last">Отдых '+fmtShort(lr.date)+lrV+': '+esc(lr.str)+'</div>';
         }
         if(warmup) h+='<div class="ex-last">Разминка: '+fmtW(warmup.w)+'×'+warmup.r+'</div>';
@@ -1894,11 +1893,11 @@
             +'<button class="btn-gray" data-act="exNoteToggle" data-id="'+ex.id+'" title="Заметка">'+ICON_NOTE+'</button>'
             +'</div>';
         if(ui.variantOpen[ex.id]){
-            const variants=getExVariants(ex.name);
+            const variants=getExVariants(ex);
             h+='<div class="variant-list">';
             if(curVariant) h+='<button class="prog-ex-btn" data-act="applyVariant" data-id="'+esc(ex.id)+'" data-variant="" data-base="'+esc(exBase)+'">— без варианта</button>';
             for(const v of variants){
-                if(v===curVariant) continue;
+                if(normKey(v)===normKey(curVariant)) continue;
                 h+='<button class="prog-ex-btn" data-act="applyVariant" data-id="'+esc(ex.id)+'" data-variant="'+esc(v)+'" data-base="'+esc(exBase)+'">'+esc(v)+'</button>';
             }
             h+='<div style="display:flex;gap:6px;margin-top:6px">'
