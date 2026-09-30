@@ -22,7 +22,7 @@ DAYS = {
 
 def seed():
     STORE.clear()
-    STORE["tst_cfg"] = json.dumps({"cycle": {"workWeeks": 2, "restWeeks": 1, "anchorDate": "2026-07-01"}, "up": 1000, "schema": 2})
+    STORE["tst_cfg"] = json.dumps({"cycle": {"workWeeks": 2, "restWeeks": 1, "anchorDate": "2026-07-01"}, "up": 1000, "schema": 2, "onboardingSeen": 1})
     STORE["tst_tpl_a"] = json.dumps({"id": "a", "name": "Тяга", "title": "Тяга", "up": 1, "blocks": [
         {"type": "single", "items": [{"name": "Молотки", "plan": "2х8-15", "vars": ["Свободный", "Блок"], "alt": 1}]}]})
     for d, (wt, exs) in DAYS.items():

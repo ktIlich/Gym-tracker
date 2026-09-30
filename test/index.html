@@ -103,7 +103,7 @@
         .help-btn{flex:0 0 44px; width:44px; height:44px; margin-right:-10px; display:flex; align-items:center; justify-content:center; color:var(--mut); border-radius:50%}
         .help-btn:active{background:var(--card2)}
         .help-btn svg.icon{width:22px; height:22px; vertical-align:0}
-        .env-fixed{left:calc(var(--sa-left) + 6px) !important; right:auto !important}
+        .env-fixed{left:50% !important; right:auto !important; transform:translateX(-50%); z-index:3000 !important}
         #helpOv{position:fixed; inset:0; z-index:2500; background:var(--bg); overflow-y:auto; overscroll-behavior:contain;
             padding:calc(var(--sa-top) + var(--csa-top) + 8px) max(14px, var(--sa-right)) calc(24px + var(--sa-bottom) + var(--csa-bottom)) max(14px, var(--sa-left))}
         #helpOv .help-in{max-width:480px; margin:0 auto}
@@ -116,6 +116,23 @@
         .help-a{color:var(--mut); font-size:14px; line-height:1.5; margin-top:2px}
         .help-ic{display:inline-block; color:var(--text)}
         .help-ic svg.icon{width:16px; height:16px; vertical-align:-3px}
+        #onb{position:fixed; inset:0; z-index:2600; background:var(--bg); display:flex; flex-direction:column;
+            padding:calc(var(--sa-top) + var(--csa-top) + 8px) max(16px, var(--sa-right)) calc(16px + var(--sa-bottom) + var(--csa-bottom)) max(16px, var(--sa-left))}
+        .onb-top{display:flex; justify-content:flex-end; min-height:44px}
+        .onb-skip{min-height:44px; padding:0 8px; color:var(--mut); font-size:15px}
+        .onb-viewport{flex:1; min-height:0; overflow:hidden; touch-action:pan-y; user-select:none}
+        .onb-track{display:flex; height:100%; transition:transform .2s ease}
+        .onb-card{flex:0 0 100%; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:0 12px}
+        .onb-ic{color:var(--accent)}
+        .onb-ic svg.icon{width:48px; height:48px; vertical-align:0; stroke-width:1.75}
+        .onb-title{font-weight:800; font-size:22px; margin:18px 0 10px}
+        .onb-text{color:var(--mut); font-size:15px; line-height:1.5; max-width:340px}
+        .onb-text b{color:var(--text)}
+        .onb-dots{display:flex; justify-content:center; gap:8px; margin:12px 0 14px}
+        .onb-dots i{width:8px; height:8px; border-radius:50%; background:var(--card2)}
+        .onb-dots i.on{background:var(--accent)}
+        .onb-btns{max-width:480px; width:100%; margin:0 auto}
+        @media (prefers-reduced-motion: reduce){ .onb-track{transition:none} }
         .datenav{display:flex; align-items:center; justify-content:space-between; margin-top:12px}
         .datenav .nav{padding:6px 10px; color:var(--mut); font-size:24px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
         .datenav .nav svg.icon{width:22px; height:22px; vertical-align:-6px}
@@ -1947,6 +1964,7 @@
     async function maybeAutoBackup(){
         if(ui.autoBackupTried) return;
         if(cs&&!syncState.verified) return;                       // синхронизация не завершена — копию не шлём
+        if(ui.onb||onboardingDue()) return;                        // сначала приветствие; после закрытия проверка повторится
         if(ui.cloneBusy||ui.cloneIncomplete||ui.tblImport||ui.backupParsed||ui.importParsed||ui.sending) return;
         ui.autoBackupTried=true;
         if(!canSendBackup()) return;                               // адрес не задан — прежнее напоминание (баннер)
@@ -2154,6 +2172,7 @@
     const ICON_BOOKMARK=svgIcon('<path d="M19 21 12 16 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/>');
     const ICON_GEAR=svgIcon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>');
     const ICON_PENCIL=svgIcon('<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>');
+    const ICON_CLOUD_UP=svgIcon('<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>');
     const ICON_CLOUD=svgIcon('<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>');
     const ICON_CHEVRON=svgIcon('<polyline points="6 9 12 15 18 9"/>');
     const ICON_MINUS=svgIcon('<line x1="5" y1="12" x2="19" y2="12"/>');
@@ -2720,7 +2739,7 @@
         return sectionHead("Тестовая среда","Служебные действия. Основная версия не затрагивается.")+'<div class="card">'+linkRow("Тестовая среда",null,'testOpen')+'</div>';
     }
     function helpSectionHtml(){
-        return sectionHead("Справка","Как пользоваться приложением.")+'<div class="card">'+linkRow("Справка",null,'helpOpenAll')+'</div>';
+        return sectionHead("Справка","Как пользоваться приложением.")+'<div class="card">'+linkRow("Справка",null,'helpOpenAll')+linkRow("Показать приветствие",null,'onbShow')+'</div>';
     }
     function testScreenHtml(){ return '<button class="hist-back" data-act="testClose">'+ICON_CHEVRON_LEFT+' Назад</button>'+cloneCardHtml(); }
     function testSectionHtml(){ return cloneCardHtml(); }
@@ -3120,6 +3139,77 @@
         const box=document.getElementById("alMsgs"); if(box) box.outerHTML=aliasFormMsgsHtml(f);
         const save=document.getElementById("alSave"); if(save) save.disabled=!aliasFormState(f).ok;
     }
+    // ============ приветствие ============
+    // При крупных изменениях интерфейса достаточно поднять ONBOARDING_VERSION и обновить карточки.
+    const ONBOARDING_VERSION=1;
+    function onbCards(){
+        return [
+            { icon:ICON_DUMBBELL, title:"Твой дневник тренировок", text:"Шаблоны, запись подходов, рекомендации по весу и прогресс — всё внутри Telegram, данные синхронизируются между устройствами." },
+            { icon:ICON_BOOKMARK, title:"Шаблоны", text:"Тренировочные дни собираются из упражнений и суперсетов. План пишется как <b>3х8-12</b>, у упражнения могут быть варианты — например, блок или свободный вес." },
+            { icon:ICON_CHECK, title:"Запись подхода", text:"Следующий подход уже заполнен рекомендацией или прошлым результатом. ± меняют вес и повторы, галочка записывает. Цветной бейдж — рекомендация на сегодня." },
+            { icon:ICON_CALENDAR, title:"Цикл и прогресс", text:"Рабочие и разгрузочные недели считаются автоматически, в разгрузку вес снижается сам. На вкладке «Прогресс» — графики, тоннаж и сравнение циклов." },
+            { icon:ICON_CLOUD_UP, title:"Резервная копия", text:(BACKUP_ENDPOINT?"Отправь копию в чат с ботом — JSON для восстановления, Excel или CSV для просмотра.":"Сохрани копию данных в настройках — JSON для восстановления.")+" Приложение напомнит, если копия давно не делалась." }
+        ];
+    }
+    // приветствие показываем, если флаг меньше версии: и тем, кто уже пользуется приложением; только после загрузки данных и первой проверки облака
+    function onboardingDue(){
+        if(ui.onb||ui.onbSuppressed||ui.cloneIncomplete||!ui.cloudChecked) return false;
+        if(ENV==="test"&&cs&&!ui.stateChecked) return false;
+        if(!data.cfg.cycle.anchorDate) return false;   // первый запуск: сначала мастер
+        return (data.cfg.onboardingSeen||0)<ONBOARDING_VERSION;
+    }
+    function onbHtml(){
+        const cards=onbCards();
+        return '<div class="onb-top"><button class="onb-skip" data-onb="skip">Пропустить</button></div>'
+            +'<div class="onb-viewport"><div class="onb-track">'+cards.map(function(c){
+                return '<div class="onb-card"><div class="onb-ic">'+c.icon+'</div><div class="onb-title">'+esc(c.title)+'</div><div class="onb-text">'+helpText(c.text)+'</div></div>';
+            }).join("")+'</div></div>'
+            +'<div class="onb-dots">'+cards.map(function(){return '<i></i>';}).join("")+'</div>'
+            +'<div class="onb-btns"><button class="wide-btn primary" style="margin-top:0" data-onb="next">Далее</button>'
+            +'<button class="wide-btn" data-onb="help">Открыть справку</button></div>';
+    }
+    function onbUpdate(){
+        const o=ui.onb, ov=document.getElementById("onb"); if(!o||!ov) return;
+        const n=onbCards().length, last=o.idx===n-1;
+        ov.querySelector(".onb-track").style.transform="translateX(-"+(o.idx*100)+"%)";
+        ov.querySelectorAll(".onb-dots i").forEach(function(d,i){ d.classList.toggle("on",i===o.idx); });
+        ov.querySelector('[data-onb="next"]').textContent=last?"Начать":"Далее";
+        ov.querySelector('[data-onb="skip"]').style.visibility=last?"hidden":"visible";
+        ov.querySelector('[data-onb="help"]').style.display=last?"":"none";
+        syncBackButton();
+    }
+    function onbGo(i){ if(!ui.onb) return; ui.onb.idx=Math.max(0,Math.min(onbCards().length-1,i)); onbUpdate(); }
+    function openOnboarding(fromSettings){
+        if(ui.onb) return;
+        ui.onb={idx:0,fromSettings:!!fromSettings};
+        const ov=document.createElement("div"); ov.id="onb"; ov.setAttribute("role","dialog"); ov.innerHTML=onbHtml();
+        let x0=null;
+        ov.addEventListener("click",function(e){
+            const b=e.target.closest("[data-onb]"); if(!b) return;
+            const a=b.dataset.onb;
+            if(a==="next"){ if(ui.onb.idx<onbCards().length-1) onbGo(ui.onb.idx+1); else closeOnboarding(true,false); }
+            else if(a==="skip") closeOnboarding(true,false);
+            else if(a==="help") closeOnboarding(true,true);
+        });
+        const vp=ov.querySelector(".onb-viewport");
+        vp.addEventListener("pointerdown",function(e){ x0=e.clientX; });
+        vp.addEventListener("pointerup",function(e){ if(x0===null) return; const dx=e.clientX-x0; x0=null; if(dx<-50) onbGo(ui.onb.idx+1); else if(dx>50) onbGo(ui.onb.idx-1); });
+        vp.addEventListener("pointercancel",function(){ x0=null; });
+        document.body.appendChild(ov);
+        onbUpdate();
+    }
+    // setFlag: «Пропустить»/«Начать» ставят флаг и синхронизируют cfg; из настроек флаг не меняется
+    function closeOnboarding(setFlag,openHelpAfter){
+        const o=ui.onb; if(!o) return;
+        const ov=document.getElementById("onb"); if(ov) ov.remove();
+        ui.onb=null;
+        if(o.fromSettings) ui.onbSuppressed=true;
+        else if(setFlag){ data.cfg.onboardingSeen=ONBOARDING_VERSION; persistCfg(); }
+        syncBackButton();
+        if(openHelpAfter) openHelp(null);
+        setTimeout(maybeAutoBackup,0);
+    }
+
     // ============ справка ============
     // ПРАВИЛО: каждое ТЗ, меняющее поведение приложения, обновляет HELP. Тексты сверены с кодом; «на ты», коротко, без восклицательных знаков.
     // Разметка в текстах — только <b> и перенос строки; {check} {plus} {minus} {trash} {timer} {note} {help} {link} {close} — те же SVG-иконки, что в интерфейсе.
@@ -3336,6 +3426,7 @@
 
     // системная кнопка «Назад» Telegram: закрывает верхний из открытых экранов
     function currentBackAction(){
+        if(ui.onb) return ui.onb.idx>0?function(){ onbGo(ui.onb.idx-1); }:null;   // на первой карточке кнопка скрыта
         if(ui.help) return closeHelp;
         if(ui.aliasForm) return function(){ ui.aliasForm=null; render(); };
         if(ui.tab==="set"&&ui.aliasScreen) return function(){ ui.aliasScreen=false; render(); };
@@ -3349,6 +3440,7 @@
     }
     function render(){
         renderMain(); syncBackButton();
+        if(onboardingDue()) openOnboarding(false);
         // при переходе на другой экран — к началу страницы
         const key=[ui.tab,ui.aliasScreen,!!ui.aliasForm,ui.hygiene,ui.testScreen,ui.histEx,ui.diag,ui.editTpl?1:0,ui.tblImport?1:0,ui.importParsed?1:0,ui.importText?1:0].join("|");
         if(key!==ui._screenKey){ ui._screenKey=key; window.scrollTo(0,0); }
@@ -3876,6 +3968,7 @@
             case "hygOpenDay": curDate=ds.date; ui.hygiene=null; ui.tab="day"; ui.histEx=null; render(); break;
             case "helpOpen": openHelp(ui.tab); break;
             case "helpOpenAll": openHelp(null); break;
+            case "onbShow": openOnboarding(true); break;
             case "tplMergeGo":{ const r=mergeGroups([ds.key]); if(r) render(); break; }
             case "tplMergeSkip": (ui.tplSkip||(ui.tplSkip={}))[ds.key]=true; render(); break;
             case "tplMergeAllAsk":{

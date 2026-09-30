@@ -13,6 +13,7 @@ async def main():
         print("SKIP: нет current_data.json или Тренировки(2).xlsx"); return
     import openpyxl
     dump = json.load(open(DUMP, encoding="utf-8"))
+    dump["cfg"]["onboardingSeen"] = 1
     ensure_xlsx_lib()
     wsx = openpyxl.load_workbook(XLSX, data_only=True).worksheets[0]
     frows = [r for r in wsx.iter_rows(min_row=2, values_only=True) if r[0]]

@@ -41,6 +41,7 @@ async def main():
     if not os.path.exists(DUMP):
         print("SKIP: нет", DUMP); return
     dump = json.load(open(DUMP, encoding="utf-8"))
+    dump["cfg"]["onboardingSeen"] = 1
     have_xlsx = ensure_xlsx_lib()
     srv = subprocess.Popen([sys.executable, "-m", "http.server", "8765"], cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.5)

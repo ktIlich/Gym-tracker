@@ -16,7 +16,7 @@ WRITES = []   # (op, key)
 
 def seed_prod():
     STORE.clear()
-    STORE["cfg"] = json.dumps({"cycle": {"workWeeks": 2, "restWeeks": 1, "anchorDate": "2026-07-13"}, "up": 1000, "accent": "#ff9f0a"})
+    STORE["cfg"] = json.dumps({"cycle": {"workWeeks": 2, "restWeeks": 1, "anchorDate": "2026-07-13"}, "up": 1000, "accent": "#ff9f0a", "onboardingSeen": 1})
     for i in range(3):
         STORE["tpl_t%d" % i] = json.dumps({"id": "t%d" % i, "name": "Шаблон %d" % i, "title": "T%d" % i, "up": 1,
                                              "blocks": [{"type": "single", "items": [{"name": "Жим", "plan": "3х8-12"}]}]})
@@ -120,8 +120,8 @@ async def main():
             check("test: бейдж TEST на экране первичной настройки", await t.evaluate("document.getElementById('envBadge')?.textContent==='TEST'"))
             b = await t.evaluate("""(()=>{ const e=document.getElementById('envBadge'), cs=getComputedStyle(e), r=e.getBoundingClientRect();
                 const a=document.querySelector('.setup').getBoundingClientRect().top; e.style.display='none'; const a2=document.querySelector('.setup').getBoundingClientRect().top; e.style.display='';
-                return {pos:cs.position, top:r.top, right:r.left, shift:a-a2, pe:cs.pointerEvents}; })()""")
-            check("бейдж TEST: position:fixed в левом верхнем углу (справа — кнопка «?»), не сдвигает контент", b["pos"] == "fixed" and 0 <= b["top"] <= 20 and 0 < b["right"] <= 20 and b["shift"] == 0 and b["pe"] == "none", b)
+                return {pos:cs.position, top:r.top, right:Math.round((r.left+r.right)/2), shift:a-a2, pe:cs.pointerEvents}; })()""")
+            check("бейдж TEST: position:fixed по центру сверху (по углам — «Назад»/«?»), поверх оверлеев, не сдвигает контент", b["pos"] == "fixed" and 0 <= b["top"] <= 20 and abs(b["right"] - 195) <= 2 and b["shift"] == 0 and b["pe"] == "none", b)
             check("бейдж TEST: top учитывает safe-area (CSS-переменные Telegram)", "--tg-safe-area-inset-top" in open(REPO+"/test/index.html", encoding="utf-8").read())
             check("test: на первом экране (setup) есть кнопка клонирования", await t.locator('[data-act="cloneProd"]').count() == 1)
             check("test: title содержит TEST", "TEST" in await t.title())

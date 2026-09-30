@@ -10,6 +10,7 @@ async def main():
     if not os.path.exists(DUMP):
         print("SKIP: нет", DUMP); return
     dump = json.load(open(DUMP, encoding="utf-8"))
+    dump["cfg"]["onboardingSeen"] = 1
     STORE.clear()
     STORE["tst_cfg"] = json.dumps(dump["cfg"])
     for tpl in dump["templates"]: STORE["tst_tpl_" + tpl["id"]] = json.dumps(tpl)

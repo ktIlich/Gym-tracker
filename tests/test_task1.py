@@ -10,7 +10,7 @@ def old_ex(i, name, sets, **kw):
 
 def seed():
     STORE.clear()
-    STORE["tst_cfg"] = json.dumps({"cycle": {"workWeeks": 2, "restWeeks": 1, "anchorDate": "2026-07-01"}, "up": 1000, "schema": 1})
+    STORE["tst_cfg"] = json.dumps({"cycle": {"workWeeks": 2, "restWeeks": 1, "anchorDate": "2026-07-01"}, "up": 1000, "schema": 1, "onboardingSeen": 1})
     STORE["tst_tpl_a"] = json.dumps({"id": "a", "name": "Ноги", "title": "Ноги", "up": 1, "blocks": [
         {"type": "single", "items": [{"name": "Сгибания голени", "plan": "2х8-12", "vars": ["Лёжа", "Сидя"], "alt": 1}]},
         {"type": "single", "items": [{"name": "Молотки", "plan": "2х8-15", "vars": ["Свободный", "Блок"], "alt": 1}]}]})
