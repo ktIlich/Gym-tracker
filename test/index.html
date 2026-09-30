@@ -51,7 +51,7 @@
         body::before{content:""; position:fixed; top:0; left:0; right:0; height:calc(var(--sa-top) + var(--csa-top)); background:var(--bg); z-index:30; pointer-events:none}
         #app{max-width:480px; margin:0 auto; padding:0 max(0.875rem, var(--sa-left)) 1.5rem max(0.875rem, var(--sa-right))}
         button{font-family:inherit; font-size:inherit; border:none; background:none; color:inherit; cursor:pointer; padding:0}
-        input:not([type=checkbox]):not([type=radio]):not([type=color]), select{min-height:var(--touch)}
+        input:not([type=checkbox]):not([type=radio]), select{min-height:var(--touch)}
         input{font-family:inherit; font-size:0.9375rem; color:var(--text); background:var(--surface);
             border:1px solid var(--border); border-radius:0.75rem; padding:0.5625rem 0.75rem; outline:none; width:100%}
         input:focus{border-color:var(--accent)}
@@ -176,8 +176,32 @@
         .swatch.custom.set{border:1px solid var(--border)}
         .swatch .sw-edit{position:absolute; right:-0.125rem; bottom:-0.125rem; width:1rem; height:1rem; border-radius:50%; background:var(--surface); color:var(--text); display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 1px var(--border)}
         .swatch .sw-edit svg.icon{width:0.625rem; height:0.625rem}
-        .swatch input[type=color]{position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; padding:0; border:none}
         .sw-picked{margin-top:0.5rem}
+        #cpick{position:fixed; inset:0; z-index:2650}
+        .cp-back{position:absolute; inset:0; background:color-mix(in srgb, var(--black) 55%, transparent)}
+        .cp-sheet{position:absolute; left:0; right:0; bottom:0; margin:0 auto; max-width:30rem; max-height:94vh; overflow-y:auto; overscroll-behavior:contain; box-sizing:border-box; background:var(--surface); color:var(--text); border-radius:1.25rem 1.25rem 0 0;
+            padding:0.25rem max(1rem, var(--sa-right)) calc(1rem + var(--sa-bottom) + var(--csa-bottom)) max(1rem, var(--sa-left)); box-shadow:0 -0.5rem 2rem color-mix(in srgb, var(--black) 40%, transparent); transition:transform .2s ease}
+        .cp-head{position:relative; display:flex; align-items:center; justify-content:center; min-height:var(--touch); touch-action:none; padding-top:0.75rem}
+        .cp-grab{position:absolute; top:0.375rem; left:50%; width:2.5rem; height:0.25rem; margin-left:-1.25rem; border-radius:0.125rem; background:var(--text-muted); opacity:.5}
+        .cp-title{font-weight:800; font-size:1.0625rem}
+        .cp-x{position:absolute; right:-0.5rem; top:0.5rem; width:var(--touch-w); height:var(--touch); display:flex; align-items:center; justify-content:center; color:var(--text-muted)}
+        .cp-wheelbox{position:relative; width:min(16rem, 100%, 38vh); aspect-ratio:1; margin:0.5rem auto 0; touch-action:none; user-select:none; -webkit-user-select:none}
+        .cp-wheel{display:block; width:100%; height:100%; border-radius:50%}
+        .cp-dim{position:absolute; inset:0; border-radius:50%; background:var(--black); pointer-events:none}
+        .cp-marker{position:absolute; width:1.5rem; height:1.5rem; margin:-0.75rem 0 0 -0.75rem; border-radius:50%; border:2px solid var(--white); box-shadow:0 0 0.375rem color-mix(in srgb, var(--black) 60%, transparent); pointer-events:none}
+        .cp-slider{position:relative; height:1.75rem; margin:1rem 0.875rem 0; border-radius:0.875rem; touch-action:none; user-select:none; -webkit-user-select:none}
+        .cp-thumb{position:absolute; top:50%; width:1.75rem; height:1.75rem; margin:-0.875rem 0 0 -0.875rem; border-radius:50%; background:var(--white); border:2px solid var(--white); box-shadow:0 0 0.375rem color-mix(in srgb, var(--black) 60%, transparent), inset 0 0 0 1px var(--border); pointer-events:none}
+        .cp-row{display:flex; align-items:center; gap:0.75rem; margin-top:1rem}
+        .cp-pair{display:flex; align-items:center; gap:0.25rem; flex:1 1 auto; min-width:0}
+        .cp-was,.cp-now{flex:1 1 0; height:2.75rem; border-radius:0.625rem; border:1px solid var(--border)}
+        .cp-arrow{color:var(--text-muted); display:flex}
+        .cp-hex{flex:0 0 7.5rem; width:7.5rem; min-height:var(--touch); font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-transform:uppercase; text-align:center; letter-spacing:0.03em}
+        .cp-hex.bad{border-color:var(--danger); outline:1px solid var(--danger)}
+        .cp-rlabel{font-size:0.75rem; color:var(--text-muted); margin-top:0.875rem}
+        .cp-rlist{display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.375rem}
+        .cp-rc{width:2.75rem; height:2.75rem; border-radius:50%; border:1px solid var(--border); position:relative}
+        .cp-btns{display:flex; gap:0.75rem; margin-top:1rem}
+        .cp-btns .wide-btn{margin-top:0; flex:1}
         .cs-row{display:flex; align-items:center; gap:0.75rem; width:100%; min-height:3.25rem; border-top:1px solid var(--border); text-align:left}
         .cs-tap{flex:1; min-width:0; display:flex; align-items:center; justify-content:space-between; gap:0.75rem}
         .cs-tap .swatch{width:2.5rem; max-width:2.5rem; flex-shrink:0}
@@ -524,6 +548,7 @@
         d.cfg=Object.assign(base.cfg, d.cfg||{});
         d.cfg.schema=hadSchema||1; // отсутствует → 1
         d.cfg.fontScale=FONT_SCALES.some(function(f){return f[0]===+hadFont;})?+hadFont:1;
+        d.cfg.recentColors=(Array.isArray(d.cfg.recentColors)?d.cfg.recentColors:[]).filter(function(c){return HEX_RE.test(c||"");}).map(function(c){return c.toLowerCase();}).slice(0,8);
         d.cfg.theme=normTheme(hadTheme,hadAccent); d.cfg.accent=d.cfg.theme.accent;   // cfg.theme был строкой, cfg.accent — отдельным полем
         // режим таймера: autoTimer true → «auto», false → «manual» (кнопка остаётся); autoTimer больше не читается
         d.cfg.timerMode=(hadMode==='off'||hadMode==='manual'||hadMode==='auto')?hadMode:(hadAuto===false?'manual':'auto');
@@ -2783,9 +2808,8 @@
     // образец «свой цвет»: не задан — пунктирный кружок с «+»; задан — залит цветом, внизу справа значок-карандаш
     function customSwatchHtml(th,tok,label){
         const set=themeCustomIsSet(th,tok), val=themeCustomValue(th,tok);
-        return '<label class="swatch custom'+(set?' set':'')+((set&&tok!=="bg"&&tok!=="surface"&&tok!=="text")?' sel':'')+'" data-custom="'+tok+'" title="Свой цвет: '+label+'"'+(set?' style="background:'+val+'"':'')+'>'
-            +(set?'<span class="sw-edit">'+ICON_PENCIL+'</span>':ICON_PLUS)
-            +'<input type="color" value="'+val+'" data-theme-custom="'+tok+'" aria-label="Свой цвет: '+label+'"></label>';
+        return '<button class="swatch custom'+(set?' set':'')+((set&&tok!=="bg"&&tok!=="surface"&&tok!=="text")?' sel':'')+'" data-act="colorOpen" data-tok="'+tok+'" data-custom="'+tok+'" title="Свой цвет: '+label+'" aria-label="Свой цвет: '+label+'"'+(set?' style="background:'+val+'"':'')+'>'
+            +(set?'<span class="sw-edit">'+ICON_PENCIL+'</span>':ICON_PLUS)+'</button>';
     }
     function customRowHtml(th,tok,name,label){
         return '<div class="cs-row"><span class="cs-tap">'+'<span class="cs-name">'+name+'</span>'+customSwatchHtml(th,tok,label)+'</span>'
@@ -2833,19 +2857,133 @@
             +'<button class="wide-btn danger" data-act="themeResetAsk">Сбросить к стандартной</button>';
     }
     // обновить экран без сброса прокрутки; skipEl — инпут, который сейчас правит пользователь (его не пересоздаём)
-    function themeMarks(skipEl){
+    function themeMarks(){
         const box=document.getElementById("themeSections"); if(!box) return;
-        const th=normTheme(data.cfg.theme,data.cfg.accent);
-        if(skipEl){
-            // инпут сейчас правит пользователь — не пересоздаём его, только обновляем вид образца
-            const l=skipEl.closest(".swatch.custom"); if(l){
-                const tok=l.dataset.custom, own=tok==="bg"||tok==="surface"||tok==="text";
-                l.style.background=skipEl.value; l.classList.add("set");
-                if(!own){ l.classList.add("sel"); const grid=l.closest(".card").querySelector(".sw-grid"); if(grid) grid.querySelectorAll(".swatch.sel").forEach(function(b){ b.classList.remove("sel"); }); }
-                if(!l.querySelector(".sw-edit")){ const ic=l.querySelector("svg.icon"); if(ic) ic.remove(); l.insertAdjacentHTML("afterbegin",'<span class="sw-edit">'+ICON_PENCIL+'</span>'); }
-            }
-        } else box.innerHTML=themeSectionsHtml(th);
+        box.innerHTML=themeSectionsHtml(normTheme(data.cfg.theme,data.cfg.accent));
         const w=document.getElementById("themeWarn"); if(w) w.textContent=themeWarnText();
+    }
+    // записать цвет в токен темы (для фона/карточек/текста — в «свои цвета основы»)
+    function themeSetToken(t,tok,hex){
+        if(tok==="accent") t.accent=hex; else if(tok==="accent2") t.accent2=hex; else if(tok==="rest") t.rest=hex;
+        else { if(t.base!=="custom"){ t.custom={from:t.base,bg:themeCustomValue(t,"bg"),surface:themeCustomValue(t,"surface"),text:themeCustomValue(t,"text")}; t.base="custom"; } t.custom[tok]=hex; }
+    }
+    // ============ пикер цвета (нижний лист): круг тон/насыщенность, слайдер яркости, HEX ============
+    const PICKER_TITLES={accent:"Акцент",accent2:"Дополнительный цвет",rest:"Неделя отдыха",bg:"Фон",surface:"Карточки",text:"Текст"};
+    function hsvToRgb(h,sat,v){
+        const c=v*sat, x=c*(1-Math.abs((h/60)%2-1)), m=v-c; let r=0,g=0,b=0;
+        if(h<60){r=c;g=x;} else if(h<120){r=x;g=c;} else if(h<180){g=c;b=x;} else if(h<240){g=x;b=c;} else if(h<300){r=x;b=c;} else {r=c;b=x;}
+        return {r:(r+m)*255,g:(g+m)*255,b:(b+m)*255};
+    }
+    function rgbToHsv(c){
+        const r=c.r/255,g=c.g/255,b=c.b/255, mx=Math.max(r,g,b), mn=Math.min(r,g,b), d=mx-mn; let h=0;
+        if(d){ if(mx===r) h=60*(((g-b)/d)%6); else if(mx===g) h=60*((b-r)/d+2); else h=60*((r-g)/d+4); }
+        return {h:(h+360)%360,s:mx?d/mx:0,v:mx};
+    }
+    function cpHex(){ const p=ui.picker; return rgbToHex(hsvToRgb(p.h,p.s,p.v)); }
+    // круг рисуется один раз при открытии: тон — угол, насыщенность — от белого центра к краю (яркость 100%)
+    function drawColorWheel(cv){
+        const size=Math.max(64,Math.round(cv.clientWidth*(window.devicePixelRatio||1))); cv.width=size; cv.height=size;
+        const ctx=cv.getContext("2d"), img=ctx.createImageData(size,size), R=size/2;
+        for(let y=0;y<size;y++) for(let x=0;x<size;x++){
+            const dx=x+0.5-R, dy=y+0.5-R, dist=Math.sqrt(dx*dx+dy*dy), i=(y*size+x)*4;
+            if(dist>R){ img.data[i+3]=0; continue; }
+            const c=hsvToRgb((Math.atan2(dy,dx)*180/Math.PI+360)%360,dist/R,1);
+            img.data[i]=c.r; img.data[i+1]=c.g; img.data[i+2]=c.b; img.data[i+3]=255;
+        }
+        ctx.putImageData(img,0,0);
+    }
+    function pickerHtml(){
+        const p=ui.picker;
+        return '<div class="cp-back" data-cp="cancel"></div><div class="cp-sheet" role="dialog" aria-label="'+esc(PICKER_TITLES[p.tok])+'">'
+            +'<div class="cp-head"><span class="cp-grab"></span><div class="cp-title">'+esc(PICKER_TITLES[p.tok])+'</div><button class="cp-x" data-cp="cancel" aria-label="Закрыть">'+ICON_CLOSE+'</button></div>'
+            +'<div class="cp-wheelbox"><canvas class="cp-wheel" id="cpWheel"></canvas><div class="cp-dim" id="cpDim"></div><i class="cp-marker" id="cpMarker"></i></div>'
+            +'<div class="cp-slider" id="cpSlider"><i class="cp-thumb" id="cpThumb"></i></div>'
+            +'<div class="cp-row"><span class="cp-pair"><span class="cp-was" id="cpWas" title="Было"></span><span class="cp-arrow">'+ICON_CHEVRON_RIGHT+'</span><span class="cp-now" id="cpNow" title="Стало"></span></span>'
+            +'<input class="cp-hex" id="cpHex" maxlength="7" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="HEX"></div>'
+            +'<div class="cp-recent" id="cpRecent"></div>'
+            +'<div class="al-warn" id="cpWarn"></div>'
+            +'<div class="cp-btns"><button class="wide-btn" data-cp="cancel">Отмена</button><button class="wide-btn primary" data-cp="done">Готово</button></div></div>';
+    }
+    // синхронизация вида листа с ui.picker (маркер, слайдер, образцы, HEX); fromHex — не перезаписывать поле HEX во время ввода
+    function pickerSync(fromHex){
+        const p=ui.picker, ov=document.getElementById("cpick"); if(!p||!ov) return;
+        const hex=cpHex(), wheel=ov.querySelector("#cpWheel"), box=wheel.parentElement, R=wheel.clientWidth/2;
+        const mk=ov.querySelector("#cpMarker"), ang=p.h*Math.PI/180;
+        mk.style.left=(R+Math.cos(ang)*p.s*R)+"px"; mk.style.top=(R+Math.sin(ang)*p.s*R)+"px";
+        ov.querySelector("#cpDim").style.opacity=String(1-p.v);
+        const full=rgbToHex(hsvToRgb(p.h,p.s,1)), sl=ov.querySelector("#cpSlider");
+        sl.style.background="linear-gradient(to right, "+THEME_INK.dark+", "+full+")";
+        ov.querySelector("#cpThumb").style.left=(p.v*100)+"%";
+        ov.querySelector("#cpNow").style.background=hex; ov.querySelector("#cpWas").style.background=p.was;
+        const hx=ov.querySelector("#cpHex"); if(!fromHex){ hx.value=hex.toUpperCase(); hx.classList.remove("bad"); }
+        const w=document.getElementById("cpWarn"); if(w) w.textContent=themeWarnText();
+    }
+    function pickerRecentHtml(){
+        const r=(data.cfg.recentColors||[]);
+        if(!r.length) return "";
+        return '<div class="cp-rlabel">Недавние</div><div class="cp-rlist">'+r.map(function(c){ return '<button class="cp-rc" data-cp="recent" data-hex="'+c+'" style="background:'+c+'" aria-label="'+c.toUpperCase()+'"></button>'; }).join("")+'</div>';
+    }
+    let cpRaf=0;
+    // применить текущий цвет листа к теме сразу (без сохранения): CSS-переменная на :root меняет превью и весь экран
+    function pickerApply(){
+        const p=ui.picker; if(!p) return;
+        const hex=cpHex();
+        const th=normTheme(data.cfg.theme,data.cfg.accent); themeSetToken(th,p.tok,hex);
+        data.cfg.theme=normTheme(th); data.cfg.accent=data.cfg.theme.accent;
+        cancelAnimationFrame(cpRaf); cpRaf=requestAnimationFrame(function(){ applyTheme(); pickerSync(true); const w=document.getElementById("themeWarn"); if(w) w.textContent=themeWarnText(); });
+    }
+    function openColorPicker(tok){
+        if(ui.picker||!PICKER_TITLES[tok]) return;
+        const th=normTheme(data.cfg.theme,data.cfg.accent), cur=themeCustomValue(th,tok), hsv=rgbToHsv(hexToRgb(cur));
+        ui.picker={tok:tok,orig:JSON.stringify(data.cfg.theme),origAccent:data.cfg.accent,was:cur,h:hsv.h,s:hsv.s,v:hsv.v};
+        const ov=document.createElement("div"); ov.id="cpick"; ov.innerHTML=pickerHtml(); document.body.appendChild(ov);
+        const wheel=ov.querySelector("#cpWheel"), sl=ov.querySelector("#cpSlider"), sheet=ov.querySelector(".cp-sheet");
+        ov.querySelector("#cpRecent").innerHTML=pickerRecentHtml();
+        drawColorWheel(wheel);
+        // перетаскивание по кругу: H и S; по слайдеру: V (pointer events + setPointerCapture, touch-action:none)
+        function onWheel(e){ const r=wheel.getBoundingClientRect(), R=r.width/2, dx=e.clientX-r.left-R, dy=e.clientY-r.top-R;
+            ui.picker.h=(Math.atan2(dy,dx)*180/Math.PI+360)%360; ui.picker.s=Math.min(1,Math.sqrt(dx*dx+dy*dy)/R); pickerSync(); pickerApply(); }
+        function onSlider(e){ const r=sl.getBoundingClientRect(); ui.picker.v=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)); pickerSync(); pickerApply(); }
+        function bindDrag(el,fn){
+            el.addEventListener("pointerdown",function(e){ e.preventDefault(); try{ el.setPointerCapture(e.pointerId); }catch(x){} el._drag=true; fn(e); });
+            el.addEventListener("pointermove",function(e){ if(el._drag) fn(e); });
+            const end=function(){ el._drag=false; };
+            el.addEventListener("pointerup",end); el.addEventListener("pointercancel",end);
+        }
+        bindDrag(wheel.parentElement,onWheel); bindDrag(sl,onSlider);
+        const hx=ov.querySelector("#cpHex");
+        hx.addEventListener("input",function(){
+            let v=hx.value.trim(); if(v&&v[0]!=="#") v="#"+v;
+            if(HEX_RE.test(v)){ hx.classList.remove("bad"); const c=rgbToHsv(hexToRgb(v)); const p=ui.picker; if(c.v>0&&c.s>0) p.h=c.h; p.s=c.s; p.v=c.v; pickerSync(true); pickerApply(); }
+            else hx.classList.add("bad");
+        });
+        ov.addEventListener("click",function(e){
+            const b=e.target.closest("[data-cp]"); if(!b) return;
+            if(b.dataset.cp==="cancel") closeColorPicker(false);
+            else if(b.dataset.cp==="done") closeColorPicker(true);
+            else if(b.dataset.cp==="recent"){ const c=rgbToHsv(hexToRgb(b.dataset.hex)), p=ui.picker; if(c.s>0&&c.v>0) p.h=c.h; p.s=c.s; p.v=c.v; pickerSync(); pickerApply(); }
+        });
+        // свайп вниз по шапке листа закрывает его как «Отмена»
+        const head=ov.querySelector(".cp-head"); let y0=null;
+        head.addEventListener("pointerdown",function(e){ if(e.target.closest("button")) return; y0=e.clientY; try{ head.setPointerCapture(e.pointerId); }catch(x){} sheet.style.transition="none"; });
+        head.addEventListener("pointermove",function(e){ if(y0===null) return; const dy=Math.max(0,e.clientY-y0); sheet.style.transform="translateY("+dy+"px)"; });
+        const up=function(e){ if(y0===null) return; const dy=e.clientY-y0; y0=null; sheet.style.transition=""; if(dy>80) closeColorPicker(false); else sheet.style.transform=""; };
+        head.addEventListener("pointerup",up); head.addEventListener("pointercancel",function(){ y0=null; sheet.style.transition=""; sheet.style.transform=""; });
+        pickerSync();
+        syncBackButton();
+    }
+    // «Готово» сохраняет и запоминает цвет в «Недавних»; «Отмена» (крестик, фон, свайп, BackButton) возвращает прежнюю тему
+    function closeColorPicker(save){
+        const p=ui.picker; if(!p) return;
+        cancelAnimationFrame(cpRaf);
+        if(save){
+            const hex=cpHex();
+            const th=normTheme(data.cfg.theme,data.cfg.accent); themeSetToken(th,p.tok,hex); data.cfg.theme=normTheme(th); data.cfg.accent=data.cfg.theme.accent;
+            const rc=(data.cfg.recentColors||[]).filter(function(c){return c!==hex;}); rc.unshift(hex); data.cfg.recentColors=rc.slice(0,8);
+            persistCfg();
+        } else { data.cfg.theme=normTheme(JSON.parse(p.orig)); data.cfg.accent=p.origAccent; }
+        ui.picker=null; const ov=document.getElementById("cpick"); if(ov) ov.remove();
+        applyTheme(); themeMarks(); syncBackButton();
     }
     function fontSectionHtml(){
         const fs=fontScale();
@@ -3896,6 +4034,7 @@
     // системная кнопка «Назад» Telegram: закрывает верхний из открытых экранов
     function currentBackAction(){
         if(tour) return tour.path.length>1?tourPrev:function(){ tourEnd(); };
+        if(ui.picker) return function(){ closeColorPicker(false); };
         if(ui.onb) return ui.onb.idx>0?function(){ onbGo(ui.onb.idx-1); }:null;   // на первой карточке кнопка скрыта
         if(ui.help) return closeHelp;
         if(ui.aliasForm) return function(){ ui.aliasForm=null; render(); };
@@ -4112,17 +4251,7 @@
         const act=e.target.dataset.enter;
         if(act) doAction(act,e.target.dataset);
     });
-    app.addEventListener("change",function(e){ if(e.target.dataset&&e.target.dataset.themeCustom) themeMarks(); });
     app.addEventListener("input",function(e){
-        if(e.target.dataset.themeCustom){
-            const tok=e.target.dataset.themeCustom, hex=e.target.value;
-            themeUpdate(function(t){
-                if(tok==="accent") t.accent=hex; else if(tok==="accent2") t.accent2=hex; else if(tok==="rest") t.rest=hex;
-                else { if(t.base!=="custom"){ t.custom={from:t.base,bg:themeCustomValue(t,"bg"),surface:themeCustomValue(t,"surface"),text:themeCustomValue(t,"text")}; t.base="custom"; } t.custom[tok]=hex; }
-            },false);
-            themeMarks(e.target);
-            return;
-        }
         if(e.target.id==="alias-left"||e.target.id==="alias-right"){ if(ui.aliasForm){ ui.aliasForm[e.target.id==="alias-left"?"left":"right"]=e.target.value; aliasFormRefresh(); } return; }
         if(e.target.id==="progSearch"){
             const q=e.target.value.toLowerCase();
@@ -4705,6 +4834,7 @@
             case "themeBase": themeUpdate(function(t){ t.base=ds.v; },true); break;
             case "themeAccent": themeUpdate(function(t){ t.accent=ds.v; },true); break;
             case "themeAccent2": themeUpdate(function(t){ t.accent2=ds.v||null; },true); break;
+            case "colorOpen": openColorPicker(ds.tok); break;
             case "themeRest": themeUpdate(function(t){ t.rest=ds.v; },true); break;
             case "themeCustomReset": themeUpdate(function(t){
                 const tok=ds.tok;

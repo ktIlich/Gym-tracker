@@ -19,6 +19,12 @@ CONTRAST_JS = """(()=>{ const t=resolveColor('--text'), s=resolveColor('--surfac
     const c=(x,y)=>{ const f=v=>{v/=255; return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)}; const L=z=>.2126*f(z.r)+.7152*f(z.g)+.0722*f(z.b); const p=L(x),q=L(y); return (Math.max(p,q)+.05)/(Math.min(p,q)+.05); };
     return {textSurf:c(t,s), textBg:c(t,bg), onAcc:c(oa,a), scroll:document.documentElement.scrollWidth<=innerWidth}; })()"""
 
+async def pick(page, tok, hexv, done=True):
+    """выбрать свой цвет через пикер: открыть лист, ввести HEX, «Готово» (или «Отмена»)"""
+    await page.click('[data-act="colorOpen"][data-tok="%s"]' % tok); await page.wait_for_timeout(120)
+    await page.fill("#cpHex", hexv); await page.wait_for_timeout(100)
+    await page.click('#cpick .cp-btns [data-cp="%s"]' % ("done" if done else "cancel")); await page.wait_for_timeout(120)
+
 async def main():
     if not os.path.exists(DUMP):
         print("SKIP: нет", DUMP); return
@@ -84,15 +90,15 @@ async def main():
             check("3.2: «Как акцент» возвращает дополнительный цвет к акценту", await page.evaluate("data.cfg.theme.accent2") is None and await page.evaluate("JSON.stringify(resolveColor('--accent-2'))===JSON.stringify(resolveColor('--accent'))"))
 
             # ---- 3.3 свои цвета и контраст
-            await page.evaluate("(()=>{ const i=document.querySelector('[data-theme-custom=accent]'); i.value='#123abc'; i.dispatchEvent(new Event('input',{bubbles:true})); 0 })()"); await page.wait_for_timeout(700)
+            await pick(page, 'accent', '#123abc'); await page.wait_for_timeout(700)
             c = await page.evaluate("({acc:data.cfg.theme.accent, sel:document.querySelector('.swatch.custom[data-custom=accent]').classList.contains('sel'), bg:document.querySelector('.swatch.custom[data-custom=accent]').style.background, cfgAcc:data.cfg.accent, presetSel:document.querySelectorAll('#swAccent [data-act=themeAccent].sel').length})")
             check("3.3: свой акцент #123abc применён, кружок «Свой» показывает выбранный цвет и отмечен, пресеты сняты", c["acc"] == "#123abc" and c["sel"] and "rgb(18, 58, 188)" in c["bg"] and c["presetSel"] == 0 and c["cfgAcc"] == "#123abc", c)
             check("3.3: свой цвет сохранён в облаке (после паузы)", '"accent":"#123abc"' in STORE["tst_cfg"])
-            await page.evaluate("(()=>{ const i=document.querySelector('[data-theme-custom=bg]'); i.value='#202020'; i.dispatchEvent(new Event('input',{bubbles:true})); 0 })()"); await page.wait_for_timeout(200)
-            await page.evaluate("(()=>{ const i=document.querySelector('[data-theme-custom=surface]'); i.value='#303030'; i.dispatchEvent(new Event('input',{bubbles:true})); const t=document.querySelector('[data-theme-custom=text]'); t.value='#383838'; t.dispatchEvent(new Event('input',{bubbles:true})); 0 })()"); await page.wait_for_timeout(700)
+            await pick(page, 'bg', '#202020')
+            await pick(page, 'surface', '#303030'); await pick(page, 'text', '#383838'); await page.wait_for_timeout(700)
             w = await page.evaluate("({base:data.cfg.theme.base, custom:data.cfg.theme.custom, warn:document.getElementById('themeWarn').textContent, name:document.getElementById('swBaseName').textContent, bg:getComputedStyle(document.body).backgroundColor})")
             check("3.3: свои фон/карточки/текст → base=custom, значения сохранены; контраст текста ниже 4.5:1 → «Текст может плохо читаться» (сохранить можно)", w["base"] == "custom" and w["custom"] == {"from": "oled", "bg": "#202020", "surface": "#303030", "text": "#383838"} and w["warn"] == "Текст может плохо читаться" and w["bg"] == rgb("#202020"), w)
-            await page.evaluate("(()=>{ const t=document.querySelector('[data-theme-custom=text]'); t.value='#f0f0f0'; t.dispatchEvent(new Event('input',{bubbles:true})); 0 })()"); await page.wait_for_timeout(200)
+            await pick(page, 'text', '#f0f0f0')
             check("3.3: хороший контраст — предупреждение исчезает", await page.evaluate("document.getElementById('themeWarn').textContent") == "")
             # reset
             await page.click('[data-act="themeResetAsk"]'); await page.wait_for_timeout(150)

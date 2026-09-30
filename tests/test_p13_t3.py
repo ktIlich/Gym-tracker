@@ -19,6 +19,12 @@ def has(css, r, g, b):
 def rgb(h):
     h = h.lstrip("#"); return "rgb(%d, %d, %d)" % (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
+async def pick(page, tok, hexv, done=True):
+    """выбрать свой цвет через пикер: открыть лист, ввести HEX, «Готово» (или «Отмена»)"""
+    await page.click('[data-act="colorOpen"][data-tok="%s"]' % tok); await page.wait_for_timeout(120)
+    await page.fill("#cpHex", hexv); await page.wait_for_timeout(100)
+    await page.click('#cpick .cp-btns [data-cp="%s"]' % ("done" if done else "cancel")); await page.wait_for_timeout(120)
+
 async def main():
     if not os.path.exists(DUMP):
         print("SKIP: нет", DUMP); return
@@ -51,7 +57,7 @@ async def main():
             un = await page.evaluate("(()=>{ const l=document.querySelector('.swatch.custom[data-custom=accent]'); const cs=getComputedStyle(l); return {bs:cs.borderStyle, bc:cs.borderColor, plus:!!l.querySelector('svg.icon line'), pencil:!!l.querySelector('.sw-edit'), bg:cs.backgroundColor, set:l.classList.contains('set')}; })()")
             check("3.2: «Свой цвет» не задан — кружок с пунктирной обводкой и «+» по центру, без радуги", un["bs"] == "dashed" and un["plus"] and not un["pencil"] and not un["set"] and "conic" not in un["bg"], un)
             # задаём свой акцент
-            await page.evaluate("(()=>{ const i=document.querySelector('[data-theme-custom=accent]'); i.value='#3a7bd5'; i.dispatchEvent(new Event('input',{bubbles:true})); i.dispatchEvent(new Event('change',{bubbles:true})); 0 })()"); await page.wait_for_timeout(700)
+            await pick(page, 'accent', '#3a7bd5'); await page.wait_for_timeout(300)
             st = await page.evaluate("""(()=>{ const l=document.querySelector('.swatch.custom[data-custom=accent]'); const cs=getComputedStyle(l); const e=l.querySelector('.sw-edit'); const er=e.getBoundingClientRect(), lr=l.getBoundingClientRect();
                 return {bg:cs.backgroundColor, w:er.width, h:er.height, r:lr.right-er.right, b:lr.bottom-er.bottom, ebg:getComputedStyle(e).backgroundColor, ecol:getComputedStyle(e).color, plus:!!l.querySelector(':scope > svg.icon'), cap:document.querySelectorAll('.sw-picked')[1].textContent, reset:!!l.closest('.cs-row').querySelector('.cs-reset')}; })()""")
             surf = await page.evaluate("(()=>{const p=document.createElement('span'); p.style.color='var(--surface)'; document.body.appendChild(p); const c=getComputedStyle(p).color; p.remove(); return c;})()")
@@ -67,7 +73,7 @@ async def main():
                 return {title:[...card.querySelectorAll('.sec-sub')].map(e=>e.textContent), rows:[...card.querySelectorAll('.cs-row')].map(r=>{ const rr=r.getBoundingClientRect(), nm=r.querySelector('.cs-name').getBoundingClientRect(), sw=r.querySelector('.swatch').getBoundingClientRect();
                     return {name:r.querySelector('.cs-name').textContent, full:Math.abs(rr.width-(crr.width-32))<4||rr.width>crr.width-40, swRight:sw.left>nm.right-1&&Math.abs(rr.right-sw.right-0)<24, h:rr.height, reset:!!r.querySelector('.cs-reset')}; }), baseTop:document.getElementById('swBase').getBoundingClientRect().top}; })()""")
             check("3.3: под сеткой подблок «Свои цвета основы»: три строки на всю ширину — «Фон», «Карточки», «Текст», название слева, образец справа, высота ≥ 44", rows["title"] == ["Свои цвета основы"] and [r["name"] for r in rows["rows"]] == ["Фон", "Карточки", "Текст"] and all(r["full"] and r["swRight"] and r["h"] >= 44 and not r["reset"] for r in rows["rows"]), rows)
-            await page.evaluate("(()=>{ const i=document.querySelector('[data-theme-custom=bg]'); i.value='#202020'; i.dispatchEvent(new Event('input',{bubbles:true})); i.dispatchEvent(new Event('change',{bubbles:true})); 0 })()"); await page.wait_for_timeout(700)
+            await pick(page, 'bg', '#202020'); await page.wait_for_timeout(300)
             r2 = await page.evaluate("({resets:[...document.querySelectorAll('#swBase')[0].parentElement.querySelectorAll('.cs-reset')].length, base:data.cfg.theme.base, cap:document.getElementById('swBaseName').textContent, from:data.cfg.theme.custom.from, sel:document.querySelectorAll('#swBase .swatch.sel').length})")
             check("3.3: задан свой цвет → основа «свои цвета», у строк есть «Сбросить», в сетке основ нет выбранной", r2["base"] == "custom" and r2["resets"] == 3 and r2["cap"] == "Выбрано: свои цвета" and r2["sel"] == 0, r2)
             await page.click('[data-act="themeCustomReset"][data-tok="bg"]'); await page.wait_for_timeout(250)
