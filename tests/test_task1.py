@@ -26,6 +26,10 @@ def seed():
         "2026-09-01": (400, [old_ex(9, "Сгибания голени (2х8-12) · Лёжа", [{"w": 35, "r": 10}]),
                              old_ex(10, "Голень стоя (икры) (3х10-20)", [{"w": 30, "r": 15}])]),
     }
+    days["2026-08-17"] = (500, [old_ex(11, "Молотки (2х8-15) · Свободный", [{"w": 15, "r": 12}]), old_ex(12, "Сгибания с гантелями стоя по 1 руке (2х8-15)", [{"w": 15, "r": 12}])])
+    days["2026-08-24"] = (510, [old_ex(13, "Молотки (2х8-15) · свободный вес", [{"w": 16, "r": 12}]), old_ex(14, "Сгибания с гантелями стоя по 1 руке (2х8-15)", [{"w": 16, "r": 12}])])
+    days["2026-09-08"] = (520, [old_ex(15, "Молотки (2х8-15) · блок", [{"w": 45, "r": 12}]), old_ex(16, "Сгибания с гантелями стоя по 1 руке (3х8-12) · Блок", [{"w": 45, "r": 12}])])
+    days["2026-09-15"] = (530, [old_ex(17, "Молотки (2х8-15) · Блок", [{"w": 47.5, "r": 10}]), old_ex(18, "Сгибания с гантелями стоя по 1 руке (2х8-15) · блок", [{"w": 47.5, "r": 10}])])
     for d, (up, exs) in days.items():
         STORE["tst_w_" + d] = json.dumps({"title": "Д", "up": up, "weekType": "work", "exercises": exs})
     return days
@@ -58,7 +62,7 @@ async def main():
             check("алиасы: начальное наполнение (5 пар) применяется к base",
                   r[0] == ["Голень стоя (икры)", None] and r[1] == ["Гиперэкстензия, акцент разгибатели и поясница", None] and r[2] == ["Сгибания голени", None]
                   and r[3][0] == "Приседания в гакк-машине" and r[4][0] == "Приседания в гакк-машине" and r[3][1] != r[4][1] and r[3][1] and r[4][1] and r[5][0] == "Голень стоя (икры)", r)
-            check("алиасы: гакк «назад» → вариант «Спиной», «к тренажёру» → «Лицом»", (r[3][1], r[4][1]) == ("Спиной", "Лицом"), r[3:5])
+            check("алиасы: гакк «назад» → вариант «Спиной», «к тренажёру» → «лицом» (как в шаблоне)", (r[3][1], r[4][1]) == ("Спиной", "лицом"), r[3:5])
             check("алиасы вариантов: «свободный вес» → «Свободный» (без учёта регистра и пробелов)", await t.evaluate("canonVariant(' Свободный ВЕС ')==='Свободный' && canonVariant('Лёжа')==='Лёжа' && canonVariant('  ')===null"))
             check("cfg.aliases / cfg.variantAliases заполнены по умолчанию", await t.evaluate("Object.keys(data.cfg.aliases).length>=5 && data.cfg.variantAliases['свободный вес']==='Свободный'"))
 
@@ -72,7 +76,7 @@ async def main():
             check("миграция: «Голень стоя (3х10-20)» → base «Голень стоя (икры)», plan 3х10-20", E["e1"]["base"] == "Голень стоя (икры)" and E["e1"]["plan"] == "3х10-20" and E["e1"]["name"] == "Голень стоя (икры) (3х10-20)" == E["e6"]["name"], E["e1"])
             check("миграция: гиперэкстензия — одна каноническая база", E["e2"]["base"] == E["e7"]["base"] == "Гиперэкстензия, акцент разгибатели и поясница", (E["e2"]["base"], E["e7"]["base"]))
             check("миграция: «Сгибания голени сидя или стоя» → «Сгибания голени», варианта нет", E["e3"]["base"] == "Сгибания голени" and E["e3"]["variant"] is None and E["e9"]["variant"] == "Лёжа", (E["e3"], E["e9"]))
-            check("миграция: гакк-приседания — база одна, варианты Спиной / Лицом", E["e4"]["base"] == E["e5"]["base"] == "Приседания в гакк-машине" and {E["e4"]["variant"], E["e5"]["variant"]} == {"Спиной", "Лицом"}, (E["e4"], E["e5"]))
+            check("миграция: гакк-приседания — база одна, варианты Спиной / лицом", E["e4"]["base"] == E["e5"]["base"] == "Приседания в гакк-машине" and {E["e4"]["variant"], E["e5"]["variant"]} == {"Спиной", "лицом"}, (E["e4"], E["e5"]))
             check("миграция: вариант «СВОБОДНЫЙ ВЕС» → «Свободный»", E["e8"]["variant"] == "Свободный" and E["e8"]["name"] == "Молотки (2х8-15) · Свободный", E["e8"])
             same = True
             for d, dd in orig.items():
@@ -91,6 +95,28 @@ async def main():
             prog = await t.evaluate("[...document.querySelectorAll('.prog-ex-btn')].map(b=>b.textContent)")
             n_gol = len([x for x in prog if "Голень стоя" in x]); n_hyp = len([x for x in prog if "Гиперэкстензия" in x])
             check("приёмка: на экране «Прогресс» одна линия голени и одна гиперэкстензии", n_gol == 1 and n_hyp == 1, prog)
+
+            # ---- графики «Прогресса»: группа по base, линия на variant
+            async def group_view(name):
+                await t.evaluate("ui.tab='prg'; ui.progMode='ex'; progEx=%s; render(); 0" % json.dumps(name))
+                return await t.evaluate("""(()=>{ const it=[...document.querySelectorAll('.prog-ex-item')].find(x=>x.querySelector('.prog-ex-open'));
+                    if(!it) return null; return { lines:[...it.querySelectorAll('svg polyline')].map(p=>p.dataset.series||''), legend:[...it.querySelectorAll('.series-legend span')].map(s=>s.textContent.trim()),
+                      note:(it.querySelector('.note')||{}).textContent||'' , svgs:it.querySelectorAll('svg').length }; })()""")
+            v = await group_view("Молотки")
+            check("«Молотки»: две линии — «Свободный» и «Блок» (регистр и написание из шаблона)", v and sorted(v["lines"]) == ["Блок", "Свободный"] and sorted(v["legend"]) == ["Блок", "Свободный"], v)
+            await t.screenshot(path=os.path.join(os.environ.get("TEMP", "."), "gt_series.png"))
+            v = await group_view("Сгибания с гантелями стоя по 1 руке")
+            check("«Сгибания с гантелями…»: две линии — с вариантом «Блок» и без варианта (план не влияет)", v and sorted(v["lines"]) == ["Блок", "без варианта"] and sorted(v["legend"]) == ["Блок", "без варианта"], v)
+            v = await group_view("Голень стоя (икры)")
+            check("«Голень стоя (икры)»: одна линия с июля (3 тренировки: 06.07, 03.08, 01.09)", v and v["legend"] == [] and v["svgs"] == 1 and "Тренировок: 3" in v["note"], v)
+            v = await group_view("Гиперэкстензия, акцент разгибатели и поясница")
+            check("«Гиперэкстензия…»: одна линия, 2 тренировки", v and v["legend"] == [] and "Тренировок: 2" in v["note"], v)
+            listing = await t.evaluate("[...document.querySelectorAll('.prog-ex-item')].map(x=>x.dataset.name)")
+            check("список упражнений «Прогресса»: по одной строке на base (нет дублей по плану/варианту)", len(listing) == len(set(n.lower() for n in listing)) and "Молотки" in listing and not any("(3х" in n or "(2х" in n for n in listing), listing)
+            await t.evaluate("ui.tab='day'; render(); 0")
+
+            # ---- канонический вариант — как в шаблоне
+            check("вариант: написание берётся из шаблона (блок → Блок, свободный вес → Свободный)", await t.evaluate("canonVariant('блок','Молотки')==='Блок' && canonVariant('свободный вес','Молотки')==='Свободный' && canonVariant('лёжа','Сгибания голени')==='Лёжа'"))
 
             # ---- новые записи создаются сразу с base/plan/variant
             await t.evaluate("ui.tab='day'; ui.aliasScreen=false; curDate=toKey(new Date()); delete data.log[curDate]; render(); 0")
