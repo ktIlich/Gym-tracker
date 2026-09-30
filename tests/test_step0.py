@@ -35,10 +35,16 @@ MOCK = """
   window.__toasts = [];
   window.Telegram = { WebApp: { ready(){}, expand(){}, isVersionAtLeast: () => true, disableVerticalSwipes(){},
     platform: 'ios', version: '8.0', initData: 'user=%7B%22id%22%3A4242%7D', initDataUnsafe: { user: { id: 4242 } },
-    colorScheme: 'dark', CloudStorage: cs, showConfirm(msg, cb){ window.__confirms = (window.__confirms||[]).concat([msg]); cb(true); },
+    colorScheme: 'dark', CloudStorage: cs, showConfirm(msg, cb){ window.__log('confirm', msg); cb(true); },
+    showAlert(msg, cb){ window.__log('alert', msg); if (cb) cb(); },
     HapticFeedback: { impactOccurred(){}, notificationOccurred(){} } } };
 })();
 """
+
+LOG = []   # (kind, msg): showAlert / showConfirm
+async def log_handler(source, kind, msg):
+    LOG.append((kind, msg))
+def logs_of(kind): return [m for k, m in LOG if k == kind]
 
 async def cs_handler(source, op, args_json):
     a = json.loads(args_json)
@@ -70,7 +76,7 @@ async def main():
         async with async_playwright() as p:
             browser = await p.chromium.launch(channel="msedge", headless=True)
             ctx = await browser.new_context(viewport={"width": 390, "height": 800})
-            await ctx.expose_binding("__cs", cs_handler)
+            await ctx.expose_binding("__cs", cs_handler); await ctx.expose_binding("__log", log_handler)
             await ctx.add_init_script(MOCK)
 
             seed_prod()
@@ -91,7 +97,12 @@ async def main():
             WRITES.clear()
             t, tlogs = await open_page(ctx, "/test/index.html")
             check("test: ENV=test, KP=tst_", await t.evaluate("ENV==='test' && KP==='tst_' && K('w_2026-09-28')==='tst_w_2026-09-28'"))
-            check("test: бейдж TEST на экране первичной настройки", await t.evaluate("document.querySelector('.setup .env-badge')?.textContent==='TEST'"))
+            check("test: бейдж TEST на экране первичной настройки", await t.evaluate("document.getElementById('envBadge')?.textContent==='TEST'"))
+            b = await t.evaluate("""(()=>{ const e=document.getElementById('envBadge'), cs=getComputedStyle(e), r=e.getBoundingClientRect();
+                const a=document.querySelector('.setup').getBoundingClientRect().top; e.style.display='none'; const a2=document.querySelector('.setup').getBoundingClientRect().top; e.style.display='';
+                return {pos:cs.position, top:r.top, right:innerWidth-r.right, shift:a-a2, pe:cs.pointerEvents}; })()""")
+            check("бейдж TEST: position:fixed в углу, не сдвигает контент", b["pos"] == "fixed" and 0 <= b["top"] <= 20 and 0 < b["right"] <= 20 and b["shift"] == 0 and b["pe"] == "none", b)
+            check("бейдж TEST: top учитывает safe-area (CSS-переменные Telegram)", "--tg-safe-area-inset-top" in open(REPO+"/test/index.html", encoding="utf-8").read())
             check("test: на первом экране (setup) есть кнопка клонирования", await t.locator('[data-act="cloneProd"]').count() == 1)
             check("test: title содержит TEST", "TEST" in await t.title())
             check("test: csKeys не видит прод-ключей", await t.evaluate("csKeys().then(k=>!k.includes('w_2026-09-28') && k.every(x=>!x.startsWith('tst_')))"))
@@ -120,24 +131,23 @@ async def main():
             # ---------- клонирование ----------
             check("v2: кнопки клонирования нет", await v2.evaluate("!document.querySelector('[data-act=cloneProd]') && typeof cloneFromProd==='undefined'"))
             WRITES.clear()
-            await t.evaluate("window.__confirms=[]")
+            LOG.clear(); await t.evaluate("window.__marker=1; 0")
             await t.click('[data-act="cloneProd"]')   # с экрана первичной настройки
-            await t.wait_for_timeout(1500)
-            confirms = await t.evaluate("window.__confirms")
-            check("клон #1 (тестовых данных ещё нет): подтверждение не спрашивается", not confirms, confirms)
-            check("после клона: бейдж TEST в шапке", await t.evaluate("document.querySelector('header .env-badge')?.textContent==='TEST'"))
+            await t.wait_for_timeout(2500)
+            check("клон #1 (тестовых данных ещё нет): подтверждение не спрашивается", not logs_of("confirm"), LOG)
+            check("клон #1: showAlert с итогом «Скопировано: 3 тренировок, 3 шаблонов, 7 ключей»", logs_of("alert") == ["Скопировано: 3 тренировок, 3 шаблонов, 7 ключей"], LOG)
+            check("клон #1: после showAlert выполнена перезагрузка страницы", await t.evaluate("window.__marker===undefined"))
+            check("после клона и перезагрузки: мастера нет, бейдж TEST есть", await t.locator('[data-act="setupNext"]').count() == 0 and await t.evaluate("!!document.getElementById('envBadge')"))
             await t.click('button[data-tab="set"]'); await t.wait_for_timeout(300)
             check("test: кнопка клонирования в настройках", await t.locator('[data-act="cloneProd"]').count() == 1)
-            WRITES.clear()
-            await t.click('[data-act="cloneProd"]'); await t.wait_for_timeout(1500)
-            confirms = await t.evaluate("window.__confirms")
-            check("клон #2 (тестовые данные есть): запрошено подтверждение", bool(confirms) and "Перезаписать" in confirms[0], confirms)
+            WRITES.clear(); LOG.clear()
+            await t.click('[data-act="cloneProd"]'); await t.wait_for_timeout(2500)
+            check("клон #2 (тестовые данные есть): запрошено подтверждение", any("Перезаписать" in m for m in logs_of("confirm")), LOG)
             check("клон: все записи/удаления — только tst_", all(k.startswith("tst_") for _, k in WRITES) and len(WRITES) > 0, [w for w in WRITES if not w[1].startswith("tst_")])
             check("клон: прод-ключи не тронуты", {k: v for k, v in STORE.items() if not k.startswith("tst_")} == PROD0)
             copied = {k[4:]: v for k, v in STORE.items() if k.startswith("tst_")}
             check("клон: tst_* == копия прода (ключи и значения)", copied == PROD0, (set(copied) ^ set(PROD0)))
-            msg = await t.evaluate("ui.cloneMsg")
-            check("клон: итог с числами (3 тренировки, 3 шаблона, 7 ключей)", "тренировок 3" in msg and "шаблонов 3" in msg and "ключей 7" in msg, msg)
+            check("клон #2: итог в showAlert", logs_of("alert") == ["Скопировано: 3 тренировок, 3 шаблонов, 7 ключей"], LOG)
             check("клон: данные в приложении", await t.evaluate("Object.keys(data.log).length===3 && data.templates.length===3"))
             check("клон: cfg.schema нормализован в 1", await t.evaluate("data.cfg.schema===1"))
             check("клон: тест сохранил preclone в localStorage с префиксом", "tst_preclone" in await t.evaluate("Object.keys(localStorage)"))
@@ -220,7 +230,7 @@ async def main():
             # ---------- диагностика и видимый результат клонирования ----------
             ctx2 = await browser.new_context(viewport={"width": 390, "height": 800})
             await ctx2.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
-            await ctx2.expose_binding("__cs", cs_handler)
+            await ctx2.expose_binding("__cs", cs_handler); await ctx2.expose_binding("__log", log_handler)
             await ctx2.add_init_script(MOCK)
             STORE.clear(); STORE.update(copy.deepcopy(PROD0))
             f, flogs = await open_page(ctx2, "/test/index.html")
@@ -242,9 +252,12 @@ async def main():
             check("диагностика: «Назад» возвращает в мастер", await f.locator('[data-act="setupNext"]').count() == 1)
             # ошибка чтения ключей: текст ошибки виден, попадает в диагностику
             await f.evaluate("window.__origGetKeys=Telegram.WebApp.CloudStorage.getKeys; Telegram.WebApp.CloudStorage.getKeys=cb=>cb('BOOM_KEYS'); 0")
+            LOG.clear()
             await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(500)
             msg = await f.evaluate("document.querySelector('.res-err')?.textContent||''")
-            check("клон: при ошибке getKeys виден её текст", "BOOM_KEYS" in msg, msg)
+            check("клон: при ошибке getKeys виден её текст в карточке", "BOOM_KEYS" in msg, msg)
+            check("клон: ошибка через showAlert с названием шага", any("Шаг «Чтение списка ключей»" in m and "BOOM_KEYS" in m for m in logs_of("alert")), LOG)
+            check("клон: после ошибки перезагрузки нет", await f.evaluate("document.querySelector('.res-err')!==null"))
             await f.click('[data-act="diagOpen"]'); await f.wait_for_timeout(600)
             rep_text = await f.evaluate("document.querySelector('.diag-pre').textContent")
             check("диагностика: getKeys ошибка и последняя ошибка клонирования в отчёте", "getKeys: ОШИБКА — BOOM_KEYS" in rep_text and "BOOM_KEYS" in rep_text.split("последняя ошибка клонирования:")[1], rep_text)
@@ -252,13 +265,15 @@ async def main():
             # нет прод-данных
             saved = {k: v for k, v in STORE.items() if not k.startswith("tst_")}
             for k in list(saved): STORE.pop(k)
+            LOG.clear()
             await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(500)
             msg = await f.evaluate("document.querySelector('.res-err')?.textContent||''")
-            check("клон: нет прод-данных → явное сообщение", "Основные данные не найдены" in msg, msg)
+            check("клон: нет прод-данных → явное сообщение и showAlert с шагом", "основные данные не найдены" in msg and any("Шаг «Проверка основных данных»" in m for m in logs_of("alert")), (msg, LOG))
             STORE.update(saved)
             # успех виден на экране
-            await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(1500)
-            check("клон: итог виден на экране (тренировок 3, шаблонов 3, ключей 7)", await f.evaluate("document.body.innerText.includes('Скопировано: тренировок 3, шаблонов 3, ключей 7')"))
+            LOG.clear(); await f.evaluate("window.__marker=1; 0")
+            await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(2500)
+            check("клон: итог в showAlert и перезагрузка", logs_of("alert") == ["Скопировано: 3 тренировок, 3 шаблонов, 7 ключей"] and await f.evaluate("window.__marker===undefined"), LOG)
             # отмена подтверждения тоже сообщает результат
             await f.evaluate("Telegram.WebApp.showConfirm=(m,cb)=>cb(false); 0")
             await f.click('button[data-tab="set"]'); await f.wait_for_timeout(300)
@@ -266,8 +281,57 @@ async def main():
             await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(800)
             check("клон: отмена → сообщение «Отменено»", await f.evaluate("document.body.innerText.includes('Отменено: тестовые данные не изменены')"))
             check("клон: прод-ключи по-прежнему не тронуты", {k: v for k, v in STORE.items() if not k.startswith("tst_")} == PROD0)
+            # сбой записи копии → шаг «Запись копии»
+            LOG.clear()
+            await f.evaluate("window.__origSet=Telegram.WebApp.CloudStorage.setItem; Telegram.WebApp.CloudStorage.setItem=(k,v,cb)=>cb(null,false); 0")
+            await f.evaluate("Telegram.WebApp.showConfirm=(m,cb)=>cb(true); 0")
+            await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(1200)
+            check("клон: сбой записи → showAlert «Шаг «Запись копии»»", any("Шаг «Запись копии»" in m for m in logs_of("alert")), LOG)
+            await f.evaluate("Telegram.WebApp.CloudStorage.setItem=window.__origSet; 0")
+            LOG.clear(); await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(2500)   # восстановить tst-данные
+            check("клон: повторная попытка после сбоя проходит", logs_of("alert") == ["Скопировано: 3 тренировок, 3 шаблонов, 7 ключей"], LOG)
             check("диагностика/клон: нет pageerror", not [l for l in flogs if l.startswith("pageerror")], flogs[:3])
             await f.screenshot(path=os.path.join(os.environ.get("TEMP", "."), "gt_diag.png"))
+
+            # ---------- мастер: текст цикла из cfg, мастер не показывается при наличии tst-данных ----------
+            r = await f.evaluate("""(()=>{ const c=data.cfg.cycle, o=[c.workWeeks,c.restWeeks]; const res=[];
+                for(const [w,r] of [[2,1],[1,1],[3,1],[5,2],[11,21]]){ c.workWeeks=w; c.restWeeks=r; res.push(cycleText()); }
+                c.workWeeks=o[0]; c.restWeeks=o[1]; return res; })()""")
+            check("мастер: текст цикла собирается из cfg.cycle (склонения)", r == ["Цикл по умолчанию: 2 рабочие недели, потом 1 неделя отдыха", "Цикл по умолчанию: 1 рабочая неделя, потом 1 неделя отдыха",
+                  "Цикл по умолчанию: 3 рабочие недели, потом 1 неделя отдыха", "Цикл по умолчанию: 5 рабочих недель, потом 2 недели отдыха", "Цикл по умолчанию: 11 рабочих недель, потом 21 неделя отдыха"], r)
+            check("мастер: «2+1» не зашито в разметке", "Цикл по умолчанию: 2 рабочие" not in open(REPO+"/test/index.html", encoding="utf-8").read())
+            ctx3 = await browser.new_context(viewport={"width": 390, "height": 800})
+            await ctx3.expose_binding("__cs", cs_handler); await ctx3.expose_binding("__log", log_handler); await ctx3.add_init_script(MOCK)
+            g, glogs = await open_page(ctx3, "/test/index.html")
+            check("мастер не показывается, если tst_-данные уже есть в облаке (чистый localStorage)", await g.locator('[data-act="setupNext"]').count() == 0 and await g.evaluate("Object.keys(data.log).length===3"))
+            await ctx3.close()
+
+            # ---------- очистка тестовых данных ----------
+            await f.evaluate("Telegram.WebApp.showConfirm=(m,cb)=>{ window.__log('confirm', m); cb(false); }; 0")
+            await f.click('button[data-tab="set"]'); await f.wait_for_timeout(300)
+            check("настройки: кнопка «Очистить тестовые данные»", await f.locator('[data-act="clearTest"]').count() == 1)
+            before = {k: v for k, v in STORE.items()}
+            LOG.clear(); await f.click('[data-act="clearTest"]'); await f.wait_for_timeout(500)
+            check("очистка: при отказе в подтверждении ничего не удалено", STORE == before and not logs_of("alert") and any("Удалить все тестовые данные" in m for m in logs_of("confirm")), LOG)
+            await f.evaluate("Telegram.WebApp.showConfirm=(m,cb)=>{ window.__log('confirm', m); cb(true); }; window.__marker=1; 0")
+            n_cloud = len([k for k in STORE if k.startswith("tst_")])
+            n_ls = await f.evaluate("Object.keys(localStorage).filter(k=>k.startsWith('tst_')).length")
+            await f.evaluate("lsSet('premig_2026-01-01T00-00-00-000Z','{}'); 0"); n_ls += 1
+            nontst_ls = await f.evaluate(LS_NONTST)
+            WRITES.clear(); LOG.clear()
+            await f.click('[data-act="clearTest"]'); await f.wait_for_timeout(600)
+            check("очистка: showAlert «Удалено N ключей» (облако + localStorage)", logs_of("alert") == ["Удалено %d ключей" % (n_cloud + n_ls)], (LOG, n_cloud, n_ls))
+            check("очистка: все операции только над tst_-ключами, удалены ровно они", all(k.startswith("tst_") for op, k in WRITES) and len([1 for op, k in WRITES if op == "del"]) == n_cloud, WRITES[:5])
+            await f.wait_for_timeout(2000)
+            check("очистка: выполнена перезагрузка", await f.evaluate("window.__marker===undefined"))
+            check("очистка: прод-ключи облака не тронуты", {k: v for k, v in STORE.items() if not k.startswith("tst_")} == PROD0)
+            check("очистка: ключи localStorage без tst_ не тронуты", await f.evaluate(LS_NONTST) == nontst_ls)
+            check("очистка: снапшоты premig_/preclone удалены", not await f.evaluate("Object.keys(localStorage).some(k=>k.startsWith('tst_premig_')||k==='tst_preclone')"))
+            check("очистка: test открылся в пустом состоянии (мастер, нет дней)", await f.locator('[data-act="setupNext"]').count() == 1 and await f.evaluate("Object.keys(data.log).length===0"))
+            # ошибка удаления → showAlert с шагом, без reload
+            await f.evaluate("Telegram.WebApp.CloudStorage.removeItem=(k,cb)=>cb('DEL_FAIL',false); window.__marker=1; 0")
+            LOG.clear(); await f.click('[data-act="clearTest"]'); await f.wait_for_timeout(800)
+            check("очистка: сбой удаления → showAlert «Шаг «Удаление ключей облака»», без перезагрузки", any("Шаг «Удаление ключей облака»" in m for m in logs_of("alert")) and await f.evaluate("window.__marker===1"), LOG)
 
             # ---------- статический контроль ----------
             src = open(REPO+"/test/index.html", encoding="utf-8").read()

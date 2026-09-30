@@ -54,7 +54,9 @@
         .strip-labels{display:flex; justify-content:space-between; font-size:10px; color:var(--dim); margin-top:4px}
 
         .env-badge{display:inline-block; background:var(--accent); color:var(--btn-text); font-weight:800; font-size:11px; letter-spacing:.08em; border-radius:6px; padding:2px 8px; line-height:1.3}
-        .env-row{display:flex; justify-content:flex-end; margin-bottom:6px}
+        .env-fixed{position:fixed; z-index:1000; pointer-events:none;
+            top:calc(var(--tg-content-safe-area-inset-top, 0px) + var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + 4px);
+            right:calc(var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px)) + 6px)}
 
         .datenav{display:flex; align-items:center; justify-content:space-between; margin-top:12px}
         .datenav .nav{padding:6px 10px; color:var(--mut); font-size:24px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
@@ -294,7 +296,7 @@
     }
     // localStorage: единственная точка доступа; clear() не используется нигде
     function lsGet(name){ return localStorage.getItem(K(name)); }
-    function lsSet(name,v){ const k=K(name); guardKey(k); localStorage.setItem(k,v); }
+    function lsSet(name,v){ const k=K(name); guardKey(k); if(typeof frozen!=="undefined"&&frozen) return; localStorage.setItem(k,v); }
     function lsDel(name){ const k=K(name); guardKey(k); localStorage.removeItem(k); }
     // имена (без префикса) ключей localStorage, начинающихся с prefix; только чтение
     function lsKeys(prefix){
@@ -534,7 +536,7 @@
     // низкоуровневый слой (полные ключи). Запись/удаление — только через guardKey
     let lastCsErr="";
     function rawGetItems(keys){ return new Promise(function(res){ if(!cs||!keys.length) return res({}); cs.getItems(keys,function(e,v){ if(e) lastCsErr="getItems: "+String(e); res(e?{}:(v||{})); }); }); }
-    function rawSet(k,v){ return new Promise(function(res){ if(!cs) return res(false); guardKey(k); try{ cs.setItem(k,v,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
+    function rawSet(k,v){ return new Promise(function(res){ if(!cs||frozen) return res(false); guardKey(k); try{ cs.setItem(k,v,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
     function rawDel(k){ return new Promise(function(res){ if(!cs) return res(false); guardKey(k); try{ cs.removeItem(k,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
     function rawKeys(){ return new Promise(function(res){ if(!cs) return res(null); try{ cs.getKeys(function(e,k){ if(e) lastCsErr="getKeys: "+String(e); res(e?null:(k||[])); }); }catch(err){ lastCsErr="getKeys: "+String(err&&err.message||err); res(null); } }); }
     // логический слой: приложение работает с именами без префикса ("cfg", "w_2026-09-28"), K() добавляется здесь
@@ -639,61 +641,102 @@
     }
 
     // ============ test: клонирование боевых данных (только чтение прода) ============
+    function showAlertP(msg){
+        return new Promise(function(res){
+            if(tg&&tg.showAlert&&tg.isVersionAtLeast&&tg.isVersionAtLeast("6.2")){ tg.showAlert(msg,function(){ res(); }); return; }
+            window.alert(msg); res();
+        });
+    }
+    function errText(e){ return String(e&&e.message||e||"неизвестная ошибка"); }
     function askConfirm(msg){
         return new Promise(function(res){
             try{ if(tg&&tg.showConfirm&&tg.isVersionAtLeast&&tg.isVersionAtLeast("6.2")){ tg.showConfirm(msg,function(ok){ res(!!ok); }); return; } }catch(e){}
             res(window.confirm(msg));
         });
     }
-    // результат клонирования показывается всегда: успех — числа, отказ/ошибка — полный текст
+    // результат клонирования показывается всегда: успех — showAlert с итогом и перезагрузка, ошибка — showAlert с названием шага
     function cloneDone(msg,isErr){
         ui.cloneBusy=false; ui.cloneMsg=msg; ui.cloneIsErr=!!isErr;
         if(isErr) ui.lastCloneError=msg;
-        render(); toast(msg);
+        render();
         if(isErr) hap("error");
     }
     async function cloneFromProd(){
         if(ui.cloneBusy) return;
         ui.cloneBusy=true; ui.cloneMsg="Копирование…"; ui.cloneIsErr=false; render();
-        let ownBusy=false;
+        let step="Проверка среды", ownBusy=false, success=null;
         try{
-            if(ENV!=="test"){ cloneDone("Клонирование доступно только в test",true); return; }
-            if(!cs){ cloneDone("Ошибка: CloudStorage недоступен (открыто не в Telegram или версия клиента ниже 6.9). См. «Диагностика».",true); return; }
-            if(syncState.busy){ cloneDone("Идёт синхронизация с облаком, повторите через несколько секунд",true); return; }
+            if(ENV!=="test") throw new Error("клонирование доступно только в test");
+            if(!cs) throw new Error("CloudStorage недоступен (открыто не в Telegram или версия клиента ниже 6.9). См. «Диагностика».");
+            if(syncState.busy) throw new Error("идёт синхронизация с облаком, повторите через несколько секунд");
             syncState.busy=true; ownBusy=true;
-            // 1. чтение: все ключи без префикса tst_ (в них ничего не пишем)
-            lastCsErr="";
+            // чтение: все ключи без префикса tst_ (в них ничего не пишем)
+            step="Чтение списка ключей"; lastCsErr="";
             const all=await rawKeys();
-            if(all===null){ cloneDone("Ошибка: не удалось прочитать список ключей CloudStorage"+(lastCsErr?" — "+lastCsErr:""),true); return; }
+            if(all===null) throw new Error("не удалось прочитать список ключей CloudStorage"+(lastCsErr?" — "+lastCsErr:""));
             const prod=all.filter(function(k){ return k.indexOf(KP)!==0; });
             const mine=all.filter(function(k){ return k.indexOf(KP)===0; });
-            if(!prod.length){ cloneDone("Основные данные не найдены: в CloudStorage нет ключей без префикса «"+KP+"» (всего ключей: "+all.length+"). Если данные в основной версии есть, проверьте, что test открыт тем же ботом, — см. «Диагностика».",true); return; }
+            step="Проверка основных данных";
+            if(!prod.length) throw new Error("основные данные не найдены: в CloudStorage нет ключей без префикса «"+KP+"» (всего ключей: "+all.length+"). Проверьте, что test открыт тем же ботом, — см. «Диагностика».");
             // лимит CloudStorage: 1024 ключа на бота и пользователя
-            if(prod.length*2>=1000){ cloneDone("Отказ: слишком много ключей ("+prod.length+"), копия в тест не поместится в лимит 1024 ключа (нужно: прод-ключи × 2 < 1000)",true); return; }
-            const items={};
+            if(prod.length*2>=1000) throw new Error("слишком много ключей ("+prod.length+"): копия не поместится в лимит 1024 (нужно: прод-ключи × 2 < 1000)");
+            step="Чтение значений"; const items={};
             for(let i=0;i<prod.length;i+=50){
                 const part=prod.slice(i,i+50); lastCsErr="";
                 const got=await rawGetItems(part);
-                for(const k of part){ if(got[k]==null){ cloneDone("Ошибка: не удалось прочитать значение ключа «"+k+"»"+(lastCsErr?" — "+lastCsErr:"")+". Копирование отменено, тестовые данные не тронуты.",true); return; } items[k]=got[k]; }
+                for(const k of part){ if(got[k]==null) throw new Error("не удалось прочитать значение ключа «"+k+"»"+(lastCsErr?" — "+lastCsErr:"")+". Тестовые данные не тронуты."); items[k]=got[k]; }
             }
-            // 2. подтверждение, если тестовые данные уже есть
+            // подтверждение, если тестовые данные уже есть
+            step="Подтверждение";
             const hasTestData=mine.some(function(k){ return k.indexOf(KP+"w_")===0; })||!!data.cfg.cycle.anchorDate;
             if(hasTestData && !(await askConfirm("Перезаписать тестовые данные копией основных?"))){ cloneDone("Отменено: тестовые данные не изменены",false); return; }
-            // 3. снимок текущих тестовых данных, удаление tst_*, запись копии с префиксом
-            try{ lsSet("preclone", JSON.stringify(data)); }catch(e){}
-            for(const k of mine) await rawDel(k);
-            let failed=0;
-            for(const k of prod) if(!(await rawSet(KP+k, items[k]))) failed++;
-            // 4. локальное состояние из копии
+            step="Снимок текущих тестовых данных";
+            lsSet("preclone", JSON.stringify(data));
+            step="Удаление старых тестовых ключей"; let delFail=[];
+            for(const k of mine) if(!(await rawDel(k))) delFail.push(k);
+            if(delFail.length) throw new Error("не удалены ключи: "+delFail.slice(0,5).join(", ")+(delFail.length>5?" и ещё "+(delFail.length-5):""));
+            step="Запись копии"; const wrFail=[];
+            for(const k of prod) if(!(await rawSet(KP+k, items[k]))) wrFail.push(k);
+            if(wrFail.length) throw new Error("не записано ключей: "+wrFail.length+" из "+prod.length+" (например, "+wrFail.slice(0,3).join(", ")+")");
+            step="Применение данных";
             data=normalizeData(cloudObjFromItems(prod,items));
             saveCache(); applyMigrations();
             const nW=prod.filter(function(k){return k.indexOf("w_")===0;}).length, nT=prod.filter(function(k){return k.indexOf("tpl_")===0;}).length;
-            syncState.last=new Date(); syncState.count=prod.length;
-            curDate=toKey(new Date());
-            const msg="Скопировано: тренировок "+nW+", шаблонов "+nT+", ключей "+prod.length+(failed?" (ошибок записи: "+failed+")":"");
-            if(failed) cloneDone(msg,true); else { cloneDone(msg,false); hap("ok"); }
-        }catch(e){ cloneDone("Ошибка копирования: "+(e&&(e.message||e)||"неизвестная")+(lastCsErr?" ("+lastCsErr+")":""),true); }
+            success="Скопировано: "+nW+" тренировок, "+nT+" шаблонов, "+prod.length+" ключей";
+        }catch(e){
+            const full="Шаг «"+step+"»: "+errText(e)+(lastCsErr&&errText(e).indexOf(lastCsErr)<0?" ("+lastCsErr+")":"");
+            cloneDone(full,true);
+            await showAlertP("Ошибка клонирования. "+full);
+            return;
+        }
         finally{ if(ownBusy) syncState.busy=false; ui.cloneBusy=false; }
+        if(success){
+            ui.cloneMsg=success; ui.cloneIsErr=false;
+            await showAlertP(success);
+            location.reload();
+        }
+    }
+
+    // ============ test: очистка тестовых данных (только tst_) ============
+    let frozen=false;   // после очистки ничего не пишем до перезагрузки
+    async function clearTestData(){
+        if(ENV!=="test"||ui.cloneBusy) return;
+        let step="Подтверждение";
+        try{
+            if(!(await askConfirm("Удалить все тестовые данные (ключи tst_ в облаке и в localStorage)? Основные данные не затрагиваются."))){ toast("Отменено"); return; }
+            frozen=true; let n=0;
+            step="Чтение списка ключей облака";
+            let ck=[]; if(cs){ ck=await csKeys(); if(ck===null) throw new Error("не удалось прочитать список ключей"+(lastCsErr?" — "+lastCsErr:"")); }
+            step="Удаление ключей облака";
+            for(const k of ck){ if(!(await csDel(k))) throw new Error("не удалён ключ «"+KP+k+"»"+(lastCsErr?" — "+lastCsErr:"")); n++; }
+            step="Удаление ключей localStorage";
+            for(const k of lsKeys("")){ lsDel(k); n++; }
+            await showAlertP("Удалено "+n+" ключей");
+            location.reload();
+        }catch(e){
+            frozen=false;
+            await showAlertP("Шаг «"+step+"»: "+errText(e));
+        }
     }
     function cloneCardHtml(){
         return '<div class="card full" style="width:100%">'
@@ -701,6 +744,7 @@
             +'<div class="note" style="margin-top:0">Ключи хранилища с префиксом «'+KP+'». Основные данные не изменяются.</div>'
             +'<button class="wide-btn" data-act="cloneProd"'+(ui.cloneBusy?' disabled':'')+'>'+ICON_SYNC+' Скопировать данные из основной версии</button>'
             +'<button class="wide-btn" data-act="diagOpen">'+ICON_INFO+' Диагностика</button>'
+            +'<button class="wide-btn danger" data-act="clearTest"'+(ui.cloneBusy?' disabled':'')+'>'+ICON_TRASH+' Очистить тестовые данные</button>'
             +(ui.cloneMsg?'<div class="note'+(ui.cloneIsErr?' res-err':'')+'" style="user-select:text">'+esc(ui.cloneMsg)+'</div>':'')
             +'</div>';
     }
@@ -748,8 +792,7 @@
         return L.join("\n");
     }
     function diagPageHtml(){
-        return (ENV==="test"?'<div class="env-row"><span class="env-badge">TEST</span></div>':'')
-            +'<div class="sec-label">Диагностика</div><div class="card"><div class="diag-pre">'+esc(diagReportText())+'</div>'
+        return '<div class="sec-label">Диагностика</div><div class="card"><div class="diag-pre">'+esc(diagReportText())+'</div>'
             +'<button class="wide-btn primary" data-act="diagCopy">'+ICON_CLIPBOARD+' Скопировать отчёт</button>'
             +'<button class="wide-btn" data-act="diagOpen">'+ICON_SYNC+' Обновить</button>'
             +'<button class="wide-btn" data-act="diagClose">Назад</button></div>';
@@ -1544,7 +1587,7 @@
         let segs="", labels="";
         for(let i=0;i<c.workWeeks;i++){ segs+='<i class="s-work"></i>'; labels+='<span>раб. '+(i+1)+'</span>'; }
         for(let i=0;i<c.restWeeks;i++){ segs+='<i class="s-rest"></i>'; labels+='<span>отдых'+(c.restWeeks>1?" "+(i+1):"")+'</span>'; }
-        return '<header>'+(ENV==="test"?'<div class="env-row"><span class="env-badge">TEST</span></div>':'')+'<div class="strip">'+segs
+        return '<header><div class="strip">'+segs
             +(wi?'<span class="dot" style="left:calc('+(wi.day/wi.cycleLen*100)+'% - 4px)"></span>':'')
             +'</div><div class="strip-labels">'+labels+'</div></header>';
     }
@@ -2035,16 +2078,22 @@
         return h;
     }
 
+    function plural(n,one,few,many){ const m=n%100, d=n%10; return (m>=11&&m<=14)?many:d===1?one:(d>=2&&d<=4)?few:many; }
+    function cycleText(){
+        const c=data.cfg.cycle, w=c.workWeeks, r=c.restWeeks;
+        return "Цикл по умолчанию: "+w+" "+plural(w,"рабочая неделя","рабочие недели","рабочих недель")
+            +(r>0?", потом "+r+" "+plural(r,"неделя","недели","недель")+" отдыха":", без недель отдыха");
+    }
     function renderSetup(){
         document.getElementById("tabbar").style.display="none";
         if(ui.setupStep!==2){
-            app.innerHTML='<div class="setup">'+(ENV==="test"?'<div class="env-row" style="align-self:flex-end"><span class="env-badge">TEST</span></div>'+cloneCardHtml():'')+'<div class="card">'
+            app.innerHTML='<div class="setup">'+(ENV==="test"?cloneCardHtml():'')+'<div class="card">'
                 +'<div style="font-weight:800; font-size:17px; margin-bottom:10px">'+ICON_DUMBBELL+' Gym Tracker</div>'
-                +'<p>Цикл по умолчанию: 2 рабочие недели, потом 1 неделя отдыха (поменять можно в настройках). Укажи дату начала первой рабочей недели.</p>'
+                +'<p>'+cycleText()+' (поменять можно в настройках). Укажи дату начала первой рабочей недели.</p>'
                 +'<input type="date" id="startInput" value="'+(ui.setupDate||toKey(new Date()))+'" style="margin:10px 0 14px">'
                 +'<button class="wide-btn primary" data-act="setupNext">Далее</button></div></div>';
         } else {
-            app.innerHTML='<div class="setup">'+(ENV==="test"?'<div class="env-row" style="align-self:flex-end"><span class="env-badge">TEST</span></div>'+cloneCardHtml():'')+'<div class="card">'
+            app.innerHTML='<div class="setup">'+(ENV==="test"?cloneCardHtml():'')+'<div class="card">'
                 +'<div style="font-weight:800; font-size:17px; margin-bottom:10px">Свои шаблоны</div>'
                 +'<p>Вставь программу текстом — по строке на упражнение, например:<br>'
                 +'<span style="color:var(--dim)">Жимовая<br>1. Жим лёжа 3х8-12<br>2. Сведения 2х10-15</span><br>'
@@ -2056,6 +2105,7 @@
     }
 
     function render(){
+        if(ENV==="test"&&cs&&!ui.cloudChecked&&!data.cfg.cycle.anchorDate){ app.innerHTML='<div class="setup"><div class="note">Загрузка тестовых данных…</div></div>'; return; }
         if(ENV==="test"&&ui.diag){ document.getElementById("tabbar").style.display="none"; app.innerHTML=diagPageHtml(); return; }
         if(!data.cfg.cycle.anchorDate){ renderSetup(); return; }
         document.getElementById("tabbar").style.display="";
@@ -2547,6 +2597,7 @@
                 break;
             }
             case "cloneProd": cloneFromProd(); break;
+            case "clearTest": clearTestData(); break;
             case "diagOpen": if(ENV!=="test") break; ui.diag=true; ui.diagData=null; render(); collectDiag().then(render); break;
             case "diagClose": ui.diag=false; render(); break;
             case "diagCopy":
@@ -2763,8 +2814,14 @@
         }
         applyMigrations();
         applyTheme();
+        if(ENV==="test"){
+            const b=document.createElement("div"); b.id="envBadge"; b.className="env-badge env-fixed"; b.textContent="TEST"; document.body.appendChild(b);
+        }
         render();
-        cloudLoad(); // фоновая синхронизация с Telegram CloudStorage
+        // до первой проверки облака мастер в test не показываем: тестовые данные могут уже лежать в tst_-ключах
+        const cloudChecked=function(){ if(!ui.cloudChecked){ ui.cloudChecked=true; render(); } };
+        setTimeout(cloudChecked,6000);
+        cloudLoad().then(cloudChecked,cloudChecked); // фоновая синхронизация с Telegram CloudStorage
     })();
 </script>
 </body>
