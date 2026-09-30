@@ -148,7 +148,7 @@ async def main():
             await page2.click('button[data-tab="set"]'); await page2.wait_for_timeout(300)
             snapshot_before = await page2.evaluate("JSON.stringify([data.log,data.templates,data.cfg])")
             await page2.click('[data-act="hygOpen"][data-screen="check"]'); await page2.wait_for_timeout(300)
-            got = await page2.evaluate("""(()=>{ const r=findDataIssues(); const o={}; for(const k of Object.keys(r)) o[k]=r[k].map(i=>[i.date,i.text]); return o; })()""")
+            got = await page2.evaluate("""(()=>{ const r=findDataIssues(); const o={}; for(const k of Object.keys(r)) o[k]=r[k].map(i=>[i.date,i.name+" "+i.note]); return o; })()""")
             ex = expected_issues(dump["log"], today)
             check("7.2: дни без подходов (прошедшие) — 06.08", [d for d, _ in got["emptyDay"]] == ex["emptyDay"] and "2026-08-06" in ex["emptyDay"], (got["emptyDay"], ex["emptyDay"]))
             check("7.2: упражнения прошедших дней без подходов — 05.08 «Пресс»", sorted(d for d, _ in got["emptyEx"]) == sorted(d for d, _ in ex["emptyEx"]) and any(d == "2026-08-05" and "Пресс" in t for d, t in got["emptyEx"]), (got["emptyEx"], ex["emptyEx"]))
