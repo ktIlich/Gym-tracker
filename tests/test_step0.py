@@ -419,7 +419,7 @@ async def main():
             raw_ls = [m.start() for m in re.finditer(r"localStorage\.", src)]
             check("статика: прямой localStorage только внутри lsGet/lsSet/lsDel/lsKeys", len(raw_ls) == 5, len(raw_ls))
             check("статика: прямых cs.* нет вне raw-слоя", len(re.findall(r"\bcs\.(setItem|removeItem|getKeys|getItems)", src)) == 5)
-            check("статика: APP_VERSION 2.12.0", 'APP_VERSION="2.12.0"' in src)
+            check("статика: APP_VERSION 2.13.0", 'APP_VERSION="2.13.0"' in src)
 
             # холодный старт в test без Telegram/облака не падает
             plain = await browser.new_context(viewport={"width": 390, "height": 800})

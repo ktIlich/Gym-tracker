@@ -218,7 +218,7 @@
         .set-labels{font-size:0.6875rem; color:var(--text-muted); text-align:center; margin-bottom:2px}
         .set-row{margin-top:2px}
         .set-row .idx{font-size:0.75rem; color:var(--text-muted); text-align:center}
-        .set-row .cell{width:100%; min-height:var(--touch); border-radius:0.625rem; font-weight:600; font-size:1rem; text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap}
+        .set-row .cell{display:flex; align-items:center; justify-content:center; line-height:1; width:100%; min-height:var(--touch); border-radius:0.625rem; font-weight:600; font-size:1rem; text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap}
         .set-row .cell .u{color:var(--text-muted); font-weight:400; font-size:0.8125rem}
         .set-next{position:relative; margin-top:0.625rem}
         .set-next::before{content:""; position:absolute; inset:-0.25rem -0.375rem; border:1.5px dashed var(--accent-2); border-radius:0.75rem; pointer-events:none}
@@ -227,8 +227,11 @@
         .stepper{display:flex; align-items:center; height:var(--touch); background:var(--surface-2); border-radius:0.625rem; min-width:0}
         .stepper .step{flex:0 0 2rem; width:2rem; height:var(--touch); display:flex; align-items:center; justify-content:center; color:var(--text-muted)}
         .stepper .step:active{color:var(--text)}
-        .stepper .val{flex:1 1 0; min-width:0; height:var(--touch); font-weight:700; font-size:0.9375rem; text-align:center; white-space:nowrap; overflow:hidden; font-variant-numeric:tabular-nums}
+        .stepper .val{display:flex; align-items:center; justify-content:center; line-height:1; flex:1 1 0; min-width:0; height:var(--touch); font-weight:700; font-size:0.9375rem; text-align:center; white-space:nowrap; overflow:hidden; font-variant-numeric:tabular-nums}
         .stepper .val .u{color:var(--text-muted); font-weight:400; font-size:0.75rem}
+        .vw{display:flex; align-items:baseline; justify-content:center; line-height:1; white-space:nowrap}
+        .vw .u{margin-left:0.2em}
+        .set-grid .idx{line-height:1; align-self:center}
         .stepper{container:stp / inline-size}
         @container stp (max-width: 6rem){ .stepper .step{flex-basis:1.125rem; width:1.125rem} .stepper .val .u{display:none} .stepper .val{font-size:.8125rem} }
         .sets-wrap{container:sw / inline-size}
@@ -409,7 +412,7 @@
 <div class="toast" id="toast"><span id="toastMsg"></span><button id="toastBtn" style="display:none"></button></div>
 <script>
     "use strict";
-    const APP_VERSION="2.12.0"; // фаза 12: варианты, таймер, темы, шрифт, алиасы, тур
+    const APP_VERSION="2.13.0"; // фаза 13: вёрстка, пикер цвета, цвет отдыха, заголовок тура, браузер
     // ============ цвета: данные тем ============
     // THEME-DATA-BEGIN — единственное место в JS, где допустимы конкретные цвета (палитры, образцы, константы); остальное — через CSS-токены
     const THEME_BASES=[
@@ -2286,8 +2289,8 @@
         return {w:null,r:null};
     }
     function nextSetState(ex,isRest){ return ui.nextSet[ex.id]||(ui.nextSet[ex.id]=nextSetDefaults(ex,isRest)); }
-    function wText(v){ return v==null?'—':fmtNum(v)+' <span class="u">кг</span>'; }
-    function rText(v){ return v==null?'—':String(v); }
+    function wText(v){ return v==null?'<span class="vw">—</span>':'<span class="vw">'+fmtNum(v)+' <span class="u">кг</span></span>'; }
+    function rText(v){ return '<span class="vw">'+(v==null?'—':String(v))+'</span>'; }
     function setRowHtml(ex,i){
         const s=ex.sets[i];
         return '<div class="set-grid set-row" data-i="'+i+'"><span class="idx num">'+(i+1)+'</span>'
@@ -2759,9 +2762,9 @@
             +'<span class="rec-btn" style="cursor:default">Реком.: 70×8</span>'
             +'<div class="ex-last">Рабочая 23.09: 65×10, 65×10</div></div><span class="del-ex"><i class="box">'+ICON_TRASH+'</i></span></div>'
             +'<div class="sets-wrap"><div class="set-grid set-labels"><span></span><span>кг</span><span>повт.</span><span></span></div>'
-            +'<div class="set-grid set-row"><span class="idx num">1</span><span class="cell">65 <span class="u">кг</span></span><span class="cell">10</span><span class="del-set">'+ICON_CLOSE+'</span></div>'
-            +'<div class="set-grid set-next"><span class="idx num">2</span><div class="stepper"><span class="step">'+ICON_MINUS+'</span><span class="val">70 <span class="u">кг</span></span><span class="step">'+ICON_PLUS+'</span></div>'
-            +'<div class="stepper"><span class="step">'+ICON_MINUS+'</span><span class="val">8</span><span class="step">'+ICON_PLUS+'</span></div><span class="check">'+ICON_CHECK+'</span></div></div>'
+            +'<div class="set-grid set-row"><span class="idx num">1</span><span class="cell">'+wText(65)+'</span><span class="cell">'+rText(10)+'</span><span class="del-set">'+ICON_CLOSE+'</span></div>'
+            +'<div class="set-grid set-next"><span class="idx num">2</span><div class="stepper"><span class="step">'+ICON_MINUS+'</span><span class="val">'+wText(70)+'</span><span class="step">'+ICON_PLUS+'</span></div>'
+            +'<div class="stepper"><span class="step">'+ICON_MINUS+'</span><span class="val">'+rText(8)+'</span><span class="step">'+ICON_PLUS+'</span></div><span class="check">'+ICON_CHECK+'</span></div></div>'
             +'<div class="addset-extras" style="--n:2"><span class="btn-gray variant-btn"><span class="vtxt">Блок</span></span><span class="btn-gray">'+ICON_NOTE+'</span></div></div>';
     }
     function themePageHtml(){
