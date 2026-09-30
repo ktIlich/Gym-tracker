@@ -148,7 +148,10 @@
         .switch input:checked + i{background:var(--btn)}
         .switch input:checked + i::after{transform:translateX(20px); background:var(--btn-text); opacity:1}
 
-        .setup{min-height:80vh; display:flex; align-items:center; justify-content:center}
+        .setup{min-height:80vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px}
+        .setup .card.full{max-width:none}
+        .diag-pre{white-space:pre-wrap; word-break:break-all; font-size:12px; line-height:1.5; user-select:text}
+        .res-err{color:var(--danger,#ff453a)}
         .setup .card{max-width:340px; width:100%; padding:22px}
         .setup p{color:var(--mut); font-size:14px; line-height:1.5}
 
@@ -529,10 +532,11 @@
     }
 
     // низкоуровневый слой (полные ключи). Запись/удаление — только через guardKey
-    function rawGetItems(keys){ return new Promise(function(res){ if(!cs||!keys.length) return res({}); cs.getItems(keys,function(e,v){ res(e?{}:(v||{})); }); }); }
+    let lastCsErr="";
+    function rawGetItems(keys){ return new Promise(function(res){ if(!cs||!keys.length) return res({}); cs.getItems(keys,function(e,v){ if(e) lastCsErr="getItems: "+String(e); res(e?{}:(v||{})); }); }); }
     function rawSet(k,v){ return new Promise(function(res){ if(!cs) return res(false); guardKey(k); try{ cs.setItem(k,v,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
     function rawDel(k){ return new Promise(function(res){ if(!cs) return res(false); guardKey(k); try{ cs.removeItem(k,function(e,ok){ res(!e&&!!ok); }); }catch(err){ res(false); } }); }
-    function rawKeys(){ return new Promise(function(res){ if(!cs) return res(null); try{ cs.getKeys(function(e,k){ res(e?null:(k||[])); }); }catch(err){ res(null); } }); }
+    function rawKeys(){ return new Promise(function(res){ if(!cs) return res(null); try{ cs.getKeys(function(e,k){ if(e) lastCsErr="getKeys: "+String(e); res(e?null:(k||[])); }); }catch(err){ lastCsErr="getKeys: "+String(err&&err.message||err); res(null); } }); }
     // логический слой: приложение работает с именами без префикса ("cfg", "w_2026-09-28"), K() добавляется здесь
     function csGetItems(keys){
         return rawGetItems(keys.map(K)).then(function(o){ const r={}; for(const k of keys) if(o[K(k)]!=null) r[k]=o[K(k)]; return r; });
@@ -641,28 +645,40 @@
             res(window.confirm(msg));
         });
     }
+    // результат клонирования показывается всегда: успех — числа, отказ/ошибка — полный текст
+    function cloneDone(msg,isErr){
+        ui.cloneBusy=false; ui.cloneMsg=msg; ui.cloneIsErr=!!isErr;
+        if(isErr) ui.lastCloneError=msg;
+        render(); toast(msg);
+        if(isErr) hap("error");
+    }
     async function cloneFromProd(){
-        if(ENV!=="test"){ return; }
-        if(!cs){ toast("Облако Telegram недоступно"); return; }
-        if(syncState.busy){ toast("Идёт синхронизация, повторите позже"); return; }
-        syncState.busy=true;
+        if(ui.cloneBusy) return;
+        ui.cloneBusy=true; ui.cloneMsg="Копирование…"; ui.cloneIsErr=false; render();
+        let ownBusy=false;
         try{
+            if(ENV!=="test"){ cloneDone("Клонирование доступно только в test",true); return; }
+            if(!cs){ cloneDone("Ошибка: CloudStorage недоступен (открыто не в Telegram или версия клиента ниже 6.9). См. «Диагностика».",true); return; }
+            if(syncState.busy){ cloneDone("Идёт синхронизация с облаком, повторите через несколько секунд",true); return; }
+            syncState.busy=true; ownBusy=true;
             // 1. чтение: все ключи без префикса tst_ (в них ничего не пишем)
+            lastCsErr="";
             const all=await rawKeys();
-            if(all===null){ toast("Не удалось прочитать список ключей"); return; }
+            if(all===null){ cloneDone("Ошибка: не удалось прочитать список ключей CloudStorage"+(lastCsErr?" — "+lastCsErr:""),true); return; }
             const prod=all.filter(function(k){ return k.indexOf(KP)!==0; });
             const mine=all.filter(function(k){ return k.indexOf(KP)===0; });
-            if(!prod.length){ toast("Основные данные не найдены"); return; }
+            if(!prod.length){ cloneDone("Основные данные не найдены: в CloudStorage нет ключей без префикса «"+KP+"» (всего ключей: "+all.length+"). Если данные в основной версии есть, проверьте, что test открыт тем же ботом, — см. «Диагностика».",true); return; }
             // лимит CloudStorage: 1024 ключа на бота и пользователя
-            if(prod.length*2>=1000){ toast("Слишком много ключей ("+prod.length+"): копия в тест не поместится в лимит 1024"); return; }
+            if(prod.length*2>=1000){ cloneDone("Отказ: слишком много ключей ("+prod.length+"), копия в тест не поместится в лимит 1024 ключа (нужно: прод-ключи × 2 < 1000)",true); return; }
             const items={};
             for(let i=0;i<prod.length;i+=50){
-                const part=prod.slice(i,i+50), got=await rawGetItems(part);
-                for(const k of part){ if(got[k]==null){ toast("Не удалось прочитать данные, копирование отменено"); return; } items[k]=got[k]; }
+                const part=prod.slice(i,i+50); lastCsErr="";
+                const got=await rawGetItems(part);
+                for(const k of part){ if(got[k]==null){ cloneDone("Ошибка: не удалось прочитать значение ключа «"+k+"»"+(lastCsErr?" — "+lastCsErr:"")+". Копирование отменено, тестовые данные не тронуты.",true); return; } items[k]=got[k]; }
             }
             // 2. подтверждение, если тестовые данные уже есть
             const hasTestData=mine.some(function(k){ return k.indexOf(KP+"w_")===0; })||!!data.cfg.cycle.anchorDate;
-            if(hasTestData && !(await askConfirm("Перезаписать тестовые данные копией основных?"))) return;
+            if(hasTestData && !(await askConfirm("Перезаписать тестовые данные копией основных?"))){ cloneDone("Отменено: тестовые данные не изменены",false); return; }
             // 3. снимок текущих тестовых данных, удаление tst_*, запись копии с префиксом
             try{ lsSet("preclone", JSON.stringify(data)); }catch(e){}
             for(const k of mine) await rawDel(k);
@@ -672,11 +688,71 @@
             data=normalizeData(cloudObjFromItems(prod,items));
             saveCache(); applyMigrations();
             const nW=prod.filter(function(k){return k.indexOf("w_")===0;}).length, nT=prod.filter(function(k){return k.indexOf("tpl_")===0;}).length;
-            ui.cloneMsg="Скопировано: тренировок "+nW+", шаблонов "+nT+", ключей "+prod.length+(failed?" (ошибок записи: "+failed+")":"");
             syncState.last=new Date(); syncState.count=prod.length;
-            curDate=toKey(new Date()); render(); hap("ok"); toast(ui.cloneMsg);
-        }catch(e){ toast("Копирование не удалось: "+(e&&e.message||e)); }
-        finally{ syncState.busy=false; }
+            curDate=toKey(new Date());
+            const msg="Скопировано: тренировок "+nW+", шаблонов "+nT+", ключей "+prod.length+(failed?" (ошибок записи: "+failed+")":"");
+            if(failed) cloneDone(msg,true); else { cloneDone(msg,false); hap("ok"); }
+        }catch(e){ cloneDone("Ошибка копирования: "+(e&&(e.message||e)||"неизвестная")+(lastCsErr?" ("+lastCsErr+")":""),true); }
+        finally{ if(ownBusy) syncState.busy=false; ui.cloneBusy=false; }
+    }
+    function cloneCardHtml(){
+        return '<div class="card full" style="width:100%">'
+            +'<div class="sec-label" style="margin-top:0">Тестовая среда <span class="env-badge">TEST</span></div>'
+            +'<div class="note" style="margin-top:0">Ключи хранилища с префиксом «'+KP+'». Основные данные не изменяются.</div>'
+            +'<button class="wide-btn" data-act="cloneProd"'+(ui.cloneBusy?' disabled':'')+'>'+ICON_SYNC+' Скопировать данные из основной версии</button>'
+            +'<button class="wide-btn" data-act="diagOpen">'+ICON_INFO+' Диагностика</button>'
+            +(ui.cloneMsg?'<div class="note'+(ui.cloneIsErr?' res-err':'')+'" style="user-select:text">'+esc(ui.cloneMsg)+'</div>':'')
+            +'</div>';
+    }
+
+    // ============ test: экран «Диагностика» ============
+    function withTimeout(promise,ms,label){
+        return Promise.race([promise,new Promise(function(res){ setTimeout(function(){ res({err:label+": нет ответа за "+ms/1000+" с"}); },ms); })]);
+    }
+    async function collectDiag(){
+        const d={ env:ENV, kp:KP, href:location.href, hasTg:!!tg, platform:null, version:null, v69:null, initData:false, userId:null, hasCS:false, csUsed:!!cs, keys:null, keysErr:null };
+        try{
+            if(tg){
+                d.platform=tg.platform||null; d.version=tg.version||null;
+                try{ d.v69=tg.isVersionAtLeast?tg.isVersionAtLeast("6.9"):"isVersionAtLeast отсутствует"; }catch(e){ d.v69="ошибка: "+e.message; }
+                d.initData=!!(tg.initData&&tg.initData.length);
+                d.userId=(tg.initDataUnsafe&&tg.initDataUnsafe.user&&tg.initDataUnsafe.user.id)||null;
+                d.hasCS=!!tg.CloudStorage;
+            }
+        }catch(e){ d.keysErr="сбор данных Telegram: "+(e&&e.message||e); }
+        if(tg&&tg.CloudStorage){
+            const r=await withTimeout(new Promise(function(res){
+                try{ tg.CloudStorage.getKeys(function(e,k){ res(e?{err:String(e)}:{keys:k||[]}); }); }
+                catch(err){ res({err:String(err&&err.message||err)}); }
+            }),8000,"getKeys");
+            if(r.err) d.keysErr=r.err; else d.keys=r.keys;
+        } else if(!d.keysErr) d.keysErr="CloudStorage недоступен";
+        ui.diagData=d;
+    }
+    function diagReportText(){
+        const d=ui.diagData; if(!d) return "Сбор данных…";
+        const L=[];
+        L.push("Gym Tracker v"+APP_VERSION+" — диагностика");
+        L.push("ENV: "+d.env+"   KP: \""+d.kp+"\"");
+        L.push("location.href: "+d.href);
+        L.push("Telegram.WebApp: "+(d.hasTg?"есть":"нет"));
+        L.push("platform: "+d.platform+"   version: "+d.version+"   isVersionAtLeast('6.9'): "+d.v69);
+        L.push("initData: "+(d.initData?"есть":"пусто")+"   initDataUnsafe.user.id: "+(d.userId||"нет"));
+        L.push("Telegram.WebApp.CloudStorage: "+(d.hasCS?"есть":"нет")+"   используется приложением: "+(d.csUsed?"да":"нет"));
+        if(d.keys){
+            const pref=d.keys.filter(function(k){ return k.indexOf("tst_")===0; }).length;
+            L.push("CloudStorage.getKeys: всего "+d.keys.length+", без префикса tst_: "+(d.keys.length-pref)+", с префиксом tst_: "+pref);
+            L.push("первые 10 ключей: "+(d.keys.slice(0,10).join(", ")||"—"));
+        } else L.push("CloudStorage.getKeys: ОШИБКА — "+d.keysErr);
+        L.push("последняя ошибка клонирования: "+(ui.lastCloneError||"нет"));
+        return L.join("\n");
+    }
+    function diagPageHtml(){
+        return (ENV==="test"?'<div class="env-row"><span class="env-badge">TEST</span></div>':'')
+            +'<div class="sec-label">Диагностика</div><div class="card"><div class="diag-pre">'+esc(diagReportText())+'</div>'
+            +'<button class="wide-btn primary" data-act="diagCopy">'+ICON_CLIPBOARD+' Скопировать отчёт</button>'
+            +'<button class="wide-btn" data-act="diagOpen">'+ICON_SYNC+' Обновить</button>'
+            +'<button class="wide-btn" data-act="diagClose">Назад</button></div>';
     }
 
     async function cloudPushAll(){
@@ -1443,6 +1519,7 @@
     const ICON_TIMER=svgIcon('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>');
     const ICON_CLIPBOARD=svgIcon('<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/>');
     const ICON_DOWNLOAD=svgIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
+    const ICON_INFO=svgIcon('<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>');
     const ICON_UPLOAD=svgIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>');
     const ICON_SYNC=svgIcon('<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>');
     const ICON_CHART=svgIcon('<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>');
@@ -1802,13 +1879,7 @@
         const d=new Date(iso);
         return d.toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric"})+' '+d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
     }
-    function testSectionHtml(){
-        return '<div class="sec-label">Тестовая среда <span class="env-badge">TEST</span></div><div class="card">'
-            +'<div class="note" style="margin-top:0">Ключи хранилища с префиксом «'+KP+'». Основные данные не изменяются.</div>'
-            +'<button class="wide-btn" data-act="cloneProd">'+ICON_SYNC+' Скопировать данные из основной версии</button>'
-            +(ui.cloneMsg?'<div class="note">'+esc(ui.cloneMsg)+'</div>':'')
-            +'</div>';
-    }
+    function testSectionHtml(){ return cloneCardHtml(); }
     function backupSectionHtml(){
         const lb=fmtBackupDate(data.cfg.lastBackup);
         let h=(ENV==="test"?testSectionHtml():'')+'<div class="sec-label">Резервная копия</div><div class="card">'
@@ -1967,15 +2038,13 @@
     function renderSetup(){
         document.getElementById("tabbar").style.display="none";
         if(ui.setupStep!==2){
-            app.innerHTML='<div class="setup">'+(ENV==="test"?'<div class="env-row"><span class="env-badge">TEST</span></div>':'')+'<div class="card">'
+            app.innerHTML='<div class="setup">'+(ENV==="test"?'<div class="env-row" style="align-self:flex-end"><span class="env-badge">TEST</span></div>'+cloneCardHtml():'')+'<div class="card">'
                 +'<div style="font-weight:800; font-size:17px; margin-bottom:10px">'+ICON_DUMBBELL+' Gym Tracker</div>'
                 +'<p>Цикл по умолчанию: 2 рабочие недели, потом 1 неделя отдыха (поменять можно в настройках). Укажи дату начала первой рабочей недели.</p>'
                 +'<input type="date" id="startInput" value="'+(ui.setupDate||toKey(new Date()))+'" style="margin:10px 0 14px">'
-                +'<button class="wide-btn primary" data-act="setupNext">Далее</button></div>'
-                +(ENV==="test"?'<div class="card" style="margin-top:12px"><button class="wide-btn" style="margin-top:0" data-act="cloneProd">'+ICON_SYNC+' Скопировать данные из основной версии</button>'+(ui.cloneMsg?'<div class="note">'+esc(ui.cloneMsg)+'</div>':'')+'</div>':'')
-                +'</div>';
+                +'<button class="wide-btn primary" data-act="setupNext">Далее</button></div></div>';
         } else {
-            app.innerHTML='<div class="setup">'+(ENV==="test"?'<div class="env-row"><span class="env-badge">TEST</span></div>':'')+'<div class="card">'
+            app.innerHTML='<div class="setup">'+(ENV==="test"?'<div class="env-row" style="align-self:flex-end"><span class="env-badge">TEST</span></div>'+cloneCardHtml():'')+'<div class="card">'
                 +'<div style="font-weight:800; font-size:17px; margin-bottom:10px">Свои шаблоны</div>'
                 +'<p>Вставь программу текстом — по строке на упражнение, например:<br>'
                 +'<span style="color:var(--dim)">Жимовая<br>1. Жим лёжа 3х8-12<br>2. Сведения 2х10-15</span><br>'
@@ -1987,6 +2056,7 @@
     }
 
     function render(){
+        if(ENV==="test"&&ui.diag){ document.getElementById("tabbar").style.display="none"; app.innerHTML=diagPageHtml(); return; }
         if(!data.cfg.cycle.anchorDate){ renderSetup(); return; }
         document.getElementById("tabbar").style.display="";
         const tb=document.getElementById("tabbar");
@@ -2477,6 +2547,11 @@
                 break;
             }
             case "cloneProd": cloneFromProd(); break;
+            case "diagOpen": if(ENV!=="test") break; ui.diag=true; ui.diagData=null; render(); collectDiag().then(render); break;
+            case "diagClose": ui.diag=false; render(); break;
+            case "diagCopy":
+                copyToClipboard(diagReportText()).then(function(){ toast("Отчёт скопирован"); }).catch(function(){ toast("Не удалось скопировать — выделите текст отчёта вручную"); });
+                break;
             case "backupCopy":{
                 const dump=buildBackupDump();
                 copyToClipboard(JSON.stringify(dump)).then(function(){

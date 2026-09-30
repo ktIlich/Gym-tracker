@@ -34,6 +34,7 @@ MOCK = """
   };
   window.__toasts = [];
   window.Telegram = { WebApp: { ready(){}, expand(){}, isVersionAtLeast: () => true, disableVerticalSwipes(){},
+    platform: 'ios', version: '8.0', initData: 'user=%7B%22id%22%3A4242%7D', initDataUnsafe: { user: { id: 4242 } },
     colorScheme: 'dark', CloudStorage: cs, showConfirm(msg, cb){ window.__confirms = (window.__confirms||[]).concat([msg]); cb(true); },
     HapticFeedback: { impactOccurred(){}, notificationOccurred(){} } } };
 })();
@@ -215,6 +216,58 @@ async def main():
             await t.evaluate("MIGRATIONS.length=0")
             check("миграции: без миграций migrateAll — no-op и без снапшота", await t.evaluate("(()=>{const r=migrateAll({cfg:{},templates:[],log:{a:{exercises:[{name:'x'}]}}}); return r.snapshot===null&&!r.days.length;})()"))
             check("миграции: cfg.schema — информационная метка (=1 при APP_SCHEMA=1)", await t.evaluate("APP_SCHEMA===1 && normalizeData({cfg:{}}).cfg.schema===1"))
+
+            # ---------- диагностика и видимый результат клонирования ----------
+            ctx2 = await browser.new_context(viewport={"width": 390, "height": 800})
+            await ctx2.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE)
+            await ctx2.expose_binding("__cs", cs_handler)
+            await ctx2.add_init_script(MOCK)
+            STORE.clear(); STORE.update(copy.deepcopy(PROD0))
+            f, flogs = await open_page(ctx2, "/test/index.html")
+            geo = await f.evaluate("""(()=>{ const c=document.querySelector('[data-act=cloneProd]').closest('.card').getBoundingClientRect();
+                const w=[...document.querySelectorAll('.setup .card')].find(x=>x.querySelector('[data-act=setupNext]')).getBoundingClientRect();
+                return {cw:c.width, ctop:c.top, wtop:w.top, ww:w.width, vw:innerWidth}; })()""")
+            check("setup: карточка клонирования выше мастера и не уже его (не сосед в ряду)", geo["ctop"] < geo["wtop"] and geo["cw"] >= geo["ww"] and geo["cw"] > 340, geo)
+            check("setup: кнопка «Диагностика» доступна из мастера", await f.locator('[data-act="diagOpen"]').count() == 1)
+            await f.click('[data-act="diagOpen"]'); await f.wait_for_timeout(600)
+            rep_text = await f.evaluate("document.querySelector('.diag-pre').textContent")
+            for needle in ["ENV: test", 'KP: "tst_"', "location.href: http://localhost:8765/test/", "platform: ios", "version: 8.0",
+                           "isVersionAtLeast('6.9'): true", "initData: есть", "user.id: 4242", "Telegram.WebApp.CloudStorage: есть",
+                           "без префикса tst_: 7", "первые 10 ключей:", "последняя ошибка клонирования: нет"]:
+                check("диагностика: отчёт содержит «%s»" % needle, needle in rep_text, rep_text)
+            await f.click('[data-act="diagCopy"]'); await f.wait_for_timeout(400)
+            clip = await f.evaluate("navigator.clipboard.readText()")
+            check("диагностика: «Скопировать отчёт» кладёт весь текст в буфер", clip.replace(chr(13)+chr(10), chr(10)) == rep_text and "ENV: test" in clip, repr(clip)+" ||| "+repr(rep_text))
+            await f.click('[data-act="diagClose"]'); await f.wait_for_timeout(200)
+            check("диагностика: «Назад» возвращает в мастер", await f.locator('[data-act="setupNext"]').count() == 1)
+            # ошибка чтения ключей: текст ошибки виден, попадает в диагностику
+            await f.evaluate("window.__origGetKeys=Telegram.WebApp.CloudStorage.getKeys; Telegram.WebApp.CloudStorage.getKeys=cb=>cb('BOOM_KEYS'); 0")
+            await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(500)
+            msg = await f.evaluate("document.querySelector('.res-err')?.textContent||''")
+            check("клон: при ошибке getKeys виден её текст", "BOOM_KEYS" in msg, msg)
+            await f.click('[data-act="diagOpen"]'); await f.wait_for_timeout(600)
+            rep_text = await f.evaluate("document.querySelector('.diag-pre').textContent")
+            check("диагностика: getKeys ошибка и последняя ошибка клонирования в отчёте", "getKeys: ОШИБКА — BOOM_KEYS" in rep_text and "BOOM_KEYS" in rep_text.split("последняя ошибка клонирования:")[1], rep_text)
+            await f.click('[data-act="diagClose"]'); await f.evaluate("Telegram.WebApp.CloudStorage.getKeys=window.__origGetKeys; 0")
+            # нет прод-данных
+            saved = {k: v for k, v in STORE.items() if not k.startswith("tst_")}
+            for k in list(saved): STORE.pop(k)
+            await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(500)
+            msg = await f.evaluate("document.querySelector('.res-err')?.textContent||''")
+            check("клон: нет прод-данных → явное сообщение", "Основные данные не найдены" in msg, msg)
+            STORE.update(saved)
+            # успех виден на экране
+            await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(1500)
+            check("клон: итог виден на экране (тренировок 3, шаблонов 3, ключей 7)", await f.evaluate("document.body.innerText.includes('Скопировано: тренировок 3, шаблонов 3, ключей 7')"))
+            # отмена подтверждения тоже сообщает результат
+            await f.evaluate("Telegram.WebApp.showConfirm=(m,cb)=>cb(false); 0")
+            await f.click('button[data-tab="set"]'); await f.wait_for_timeout(300)
+            check("настройки: есть «Диагностика»", await f.locator('[data-act="diagOpen"]').count() == 1)
+            await f.click('[data-act="cloneProd"]'); await f.wait_for_timeout(800)
+            check("клон: отмена → сообщение «Отменено»", await f.evaluate("document.body.innerText.includes('Отменено: тестовые данные не изменены')"))
+            check("клон: прод-ключи по-прежнему не тронуты", {k: v for k, v in STORE.items() if not k.startswith("tst_")} == PROD0)
+            check("диагностика/клон: нет pageerror", not [l for l in flogs if l.startswith("pageerror")], flogs[:3])
+            await f.screenshot(path=os.path.join(os.environ.get("TEMP", "."), "gt_diag.png"))
 
             # ---------- статический контроль ----------
             src = open(REPO+"/test/index.html", encoding="utf-8").read()
