@@ -1,0 +1,246 @@
+import os
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+import asyncio, json, subprocess, sys, time, copy
+from playwright.async_api import async_playwright
+
+BASE = "http://localhost:8765"
+RESULTS = []
+def check(name, cond, extra=""):
+    RESULTS.append((name, bool(cond), extra))
+    print(("PASS " if cond else "FAIL ") + name + (("  -> " + str(extra)) if (extra and not cond) else ""))
+
+# ---- «облако Telegram» на стороне Python: общее для всех страниц, с журналом записей ----
+STORE = {}
+WRITES = []   # (op, key)
+
+def seed_prod():
+    STORE.clear()
+    STORE["cfg"] = json.dumps({"cycle": {"workWeeks": 2, "restWeeks": 1, "anchorDate": "2026-07-13"}, "up": 1000, "accent": "#ff9f0a"})
+    for i in range(3):
+        STORE["tpl_t%d" % i] = json.dumps({"id": "t%d" % i, "name": "Шаблон %d" % i, "title": "T%d" % i, "up": 1,
+                                             "blocks": [{"type": "single", "items": [{"name": "Жим", "plan": "3х8-12"}]}]})
+    for d in ["2026-09-21", "2026-09-23", "2026-09-28"]:
+        STORE["w_" + d] = json.dumps({"title": "T0", "up": 5, "weekType": "work",
+                                       "exercises": [{"id": "e" + d, "name": "Жим (3х8-12)", "sets": [{"w": 50, "r": 10}]}]})
+
+MOCK = """
+(() => {
+  const call = (op, a) => window.__cs(op, JSON.stringify(a)).then(r => JSON.parse(r));
+  const cs = {
+    getKeys: cb => call('getKeys', []).then(v => cb(null, v)),
+    getItems: (keys, cb) => call('getItems', [keys]).then(v => cb(null, v)),
+    setItem: (k, v, cb) => call('setItem', [k, v]).then(v => cb(null, v)),
+    removeItem: (k, cb) => call('removeItem', [k]).then(v => cb(null, v)),
+  };
+  window.__toasts = [];
+  window.Telegram = { WebApp: { ready(){}, expand(){}, isVersionAtLeast: () => true, disableVerticalSwipes(){},
+    colorScheme: 'dark', CloudStorage: cs, showConfirm(msg, cb){ window.__confirms = (window.__confirms||[]).concat([msg]); cb(true); },
+    HapticFeedback: { impactOccurred(){}, notificationOccurred(){} } } };
+})();
+"""
+
+async def cs_handler(source, op, args_json):
+    a = json.loads(args_json)
+    if op == "getKeys":
+        return json.dumps(list(STORE.keys()))
+    if op == "getItems":
+        return json.dumps({k: STORE.get(k, "") for k in a[0]})
+    if op == "setItem":
+        WRITES.append(("set", a[0])); STORE[a[0]] = a[1]; return "true"
+    if op == "removeItem":
+        WRITES.append(("del", a[0])); STORE.pop(a[0], None); return "true"
+
+async def open_page(ctx, path, mock=True):
+    page = await ctx.new_page()
+    logs = []
+    page.on("pageerror", lambda e: logs.append("pageerror: %s" % e))
+    page.on("console", lambda m: logs.append("console.%s: %s" % (m.type, m.text)) if m.type == "error" else None)
+    await page.route("**/telegram.org/**", lambda r: r.abort())
+    await page.route("**/cdnjs.cloudflare.com/**", lambda r: r.abort())
+    await page.goto(BASE + path)
+    await page.wait_for_timeout(1200)
+    return page, logs
+
+async def main():
+    srv = subprocess.Popen([sys.executable, "-m", "http.server", "8765"], cwd=REPO,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.5)
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(channel="msedge", headless=True)
+            ctx = await browser.new_context(viewport={"width": 390, "height": 800})
+            await ctx.expose_binding("__cs", cs_handler)
+            await ctx.add_init_script(MOCK)
+
+            seed_prod()
+            PROD0 = copy.deepcopy(STORE)
+
+            # ---------- v2: боевая версия, ничего не должно измениться ----------
+            cache = {"cfg": json.loads(STORE["cfg"]), "templates": [json.loads(v) for k, v in STORE.items() if k.startswith("tpl_")],
+                     "log": {k[2:]: json.loads(v) for k, v in STORE.items() if k.startswith("w_")}}
+            await ctx.add_init_script("if(location.pathname.includes('/v2/')&&!localStorage.getItem('gt2:cache'))localStorage.setItem('gt2:cache',%s);" % json.dumps(json.dumps(cache)))
+            v2, v2logs = await open_page(ctx, "/v2/index.html")
+            check("v2: файл не изменён (нет ENV/KP)", await v2.evaluate("typeof ENV==='undefined'") and subprocess.run(["git","diff","--quiet","--","v2"],cwd=REPO).returncode==0)
+            check("v2: нет бейджа TEST", await v2.evaluate("!document.querySelector('.env-badge')"))
+            check("v2: прод-данные не изменились после открытия", STORE == PROD0, WRITES)
+            LS_NONTST = "JSON.stringify(Object.fromEntries(Object.entries(localStorage).filter(([k])=>!k.startsWith('tst_'))))"
+            v2_ls_before = await v2.evaluate(LS_NONTST)
+
+            # ---------- test ----------
+            WRITES.clear()
+            t, tlogs = await open_page(ctx, "/test/index.html")
+            check("test: ENV=test, KP=tst_", await t.evaluate("ENV==='test' && KP==='tst_' && K('w_2026-09-28')==='tst_w_2026-09-28'"))
+            check("test: бейдж TEST на экране первичной настройки", await t.evaluate("document.querySelector('.setup .env-badge')?.textContent==='TEST'"))
+            check("test: на первом экране (setup) есть кнопка клонирования", await t.locator('[data-act="cloneProd"]').count() == 1)
+            check("test: title содержит TEST", "TEST" in await t.title())
+            check("test: csKeys не видит прод-ключей", await t.evaluate("csKeys().then(k=>!k.includes('w_2026-09-28') && k.every(x=>!x.startsWith('tst_')))"))
+            check("test: при первом старте все записи с префиксом tst_", all(k.startswith("tst_") for _, k in WRITES) and len(WRITES) > 0, WRITES[:5])
+            prod_now = {k: v for k, v in STORE.items() if not k.startswith("tst_")}
+            check("test: прод-ключи не изменены при первом старте", prod_now == PROD0)
+            ls = await t.evaluate("Object.keys(localStorage)")
+            check("test: свои ключи localStorage с префиксом tst_", "tst_gt2:cache" in ls, ls)
+            check("localStorage: не-tst ключи (v2) не изменились после старта test", await t.evaluate(LS_NONTST) == v2_ls_before)
+
+            # ---------- защита ----------
+            WRITES.clear(); snap = copy.deepcopy(STORE)
+            r = await t.evaluate("""(async()=>{ const out=[];
+                try{ await rawSet('cfg','HACK'); out.push('set-noerr'); }catch(e){ out.push('set:'+e.message); }
+                try{ await rawDel('w_2026-09-28'); out.push('del-noerr'); }catch(e){ out.push('del:'+e.message); }
+                try{ lsSet.call(null,'x','y'); out.push('ls-ok'); }catch(e){ out.push('ls:'+e.message); }
+                try{ guardKey('gt2:cache'); out.push('guard-noerr'); }catch(e){ out.push('guard:'+e.message); }
+                out.push(document.getElementById('toastMsg').textContent);
+                return out; })()""")
+            check("защита: rawSet прод-ключа бросает", r[0].startswith("set:Blocked"), r)
+            check("защита: rawDel прод-ключа бросает", r[1].startswith("del:Blocked"), r)
+            check("защита: тост о блокировке", "Попытка записи в боевые данные заблокирована" in r[-1], r)
+            check("защита: прод-ключ не изменился, запросов к облаку не было", STORE == snap and not WRITES, WRITES)
+            await t.evaluate("lsDel('x')")
+
+            # ---------- клонирование ----------
+            check("v2: кнопки клонирования нет", await v2.evaluate("!document.querySelector('[data-act=cloneProd]') && typeof cloneFromProd==='undefined'"))
+            WRITES.clear()
+            await t.evaluate("window.__confirms=[]")
+            await t.click('[data-act="cloneProd"]')   # с экрана первичной настройки
+            await t.wait_for_timeout(1500)
+            confirms = await t.evaluate("window.__confirms")
+            check("клон #1 (тестовых данных ещё нет): подтверждение не спрашивается", not confirms, confirms)
+            check("после клона: бейдж TEST в шапке", await t.evaluate("document.querySelector('header .env-badge')?.textContent==='TEST'"))
+            await t.click('button[data-tab="set"]'); await t.wait_for_timeout(300)
+            check("test: кнопка клонирования в настройках", await t.locator('[data-act="cloneProd"]').count() == 1)
+            WRITES.clear()
+            await t.click('[data-act="cloneProd"]'); await t.wait_for_timeout(1500)
+            confirms = await t.evaluate("window.__confirms")
+            check("клон #2 (тестовые данные есть): запрошено подтверждение", bool(confirms) and "Перезаписать" in confirms[0], confirms)
+            check("клон: все записи/удаления — только tst_", all(k.startswith("tst_") for _, k in WRITES) and len(WRITES) > 0, [w for w in WRITES if not w[1].startswith("tst_")])
+            check("клон: прод-ключи не тронуты", {k: v for k, v in STORE.items() if not k.startswith("tst_")} == PROD0)
+            copied = {k[4:]: v for k, v in STORE.items() if k.startswith("tst_")}
+            check("клон: tst_* == копия прода (ключи и значения)", copied == PROD0, (set(copied) ^ set(PROD0)))
+            msg = await t.evaluate("ui.cloneMsg")
+            check("клон: итог с числами (3 тренировки, 3 шаблона, 7 ключей)", "тренировок 3" in msg and "шаблонов 3" in msg and "ключей 7" in msg, msg)
+            check("клон: данные в приложении", await t.evaluate("Object.keys(data.log).length===3 && data.templates.length===3"))
+            check("клон: cfg.schema нормализован в 1", await t.evaluate("data.cfg.schema===1"))
+            check("клон: тест сохранил preclone в localStorage с префиксом", "tst_preclone" in await t.evaluate("Object.keys(localStorage)"))
+            await t.screenshot(path=os.path.join(os.environ.get("TEMP","."),"gt_shot.png"))
+
+            # правка в test не видна в v2
+            await t.evaluate("data.log['2026-09-28'].exercises[0].sets.push({w:99,r:9}); data.log['2026-09-28'].up=Date.now(); persistDay('2026-09-28')")
+            await t.wait_for_timeout(300)
+            check("правка в test: прод-ключ w_2026-09-28 не изменился", STORE["w_2026-09-28"] == PROD0["w_2026-09-28"])
+            check("правка в test: tst_w_2026-09-28 изменился", "99" in STORE["tst_w_2026-09-28"])
+            v2b, _ = await open_page(ctx, "/v2/index.html")
+            check("v2 (новая страница): подходов в 28.09 всё ещё 1", await v2b.evaluate("data.log['2026-09-28'].exercises[0].sets.length===1"))
+            check("после работы в test прод-ключи побайтно равны исходным", {k: v for k, v in STORE.items() if not k.startswith("tst_")} == PROD0)
+            check("localStorage: не-tst ключи не изменились за весь прогон", await t.evaluate(LS_NONTST) == v2_ls_before)
+
+            # wipe в test не трогает прод
+            WRITES.clear()
+            await t.evaluate("(async()=>{ const keys=await csKeys(); for(const k of keys) await csDel(k); })()")
+            await t.wait_for_timeout(500)
+            check("удаление в test (по списку csKeys) не задевает прод", {k: v for k, v in STORE.items() if not k.startswith("tst_")} == PROD0 and not any(k.startswith("tst_") for k in STORE))
+
+            # ---------- миграции (по записям) ----------
+            MIG = """window.__mig={id:'log-fields',
+                needs(r,kind){ return kind==='day' && (r.exercises||[]).some(e=>!e.base); },
+                run(r){ r.exercises.forEach(e=>{ if(!e.base) e.base=String(e.name).replace(/ \\(.*$/,''); }); r.up=(r.up||0)+12345; return r; }};
+                MIGRATIONS.push(window.__mig); 0"""
+            await t.evaluate(MIG)
+            OLD_DAY = {"title": "T0", "up": 777, "weekType": "work", "exercises": [{"id": "old1", "name": "Жим (3х8-12)", "sets": [{"w": 40, "r": 8}]}]}
+            # приёмка: старый день в облаке при cfg.schema=2 и новом cfg.up -> после слияния мигрирован и дописан в облако
+            cfgc = json.loads(STORE.get("tst_cfg", "{}") or "{}") if "tst_cfg" in STORE else {}
+            cfgc.setdefault("cycle", {"workWeeks": 2, "restWeeks": 1, "anchorDate": "2026-07-13"})
+            cfgc["schema"] = 2; cfgc["up"] = 9999999999999
+            STORE["tst_cfg"] = json.dumps(cfgc)
+            STORE["tst_w_2026-08-01"] = json.dumps(OLD_DAY)
+            await t.evaluate("cloudLoad()"); await t.wait_for_timeout(1500)
+            check("миграции: cfg.schema=2 не мешает — день из облака мигрирован в памяти", await t.evaluate("data.cfg.schema>=2 && data.log['2026-08-01'].exercises[0].base==='Жим'"))
+            cloud_day = json.loads(STORE["tst_w_2026-08-01"])
+            check("миграции: мигрированный день дописан в облако (base есть)", cloud_day["exercises"][0].get("base") == "Жим", cloud_day)
+            check("миграции: up дня не изменился (777)", cloud_day["up"] == 777 and await t.evaluate("data.log['2026-08-01'].up===777"), cloud_day.get("up"))
+            check("миграции: снапшот premig_<дата-время> сохранён в localStorage с префиксом", any(k.startswith("tst_premig_2") for k in await t.evaluate("Object.keys(localStorage)")))
+            check("миграции: грязный список очищен после записи в облако", await t.evaluate("getDirty().days.length===0"))
+            # идемпотентность
+            r = await t.evaluate("""(()=>{ const a=JSON.stringify(data); const r1=migrateAll(data); const b=JSON.stringify(data); const r2=migrateAll(data);
+                return {same:a===b&&b===JSON.stringify(data), n1:r1.days.length+r1.tpls.length, n2:r2.days.length, snap:r2.snapshot}; })()""")
+            check("миграции: повторный migrateAll ничего не меняет (JSON равен), снапшот не создаётся", r["same"] and r["n1"] == 0 and r["snap"] is None, r)
+            # решение не зависит от schema
+            r = await t.evaluate("""(()=>{ const d={cfg:{schema:99,up:1},templates:[],log:{'2026-01-01':{up:5,exercises:[{name:'A (3х5)'}]}}};
+                const res=migrateAll(d); return {days:res.days, base:d.log['2026-01-01'].exercises[0].base, up:d.log['2026-01-01'].up}; })()""")
+            check("миграции: schema=99 не отключает миграцию, up=5 сохранён", r["days"] == ["2026-01-01"] and r["base"] == "A" and r["up"] == 5, r)
+            # день без up
+            r = await t.evaluate("""(()=>{ const d={cfg:{},templates:[],log:{'2026-01-02':{exercises:[{name:'B'}]}}}; migrateAll(d); return 'up' in d.log['2026-01-02']; })()""")
+            check("миграции: у записи без up он не появляется", r is False, r)
+            # хранить три последних снапшота
+            await t.evaluate("""(async()=>{ for(let i=0;i<5;i++){ const d={cfg:{},templates:[],log:{['2026-02-0'+(i+1)]:{exercises:[{name:'C'+i}]}}}; migrateAll(d); await new Promise(r=>setTimeout(r,5)); } })()""")
+            snaps = await t.evaluate("Object.keys(localStorage).filter(k=>k.startsWith('tst_premig_'))")
+            check("миграции: хранятся только 3 последних снапшота", len(snaps) == 3, snaps)
+            check("миграции: снапшоты только с префиксом tst_ (нет premig_ без префикса)", not await t.evaluate("Object.keys(localStorage).some(k=>k.startsWith('premig_'))"))
+            # сбой одной записи не ломает остальные
+            r = await t.evaluate("""(()=>{ MIGRATIONS.push({id:'bad',needs:(r,k)=>k==='day'&&r.boom,run(){ throw new Error('x'); }});
+                const d={cfg:{},templates:[],log:{'2026-03-01':{boom:true,exercises:[]},'2026-03-02':{exercises:[{name:'Z'}]}}};
+                const res=migrateAll(d); MIGRATIONS.pop();
+                return {err:res.errors, okOther:d.log['2026-03-02'].exercises[0].base==='Z', bad:d.log['2026-03-01'].boom===true}; })()""")
+            check("миграции: сбой одной записи → она не тронута, остальные мигрированы", r["err"] == 1 and r["okOther"] and r["bad"], r)
+            # грязные записи переживают отказ облака
+            r = await t.evaluate("""(async()=>{ const orig=window.Telegram.WebApp.CloudStorage.setItem; cs.setItem=(k,v,cb)=>cb(new Error('offline'),false);
+                data.log['2026-04-01']={up:3,exercises:[{name:'Q'}]}; applyMigrations(); await new Promise(r=>setTimeout(r,300));
+                const dirtyOffline=getDirty().days.slice(); cs.setItem=orig; await flushDirty();
+                return {dirtyOffline, dirtyAfter:getDirty().days}; })()""")
+            check("миграции: при недоступном облаке запись остаётся «грязной», потом дописывается", r["dirtyOffline"] == ["2026-04-01"] and r["dirtyAfter"] == [], r)
+            check("миграции: после повторной отправки запись в облаке мигрирована", json.loads(STORE["tst_w_2026-04-01"])["exercises"][0].get("base") == "Q")
+            # другие точки входа: восстановление из JSON
+            r = await t.evaluate("""(()=>{ const dump={app:'gym-tracker',cfg:{cycle:{anchorDate:'2026-07-13'}},templates:[],log:{'2026-05-01':{up:8,exercises:[{name:'M (2х8)'}]}}};
+                applyBackupDump(dump,'merge'); const a=data.log['2026-05-01'].exercises[0].base;
+                applyBackupDump(dump,'replace'); const b=data.log['2026-05-01'].exercises[0].base; return [a,b,data.log['2026-05-01'].up]; })()""")
+            check("миграции: восстановление из JSON (merge и replace) мигрирует записи, up сохранён", r == ["M", "M", 8], r)
+            await t.evaluate("MIGRATIONS.length=0")
+            check("миграции: без миграций migrateAll — no-op и без снапшота", await t.evaluate("(()=>{const r=migrateAll({cfg:{},templates:[],log:{a:{exercises:[{name:'x'}]}}}); return r.snapshot===null&&!r.days.length;})()"))
+            check("миграции: cfg.schema — информационная метка (=1 при APP_SCHEMA=1)", await t.evaluate("APP_SCHEMA===1 && normalizeData({cfg:{}}).cfg.schema===1"))
+
+            # ---------- статический контроль ----------
+            src = open(REPO+"/test/index.html", encoding="utf-8").read()
+            import re
+            check("статика: нет localStorage.clear / removeItems", "localStorage.clear" not in src and "removeItems" not in src)
+            raw_ls = [m.start() for m in re.finditer(r"localStorage\.", src)]
+            check("статика: прямой localStorage только внутри lsGet/lsSet/lsDel/lsKeys", len(raw_ls) == 5, len(raw_ls))
+            check("статика: прямых cs.* нет вне raw-слоя", len(re.findall(r"\bcs\.(setItem|removeItem|getKeys|getItems)", src)) == 4)
+            check("статика: APP_VERSION 2.10.0", 'APP_VERSION="2.10.0"' in src)
+
+            # холодный старт в test без Telegram/облака не падает
+            plain = await browser.new_context(viewport={"width": 390, "height": 800})
+            pg = await plain.new_page(); errs = []
+            pg.on("pageerror", lambda e: errs.append(str(e)))
+            await pg.route("**/telegram.org/**", lambda r: r.abort()); await pg.route("**/cdnjs.cloudflare.com/**", lambda r: r.abort())
+            await pg.goto(BASE + "/test/index.html"); await pg.wait_for_timeout(800)
+            check("test в обычном браузере: без ошибок, бейдж виден", not errs and await pg.evaluate("!!document.querySelector('.env-badge')"), errs)
+            await pg.screenshot(path=os.path.join(os.environ.get("TEMP","."),"gt_shot.png"))
+
+            for name, logs in (("v2", v2logs), ("test", tlogs)):
+                check("консоль %s: нет pageerror" % name, not [l for l in logs if l.startswith("pageerror")], logs[:3])
+            await browser.close()
+    finally:
+        srv.terminate()
+    bad = [r for r in RESULTS if not r[1]]
+    print("\nИТОГО: %d/%d PASS" % (len(RESULTS) - len(bad), len(RESULTS)))
+    sys.exit(1 if bad else 0)
+
+asyncio.run(main())
