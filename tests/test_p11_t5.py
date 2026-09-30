@@ -67,7 +67,7 @@ async def main():
                 texts.append(await page.evaluate("document.querySelectorAll('.onb-card')[%d].querySelector('.onb-text').textContent" % i))
             check("5.3: заголовки пяти карточек", titles == ["Твой дневник тренировок", "Шаблоны", "Запись подхода", "Цикл и прогресс", "Резервная копия"], titles)
             check("5.3: тексты карточек 2–4 как в ТЗ", texts[1] == "Тренировочные дни собираются из упражнений и суперсетов. План пишется как 3х8-12, у упражнения могут быть варианты — например, блок или свободный вес."
-                  and texts[2] == "Следующий подход уже заполнен рекомендацией или прошлым результатом. ± меняют вес и повторы, галочка записывает. Цветной бейдж — рекомендация на сегодня."
+                  and texts[2] == "Следующий подход уже заполнен рекомендацией или прошлым результатом. ± меняют вес и повторы, галочка записывает. Цветной бейдж — рекомендация на сегодня. По «?» на каждой вкладке есть подсказки прямо на экране."
                   and texts[3] == "Рабочие недели и недели отдыха считаются автоматически, в неделю отдыха вес снижается сам. На вкладке «Прогресс» — графики, тоннаж и сравнение циклов.", texts[1:4])
             check("5.3: карточка 5 при пустом BACKUP_ENDPOINT — «Сохрани копию данных в настройках — JSON для восстановления. Приложение напомнит, если копия давно не делалась.»", texts[4] == "Сохрани копию данных в настройках — JSON для восстановления. Приложение напомнит, если копия давно не делалась.", texts[4])
             icons = await page.evaluate("[...document.querySelectorAll('.onb-card .onb-ic')].map(e=>!!e.querySelector('svg.icon')&&e.textContent.trim()==='')")
@@ -149,9 +149,12 @@ async def main():
             page, e4, _ = await open_page(browser)
             await page.goto(BASE + "/test/index.html"); await page.wait_for_timeout(2500)
             for _ in range(4): await page.click('[data-onb="next"]'); await page.wait_for_timeout(100)
-            await page.click('[data-onb="help"]'); await page.wait_for_timeout(300)
-            check("5.2: «Открыть справку» ставит флаг, закрывает приветствие и открывает справку с начала", await page.locator("#onb").count() == 0 and await page.evaluate("data.cfg.onboardingSeen") == 1
-                  and await page.locator("#helpOv").count() == 1 and await page.evaluate("[...document.querySelectorAll('#helpOv .help-body')].map(b=>b.dataset.sec)") == ["day"])
+            check("7: на последней карточке вторичная кнопка называется «Пройти тур»", await page.inner_text('[data-onb="help"]') == "Пройти тур")
+            await page.click('[data-onb="help"]'); await page.wait_for_timeout(400)
+            check("7: «Пройти тур» ставит флаг, закрывает приветствие и запускает тур по всем табам с «Сегодня»", await page.locator("#onb").count() == 0 and await page.evaluate("data.cfg.onboardingSeen") == 1
+                  and await page.locator("#tour").count() == 1 and await page.evaluate("[tour.mode, tour.cur.target, tour.steps.length, ui.tab]") == ["all", "week-badge", 37, "day"])
+            await page.click('#tour [data-t="skip"]'); await page.wait_for_timeout(200)
+            check("7: после выхода из тура приложение на реальных данных, приветствие не возвращается", await page.locator("#tour").count() == 0 and await page.locator("#onb").count() == 0 and await page.evaluate("TOUR_MODE") is False)
 
             # ---- карточка 5 при заданном сервере; reduced-motion
             seed_raw(dump)

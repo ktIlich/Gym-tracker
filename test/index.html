@@ -27,6 +27,7 @@
             --danger-bg:  color-mix(in srgb, var(--danger) 12%, transparent);
             /* линии графиков (первая — акцент) */
             --c2:#5ac8fa; --c3:#bf5af2; --c4:#30d158; --c5:#ff453a; --c6:#ffd60a;
+            --tour-bg:#f7f7f8; --tour-ink:#18181b; --tour-ink-2:#3f3f46; --tour-muted:#52525b; --tour-btn:#e4e4e7;
             --touch:max(44px,2.75rem); --touch-w:44px; --touch-2:max(52px,3.25rem);
             /* safe-area и высота viewport: переменные Telegram, для старых клиентов — env()/100vh; JS обновляет их по событиям без render() */
             --sa-top:var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px));
@@ -127,6 +128,21 @@
         .help-a{color:var(--text-muted); font-size:0.875rem; line-height:1.5; margin-top:2px}
         .help-ic{display:inline-block; color:var(--text)}
         .help-ic svg.icon{width:1rem; height:1rem; vertical-align:-0.1875rem}
+        #tour{position:fixed; inset:0; z-index:2700; touch-action:none; user-select:none; -webkit-user-select:none}
+        .tour-banner{position:absolute; top:calc(var(--csa-top) + var(--sa-top) + 0.25rem); left:calc(var(--sa-left) + 0.375rem); z-index:3; padding:0.25rem 0.625rem; border-radius:1rem; background:var(--accent); color:var(--on-accent); font-size:0.75rem; font-weight:700; max-width:calc(100vw - 6rem)}
+        .tour-hole{position:absolute; z-index:1; pointer-events:none; box-sizing:border-box; border-radius:0.75rem; outline:2px solid var(--accent); box-shadow:0 0 0 9999px color-mix(in srgb, var(--black) 72%, transparent); transition:left .2s ease, top .2s ease, width .2s ease, height .2s ease}
+        .tour-tip{position:absolute; z-index:2; box-sizing:border-box; width:20rem; max-width:calc(100vw - 1.5rem); padding:0.875rem; border-radius:0.875rem; background:var(--tour-bg); color:var(--tour-ink); box-shadow:0 0.5rem 2rem color-mix(in srgb, var(--black) 45%, transparent); transition:left .2s ease, top .2s ease}
+        #tour.noanim .tour-hole, #tour.noanim .tour-tip{transition:none}
+        .tour-title{font-weight:800; font-size:1rem; padding-right:5.5rem; line-height:1.25}
+        .tour-text{font-size:0.875rem; line-height:1.45; margin-top:0.25rem; color:var(--tour-ink-2)}
+        .tour-skip{position:absolute; top:0.25rem; right:0.375rem; min-height:var(--touch); padding:0 0.5rem; font-size:0.8125rem; color:var(--tour-muted)}
+        .tour-foot{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.5rem; margin-top:0.75rem}
+        .tour-count{font-size:0.75rem; color:var(--tour-muted)}
+        .tour-btns{display:flex; flex-wrap:wrap; gap:0.375rem; justify-content:flex-end}
+        .tour-btns button{min-height:var(--touch); padding:0 0.875rem; border-radius:0.625rem; background:var(--tour-btn); color:var(--tour-ink); font-weight:600; font-size:0.875rem}
+        .tour-btns button.primary{background:var(--accent); color:var(--on-accent)}
+        .tour-arrow{position:absolute; width:0.875rem; height:0.875rem; background:var(--tour-bg); transform:translateX(-50%) rotate(45deg); pointer-events:none}
+        @media (prefers-reduced-motion: reduce){ .tour-hole,.tour-tip{transition:none !important} }
         #onb{position:fixed; inset:0; z-index:2600; background:var(--bg); display:flex; flex-direction:column;
             padding:calc(var(--sa-top) + var(--csa-top) + 0.5rem) max(1rem, var(--sa-right)) calc(1rem + var(--sa-bottom) + var(--csa-bottom)) max(1rem, var(--sa-left))}
         .onb-top{display:flex; justify-content:flex-end; min-height:var(--touch)}
@@ -382,7 +398,7 @@
 </head>
 <body>
 <div id="app"></div>
-<nav class="tabbar" id="tabbar">
+<nav class="tabbar" id="tabbar" data-tour="tabbar">
     <button data-tab="prg"><span class="ti"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>Прогресс</button>
     <button data-tab="cal"><span class="ti"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>Календарь</button>
     <button data-tab="day"><span class="ti"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.5" height="10" rx="1"/><rect x="15.5" y="7" width="2.5" height="10" rx="1"/><line x1="8.5" y1="12" x2="15.5" y2="12"/></svg></span>Сегодня</button>
@@ -412,11 +428,13 @@
     const DEFAULT_THEME={base:"tg",accent:"#ff9f0a",accent2:null,custom:{}};
     // THEME-DATA-END
     // ============ среда: test / prod, изоляция ключей ============
+    let TOUR_MODE=false, tour=null;   // тур по интерфейсу: на демо-данных, любая запись в хранилище запрещена
     const ENV = location.pathname.includes("/test/") ? "test" : "prod";
     const KP  = ENV === "test" ? "tst_" : "";   // префикс ключей CloudStorage и localStorage
     const K   = function(name){ return KP + name; };  // tpl_x → tst_tpl_x, w_2026-09-28 → tst_w_2026-09-28
     // защита: в test любая запись/удаление ключа без префикса tst_ запрещена
     function guardKey(fullKey){
+        if(TOUR_MODE) throw new Error("Blocked write in TOUR_MODE: "+fullKey);
         if(ENV==="test" && String(fullKey).indexOf("tst_")!==0){
             try{ toast("Попытка записи в боевые данные заблокирована"); }catch(e){}
             throw new Error("Blocked write to prod key: "+fullKey);
@@ -727,7 +745,7 @@
     }
 
     // ============ storage: localStorage cache + Telegram CloudStorage ============
-    function saveCache(){ try{ lsSet(CACHE_KEY, JSON.stringify(data)); }catch(e){} maybeSnapshot(); }
+    function saveCache(){ if(TOUR_MODE) return; try{ lsSet(CACHE_KEY, JSON.stringify(data)); }catch(e){} maybeSnapshot(); }
     function loadCache(){ try{ const r=lsGet(CACHE_KEY); if(r){ data=normalizeData(JSON.parse(r)); return true; } }catch(e){} return false; }
 
     // ============ backup / restore ============
@@ -839,10 +857,10 @@
 
     let warnedCloud=false;
     function csSetWarn(k,v){ csSet(k,v).then(function(ok){ if(cs&&!ok&&!warnedCloud){ warnedCloud=true; toast("Запись в облако не прошла ("+k+")"); } }); }
-    function persistDay(k){ saveCache(); if(data.log[k]) csSetWarn("w_"+k, JSON.stringify(data.log[k])); else csDel("w_"+k); }
-    function persistCfg(){ data.cfg.up=Date.now(); saveCache(); csSetWarn("cfg", JSON.stringify(data.cfg)); }
-    function persistTpl(t){ t.up=Date.now(); saveCache(); csSetWarn("tpl_"+t.id, JSON.stringify(t)); }
-    function unpersistTpl(id){ saveCache(); csDel("tpl_"+id); }
+    function persistDay(k){ if(TOUR_MODE) return; saveCache(); if(data.log[k]) csSetWarn("w_"+k, JSON.stringify(data.log[k])); else csDel("w_"+k); }
+    function persistCfg(){ if(TOUR_MODE) return; data.cfg.up=Date.now(); saveCache(); csSetWarn("cfg", JSON.stringify(data.cfg)); }
+    function persistTpl(t){ if(TOUR_MODE) return; t.up=Date.now(); saveCache(); csSetWarn("tpl_"+t.id, JSON.stringify(t)); }
+    function unpersistTpl(id){ if(TOUR_MODE) return; saveCache(); csDel("tpl_"+id); }
 
     // ============ миграции данных (по записям, а не по cfg.schema) ============
     // Состояние миграции определяется самими записями: cfg может быть новее отдельных дней (слияние, старый клиент).
@@ -905,7 +923,7 @@
     }
     let flushing=false;
     async function flushDirty(){
-        if(flushing) return; flushing=true;
+        if(flushing||TOUR_MODE) return; flushing=true;
         try{
             const dirty=getDirty();
             if(!dirty.days.length&&!dirty.tpls.length) return;
@@ -1197,7 +1215,7 @@
         render();
     }
     async function cloudLoad(){
-        if(!cs||syncState.busy||ui.cloneIncomplete) return;
+        if(!cs||syncState.busy||ui.cloneIncomplete||TOUR_MODE) return;
         syncState.busy=true;
         try{
             const keys=await csKeys();
@@ -1205,6 +1223,7 @@
             syncState.verified=true;
             if(!keys.length){ maybeCreateDefaults(); await cloudPushAll(); syncState.last=new Date(); syncState.count=1+data.templates.length+Object.keys(data.log).length; syncState.busy=false; render(); return; }
             const items=await csGetItems(keys);
+            if(TOUR_MODE) return;   // тур начался во время загрузки: демо-данные не трогаем, в следующий раз
             const cloud=cloudObjFromItems(keys,items);
             // слияние по меткам времени .up: новее — побеждает; чего нет в облаке — доливаем
             const before=JSON.stringify(data);
@@ -1575,7 +1594,7 @@
         const rec=entries.reduce(function(a,b){return b.w>a.w?b:a;});
         h+='<div class="card">'+svg;
         if(series.length>1){
-            h+='<div class="cal-legend series-legend" style="margin-top:0.375rem">';
+            h+='<div class="cal-legend series-legend" data-tour="prog-lines" style="margin-top:0.375rem">';
             for(const sr of series) h+='<span><i style="background:'+sr.color+'"></i>'+esc(sr.label)+'</span>';
             h+='</div>';
         }
@@ -1685,7 +1704,7 @@
             const svg=chartSvg(chartPoints,{ yUnit:"кг", yLabel:fmtTonnageShort, padL:32,
                 pointColor:function(d){ return dayWeekType(d.k)==="rest"?"var(--accent-2)":"var(--accent)"; },
                 pointHollow:function(d){ return dayWeekType(d.k)==="rest"; } });
-            h+='<div class="sec-label">Тоннаж по тренировкам</div><div class="card">'+svg
+            h+='<div class="sec-label">Тоннаж по тренировкам</div><div class="card" data-tour="prog-tonnage">'+svg
                 +'<div class="cal-legend" style="margin-top:0.375rem"><span><i style="background:var(--accent)"></i>рабочая неделя</span>'
                 +'<span><i style="background:var(--accent-2)"></i>неделя отдыха</span></div></div>';
 
@@ -1703,7 +1722,7 @@
             h+='</div>';
 
             if(s.cycles.length){
-                h+='<div class="sec-label">Сравнение циклов</div><div class="card"><table class="hist-table">';
+                h+='<div class="sec-label">Сравнение циклов</div><div class="card" data-tour="prog-cycles"><table class="hist-table">';
                 for(const c of s.cycles){
                     const chg=c.changePct==null?"—":(c.changePct>=0?"+":"")+c.changePct+"%";
                     const chgColor=c.changePct==null?"var(--text-muted)":(c.changePct>=0?"var(--accent-2)":"var(--danger)");
@@ -1750,7 +1769,7 @@
             +'<div id="progList" style="margin-top:0.5rem">';
         for(const key of exList){
             const name=shownName[key], isOpen=progEx!=null&&progEx.trim().toLowerCase()===key;
-            h+='<div class="prog-ex-item" data-name="'+esc(name)+'">'
+            h+='<div class="prog-ex-item" data-tour="prog-ex" data-name="'+esc(name)+'">'
                 +'<button class="prog-ex-btn'+(isOpen?' prog-ex-open':'')+'" data-act="selectProg" data-name="'+esc(name)+'">'
                 +'<span>'+esc(name)+'</span>'
                 +(freq[key]>1?'<span style="float:right;color:var(--text-muted)">'+freq[key]+'×</span>':'')
@@ -2013,6 +2032,7 @@
     }
     // Проверка при запуске — только после синхронизации с CloudStorage (иначе в копию попадёт устаревший кэш); не чаще одной попытки за запуск
     async function maybeAutoBackup(){
+        if(TOUR_MODE) return;
         if(ui.autoBackupTried) return;
         if(cs&&!syncState.verified) return;                       // синхронизация не завершена — копию не шлём
         if(ui.onb||onboardingDue()) return;                        // сначала приветствие; после закрытия проверка повторится
@@ -2246,7 +2266,7 @@
         return '<header><div class="hdr-main"><div class="strip">'+segs
             +(wi?'<span class="dot" style="left:calc('+(wi.day/wi.cycleLen*100)+'% - 0.25rem)"></span>':'')
             +'</div><div class="strip-labels">'+labels+'</div></div>'
-            +'<button class="help-btn" data-act="helpOpen" title="Справка" aria-label="Справка">'+ICON_HELP+'</button></header>';
+            +'<button class="help-btn" data-act="tourStart" title="Подсказки на экране" aria-label="Подсказки на экране">'+ICON_HELP+'</button></header>';
     }
 
     // подпись варианта у строки «прошлая тренировка»: шаг 3 — «другой вариант: Блок»
@@ -2273,19 +2293,19 @@
         return '<div class="set-grid set-row" data-i="'+i+'"><span class="idx num">'+(i+1)+'</span>'
             +'<button class="cell" data-act="editNum" data-kind="w" data-id="'+ex.id+'" data-i="'+i+'">'+wText(s.w)+'</button>'
             +'<button class="cell" data-act="editNum" data-kind="r" data-id="'+ex.id+'" data-i="'+i+'">'+rText(s.r)+'</button>'
-            +'<button class="del-set" data-act="delSet" data-id="'+ex.id+'" data-i="'+i+'" title="Удалить подход"><i class="box">'+ICON_CLOSE+'</i></button></div>';
+            +'<button class="del-set" data-tour="set-delete" data-act="delSet" data-id="'+ex.id+'" data-i="'+i+'" title="Удалить подход"><i class="box">'+ICON_CLOSE+'</i></button></div>';
     }
     function nextRowHtml(ex,isRest){
         const st=nextSetState(ex,isRest), planN=planSetsCount(ex.base?ex.plan:parseExName(ex.name).plan);
         const muted=planN!=null&&ex.sets.length>=planN;
-        return '<div class="set-grid set-next" data-ex="'+ex.id+'"><span class="idx num'+(muted?' muted':'')+'">'+(ex.sets.length+1)+'</span>'
+        return '<div class="set-grid set-next" data-tour="next-set" data-ex="'+ex.id+'"><span class="idx num'+(muted?' muted':'')+'">'+(ex.sets.length+1)+'</span>'
             +'<div class="stepper"><button class="step" data-act="stepW" data-dir="-1" data-id="'+ex.id+'" title="Меньше">'+ICON_MINUS+'</button>'
             +'<button class="val" data-act="editNum" data-kind="nw" data-id="'+ex.id+'">'+wText(st.w)+'</button>'
             +'<button class="step" data-act="stepW" data-dir="1" data-id="'+ex.id+'" title="Больше">'+ICON_PLUS+'</button></div>'
             +'<div class="stepper"><button class="step" data-act="stepR" data-dir="-1" data-id="'+ex.id+'" title="Меньше">'+ICON_MINUS+'</button>'
             +'<button class="val" data-act="editNum" data-kind="nr" data-id="'+ex.id+'">'+rText(st.r)+'</button>'
             +'<button class="step" data-act="stepR" data-dir="1" data-id="'+ex.id+'" title="Больше">'+ICON_PLUS+'</button></div>'
-            +'<button class="check" data-act="addSet" data-id="'+ex.id+'" title="Записать подход">'+ICON_CHECK+'</button></div>';
+            +'<button class="check" data-tour="set-confirm" data-act="addSet" data-id="'+ex.id+'" title="Записать подход">'+ICON_CHECK+'</button></div>';
     }
     function setsGridHtml(ex,isRest){
         let h='<div class="sets-wrap" data-ex="'+ex.id+'"><div class="set-grid set-labels"><span></span><span>кг</span><span>повт.</span><span></span></div>';
@@ -2372,22 +2392,22 @@
         let h='<div class="card"><div class="ex-head"><div style="min-width:0">';
         h+='<div style="display:flex;align-items:center;gap:0.375rem;flex-wrap:wrap">'
             +'<button class="ex-name" data-act="openHist" data-name="'+esc(exBaseOf(ex))+'">'+esc(ex.name)+'</button>';
-        if(showRec&&rec&&isRest) h+='<span class="rec-badge">→ '+fmtW(rec.w)+'×'+rec.r+'</span>';
+        if(showRec&&rec&&isRest) h+='<span class="rec-badge" data-tour="rec-badge">→ '+fmtW(rec.w)+'×'+rec.r+'</span>';
         h+='</div>';
         if(showRec&&rec&&!isRest)
-            h+='<button class="rec-btn" data-act="applyRec" data-id="'+ex.id+'" data-w="'+rec.w+'" data-r="'+rec.r+'">Реком.: '+fmtW(rec.w)+'×'+rec.r+'</button>';
+            h+='<button class="rec-btn" data-tour="rec-badge" data-act="applyRec" data-id="'+ex.id+'" data-w="'+rec.w+'" data-r="'+rec.r+'">Реком.: '+fmtW(rec.w)+'×'+rec.r+'</button>';
         if(data.cfg.view.lastWork&&lw){
             const lwV=prevVariantLabel(lw);
-            h+='<div class="ex-last">Рабочая '+fmtShort(lw.date)+lwV+': '+esc(lw.str)+'</div>';
+            h+='<div class="ex-last" data-tour="prev-line">Рабочая '+fmtShort(lw.date)+lwV+': '+esc(lw.str)+'</div>';
         }
         if(data.cfg.view.lastRest&&showRest){
             const lrV=prevVariantLabel(lr);
             h+='<div class="ex-last">Отдых '+fmtShort(lr.date)+lrV+': '+esc(lr.str)+'</div>';
         }
-        if(warmup) h+='<div class="ex-last">Разминка: '+fmtW(warmup.w)+'×'+warmup.r+'</div>';
+        if(warmup) h+='<div class="ex-last" data-tour="warmup-line">Разминка: '+fmtW(warmup.w)+'×'+warmup.r+'</div>';
         if(data.cfg.view.viewNotes&&ex.note&&!exNoteOpen) h+='<div class="ex-note-text">'+esc(ex.note)+'</div>';
         if(data.cfg.view.viewPastNotes&&!ex.note){ const pn=lastExNote(ex.name); if(pn) h+='<div class="ex-last">'+ICON_NOTE+' '+fmtShort(pn.date)+': '+esc(pn.note)+'</div>'; }
-        h+='</div><button class="del-ex" data-act="delEx" data-id="'+ex.id+'" title="Удалить упражнение"><i class="box">'+ICON_TRASH+'</i></button></div>';
+        h+='</div><button class="del-ex" data-tour="ex-delete" data-act="delEx" data-id="'+ex.id+'" title="Удалить упражнение"><i class="box">'+ICON_TRASH+'</i></button></div>';
         h+=setsGridHtml(ex,!!isRest);
         const timerActive=timerEnd>Date.now();
         const timerLbl=timerActive?fmtTimer(timerEnd-Date.now()):ICON_TIMER;
@@ -2395,9 +2415,9 @@
         const curVariant=ex.base?(ex.variant||''):(ex.name.indexOf(' · ')>=0?ex.name.split(' · ').slice(1).join(' · '):'');
         const showTimer=(data.cfg.timerMode||"auto")!=="off";
         h+='<div class="addset-extras" style="--n:'+(showTimer?3:2)+'">'
-            +(showTimer?'<button class="timer-btn'+(timerActive?' active':'')+'" data-act="timerToggle">'+timerLbl+'</button>':'')
-            +'<button class="btn-gray variant-btn'+(curVariant?' variant-active':'')+'" data-act="variantToggle" data-id="'+ex.id+'" title="'+esc(curVariant||'Вариант')+'"><span class="vtxt">'+esc(curVariant||'вариант')+'</span></button>'
-            +'<button class="btn-gray" data-act="exNoteToggle" data-id="'+ex.id+'" title="Заметка">'+ICON_NOTE+'</button>'
+            +(showTimer?'<button class="timer-btn'+(timerActive?' active':'')+'" data-tour="ex-timer" data-act="timerToggle">'+timerLbl+'</button>':'')
+            +'<button class="btn-gray variant-btn'+(curVariant?' variant-active':'')+'" data-tour="ex-variant" data-act="variantToggle" data-id="'+ex.id+'" title="'+esc(curVariant||'Вариант')+'"><span class="vtxt">'+esc(curVariant||'вариант')+'</span></button>'
+            +'<button class="btn-gray" data-tour="ex-note" data-act="exNoteToggle" data-id="'+ex.id+'" title="Заметка">'+ICON_NOTE+'</button>'
             +'</div>';
         if(ui.variantOpen[ex.id]){
             const variants=getExVariants(ex);
@@ -2427,7 +2447,7 @@
         h+='<div class="datenav">'
             +'<button class="nav" data-act="prev">'+ICON_CHEVRON_LEFT+'</button>'
             +'<div class="dmain"><button class="dtitle-btn" data-act="openCal">'+esc(fmtDate(curDate))+'</button>'
-            +'<button class="badge '+(isRest?'b-rest':'b-work')+'" data-act="weekTypeToggle">'+weekLabel(wi)+(isOverridden?' '+ICON_PENCIL:'')+'</button>'
+            +'<button class="badge '+(isRest?'b-rest':'b-work')+'" data-tour="week-badge" data-act="weekTypeToggle">'+weekLabel(wi)+(isOverridden?' '+ICON_PENCIL:'')+'</button>'
             +(curDate!==today?'<div><button class="today-link" data-act="today">к сегодня</button></div>':'')
             +'</div><button class="nav" data-act="next">'+ICON_CHEVRON_RIGHT+'</button></div>';
         if(ui.weekTypeOpen&&wi){
@@ -2439,15 +2459,15 @@
             if(isOverridden) h+='<button class="prog-ex-btn" style="color:var(--text-muted)" data-act="setWeekType" data-type="reset">Сбросить (по циклу)</button>';
             h+='</div>';
         }
-        h+='<div class="subtitle-row"><input value="'+esc(day.title||"")+'" data-chg="title" placeholder="Что качаем? (грудь, спина, ноги…)" maxlength="40"></div>';
+        h+='<div class="subtitle-row" data-tour="day-title"><input value="'+esc(day.title||"")+'" data-chg="title" placeholder="Что качаем? (грудь, спина, ноги…)" maxlength="40"></div>';
         // Day note
         if(data.cfg.view.viewNotes){
             if(ui.dayNoteOpen||day.note){
                 const notePreview=day.note?day.note.slice(0,40)+(day.note.length>40?'…':''):'';
-                h+='<button class="note-toggle" data-act="noteToggle">'+(ui.dayNoteOpen?ICON_CHEVRON_DOWN+' Заметка':ICON_NOTE+' '+(notePreview||'Заметка'))+'</button>';
+                h+='<button class="note-toggle" data-tour="day-note" data-act="noteToggle">'+(ui.dayNoteOpen?ICON_CHEVRON_DOWN+' Заметка':ICON_NOTE+' '+(notePreview||'Заметка'))+'</button>';
                 if(ui.dayNoteOpen) h+='<textarea class="day-note-area" data-chg="dayNote" placeholder="Заметка к тренировке…">'+esc(day.note||'')+'</textarea>';
             } else {
-                h+='<button class="note-toggle" data-act="noteToggle">'+ICON_NOTE+' Заметка</button>';
+                h+='<button class="note-toggle" data-tour="day-note" data-act="noteToggle">'+ICON_NOTE+' Заметка</button>';
             }
         }
         if(data.cfg.view.viewPastNotes&&!day.note&&(day.title||'').trim()){
@@ -2477,7 +2497,7 @@
             if(ex.ss){ while(grpEnd<exs.length&&exs[grpEnd].ss===ex.ss) grpEnd++; }
             const isSS=ex.ss&&(grpEnd-exIdx)>1;
             if(isSS){
-                h+='<div class="day-ss"><div class="et-btitle">Суперсет</div>';
+                h+='<div class="day-ss" data-tour="superset"><div class="et-btitle">Суперсет</div>';
                 for(let j=exIdx;j<grpEnd;j++) h+=exCardHtml(exs[j],j,isRest);
                 h+='</div>';
                 exIdx=grpEnd;
@@ -2505,7 +2525,7 @@
 
         const applicable=data.templates;
         if(applicable.length){
-            h+='<div class="sec-label">Начать по шаблону</div><div class="chips">';
+            h+='<div class="sec-label">Начать по шаблону</div><div class="chips" data-tour="day-tpl">';
             for(const t of applicable)
                 h+='<button class="chip" data-act="tplApply" data-id="'+t.id+'">'+esc(t.name)+'</button>';
             h+='</div>';
@@ -2523,7 +2543,7 @@
         let h='<div class="card"><div class="cal-head">'
             +'<button class="cal-nav" data-act="calPrev">'+ICON_CHEVRON_LEFT+'</button>'
             +'<div class="cal-title">'+esc(monthName)+'</div>'
-            +'<button class="cal-nav" data-act="calNext">'+ICON_CHEVRON_RIGHT+'</button></div><div class="cal-grid">';
+            +'<button class="cal-nav" data-act="calNext">'+ICON_CHEVRON_RIGHT+'</button></div><div class="cal-grid" data-tour="cal-week">';
         for(const d of ["пн","вт","ср","чт","пт","сб","вс"]) h+='<div class="cal-dow">'+d+'</div>';
         for(let i=0;i<lead;i++) h+='<div></div>';
         for(let d=1;d<=daysIn;d++){
@@ -2536,7 +2556,7 @@
             if(entry) cls+=" has";
             if(key===curDate) cls+=" sel";
             if(key===today) cls+=" today";
-            h+='<button class="'+cls+'" data-act="calGo" data-date="'+key+'">'
+            h+='<button class="'+cls+'"'+(key===today?' data-tour="cal-day"':'')+' data-act="calGo" data-date="'+key+'">'
                 +'<span class="n num">'+d+'</span>'
                 +(entry&&entry.title?'<span class="t">'+esc(entry.title)+'</span>':hasSets||entry?'<span class="dotm"></span>':'')
                 +'</button>';
@@ -2558,15 +2578,15 @@
                 +'<div class="et-bhead"><span class="et-btitle">'+(ss?'Суперсет':'№'+(k+1))+'</span>'
                 +'<span class="et-bbtns">'
                 +(ss?'<button class="mini-btn" data-act="etSplit" data-k="'+k+'">разъед.</button>'
-                    :(k<t.blocks.length-1?'<button class="mini-btn" data-act="etJoin" data-k="'+k+'" title="Объединить со следующим в суперсет">'+ICON_LINK+'</button>':''))
+                    :(k<t.blocks.length-1?'<button class="mini-btn" data-tour="tpl-superset" data-act="etJoin" data-k="'+k+'" title="Объединить со следующим в суперсет">'+ICON_LINK+'</button>':''))
                 +(k>0?'<button class="mini-btn" data-act="etBlockUp" data-k="'+k+'">'+ICON_CHEVRON_UP+'</button>':'')
-                +(k<t.blocks.length-1?'<button class="mini-btn" data-act="etBlockDown" data-k="'+k+'">'+ICON_CHEVRON_DOWN+'</button>':'')
+                +(k<t.blocks.length-1?'<button class="mini-btn" data-tour="tpl-order" data-act="etBlockDown" data-k="'+k+'">'+ICON_CHEVRON_DOWN+'</button>':'')
                 +'</span></div>';
             b.items.forEach(function(it,i){
                 h+='<div class="et-item">'
                     +'<input value="'+esc(it.name)+'" placeholder="Название упражнения" data-et="name" data-k="'+k+'" data-i="'+i+'">'
                     +'<div class="et-row">'
-                    +'<input class="plan" value="'+esc(it.plan)+'" placeholder="3х8-12" data-et="plan" data-k="'+k+'" data-i="'+i+'">'
+                    +'<input class="plan" data-tour="tpl-plan" value="'+esc(it.plan)+'" placeholder="3х8-12" data-et="plan" data-k="'+k+'" data-i="'+i+'">'
                     +'<button class="mini-btn" data-act="etVarsToggle" data-k="'+k+'" data-i="'+i+'">варианты'+(it.vars?' ('+it.vars.length+')':'')+'</button>'
                     +(ss&&i>0?'<button class="mini-btn" data-act="etItemUp" data-k="'+k+'" data-i="'+i+'">'+ICON_CHEVRON_UP+'</button>':'')
                     +(ss&&i<b.items.length-1?'<button class="mini-btn" data-act="etItemDown" data-k="'+k+'" data-i="'+i+'">'+ICON_CHEVRON_DOWN+'</button>':'')
@@ -2574,7 +2594,7 @@
                     +'</div>';
                 if(it._v===true||(it._v!==false&&!!it.vars)){
                     const vars=it.vars||[], due=variantIndex(countBase(it.name),it.alt,vars.length);
-                    h+='<div class="et-vars2">';
+                    h+='<div class="et-vars2" data-tour="tpl-variants">';
                     if(vars.length){
                         h+='<div class="chips" style="margin-top:0">';
                         vars.forEach(function(v,vi){
@@ -2585,7 +2605,7 @@
                     }
                     h+='<div class="addex" style="margin-top:0.5rem"><input id="etv-'+k+'-'+i+'" placeholder="Новый вариант…" data-enter="etVarAdd" data-k="'+k+'" data-i="'+i+'" style="flex:1;min-width:0">'
                         +'<button class="btn-gray et-vadd" data-act="etVarAdd" data-k="'+k+'" data-i="'+i+'">'+ICON_PLUS+' вариант</button></div>'
-                        +(vars.length?'<div class="et-vars" style="margin-top:0.5rem">чередовать каждые <input class="alt" type="number" inputmode="numeric" min="1" value="'+(it.alt||1)+'" data-et="alt" data-k="'+k+'" data-i="'+i+'"> тр.</div>':'')
+                        +(vars.length?'<div class="et-vars" data-tour="tpl-alt" style="margin-top:0.5rem">чередовать каждые <input class="alt" type="number" inputmode="numeric" min="1" value="'+(it.alt||1)+'" data-et="alt" data-k="'+k+'" data-i="'+i+'"> тр.</div>':'')
                         +'</div>';
                 }
                 h+='</div>';
@@ -2634,11 +2654,11 @@
         }
 
         h+='<button class="wide-btn" data-act="etNew" style="margin-top:0">'+ICON_PLUS+' Новый шаблон</button>'
-            +'<button class="wide-btn" data-act="tplFromText">'+ICON_CLIPBOARD+' Создать шаблоны из текста</button>';
+            +'<button class="wide-btn" data-tour="tpl-import" data-act="tplFromText">'+ICON_CLIPBOARD+' Создать шаблоны из текста</button>';
         if(!data.templates.length) h+='<div class="card" style="color:var(--text-muted)">Шаблонов нет. Создайте новый, вставьте программу текстом или откройте день с упражнениями и нажмите «Сохранить как шаблон».</div>';
         for(const t of data.templates){
             const nss=t.blocks.filter(function(b){return b.type==="superset";}).length;
-            h+='<div class="card tpl-item"><div class="tpl-name">'+esc(t.name)+'</div>'
+            h+='<div class="card tpl-item" data-tour="tpl-list"><div class="tpl-name">'+esc(t.name)+'</div>'
                 +'<div class="tpl-sub">'+tplExCount(t)+' упражн.'+(nss?' · суперсетов: '+nss:'')+'</div>';
             if(ui.tplDelId===t.id){
                 h+='<div class="confirm" style="margin-top:0.625rem"><span>Удалить шаблон?</span>'
@@ -2784,7 +2804,7 @@
     }
     function fontSectionHtml(){
         const fs=fontScale();
-        return '<div class="sec-label" data-tour="set-font">Размер шрифта</div><div class="card">'
+        return '<div class="sec-label">Размер шрифта</div><div class="card" data-tour="set-font">'
             +'<div class="seg font-seg" id="fontSeg">'+FONT_SCALES.map(function(f){ return '<button class="'+(fs===f[0]?'on':'')+'" data-act="fontScale" data-v="'+f[0]+'">'+f[1]+' <span class="fs-pct">'+f[2]+'</span></button>'; }).join("")+'</div>'
             +'<div class="font-sample"><div style="font-weight:700">Жим лёжа под углом (3х8-12)</div><div class="ex-last" style="white-space:normal">Рабочая 23.09: 70×8, 70×8 — длинные названия переносятся</div></div></div>';
     }
@@ -2907,7 +2927,7 @@
         return sectionHead("Тестовая среда","Служебные действия. Основная версия не затрагивается.")+'<div class="card">'+linkRow("Тестовая среда",null,'testOpen')+'</div>';
     }
     function helpSectionHtml(){
-        return sectionHead("Справка","Как пользоваться приложением.")+'<div class="card">'+linkRow("Справка",null,'helpOpenAll')+linkRow("Показать приветствие",null,'onbShow')+'</div>';
+        return sectionHead("Помощь","Тур по интерфейсу, справочник и приветствие.")+'<div class="card">'+linkRow("Пройти тур",null,'tourAll')+linkRow("Справочник",null,'helpOpenAll')+linkRow("Показать приветствие",null,'onbShow')+'</div>';
     }
     function testScreenHtml(){ return '<button class="hist-back" data-act="testClose">'+ICON_CHEVRON_LEFT+' Назад</button>'+cloneCardHtml(); }
     function testSectionHtml(){ return cloneCardHtml(); }
@@ -3321,7 +3341,7 @@
         return [
             { icon:ICON_DUMBBELL, title:"Твой дневник тренировок", text:"Шаблоны, запись подходов, рекомендации по весу и прогресс — всё внутри Telegram, данные синхронизируются между устройствами." },
             { icon:ICON_BOOKMARK, title:"Шаблоны", text:"Тренировочные дни собираются из упражнений и суперсетов. План пишется как <b>3х8-12</b>, у упражнения могут быть варианты — например, блок или свободный вес." },
-            { icon:ICON_CHECK, title:"Запись подхода", text:"Следующий подход уже заполнен рекомендацией или прошлым результатом. ± меняют вес и повторы, галочка записывает. Цветной бейдж — рекомендация на сегодня." },
+            { icon:ICON_CHECK, title:"Запись подхода", text:"Следующий подход уже заполнен рекомендацией или прошлым результатом. ± меняют вес и повторы, галочка записывает. Цветной бейдж — рекомендация на сегодня. По «?» на каждой вкладке есть подсказки прямо на экране." },
             { icon:ICON_CALENDAR, title:"Цикл и прогресс", text:"Рабочие недели и недели отдыха считаются автоматически, в неделю отдыха вес снижается сам. На вкладке «Прогресс» — графики, тоннаж и сравнение циклов." },
             { icon:ICON_CLOUD_UP, title:"Резервная копия", text:(BACKUP_ENDPOINT?"Отправь копию в чат с ботом — JSON для восстановления, Excel или CSV для просмотра.":"Сохрани копию данных в настройках — JSON для восстановления.")+" Приложение напомнит, если копия давно не делалась." }
         ];
@@ -3341,7 +3361,7 @@
             }).join("")+'</div></div>'
             +'<div class="onb-dots">'+cards.map(function(){return '<i></i>';}).join("")+'</div>'
             +'<div class="onb-btns"><button class="wide-btn primary" style="margin-top:0" data-onb="next">Далее</button>'
-            +'<button class="wide-btn" data-onb="help">Открыть справку</button></div>';
+            +'<button class="wide-btn" data-onb="help">Пройти тур</button></div>';
     }
     function onbUpdate(){
         const o=ui.onb, ov=document.getElementById("onb"); if(!o||!ov) return;
@@ -3364,7 +3384,7 @@
             const a=b.dataset.onb;
             if(a==="next"){ if(ui.onb.idx<onbCards().length-1) onbGo(ui.onb.idx+1); else closeOnboarding(true,false); }
             else if(a==="skip") closeOnboarding(true,false);
-            else if(a==="help") closeOnboarding(true,true);
+            else if(a==="help"){ closeOnboarding(true); startTour("all"); }
         });
         const vp=ov.querySelector(".onb-viewport");
         vp.addEventListener("pointerdown",function(e){ x0=e.clientX; });
@@ -3374,14 +3394,13 @@
         onbUpdate();
     }
     // setFlag: «Пропустить»/«Начать» ставят флаг и синхронизируют cfg; из настроек флаг не меняется
-    function closeOnboarding(setFlag,openHelpAfter){
+    function closeOnboarding(setFlag){
         const o=ui.onb; if(!o) return;
         const ov=document.getElementById("onb"); if(ov) ov.remove();
         ui.onb=null;
         if(o.fromSettings) ui.onbSuppressed=true;
         else if(setFlag){ data.cfg.onboardingSeen=ONBOARDING_VERSION; persistCfg(); }
         syncBackButton();
-        if(openHelpAfter) openHelp(null);
         setTimeout(maybeAutoBackup,0);
     }
 
@@ -3421,9 +3440,11 @@
             { q:"Сравнение циклов", a:"В «Сводке» — таблица по циклам: число тренировок, тоннаж и изменение относительно предыдущего цикла. Ниже — рекорды по упражнениям." }
         ]},
         { id:"set", title:"Настройки", items:[
+            { q:"Тур по интерфейсу", a:"«?» в шапке любой вкладки запускает подсказки прямо на экране этой вкладки. «Пройти тур» в разделе «Помощь» проведёт по всем вкладкам подряд. Тур идёт на примере, твои данные не меняются. «Справочник» — этот текст, «Показать приветствие» — стартовые карточки." },
             { q:"Цикл и отображение", a:"Схема недель и какие строки показывать в карточке упражнения." },
             { q:"Разминка и таймер", a:"Сколько упражнений с разминкой, её процент и шаг веса. Таймер отдыха: режим (выключен / вручную / автоматически) и длительность." },
-            { q:"Тема", a:"Цветовая схема и акцентный цвет." },
+            { q:"Тема и цвета", a:"«Цвета и акцент»: готовая схема (как в Telegram, тёмные и светлые варианты), акцентный цвет из палитры или свой, при желании второй акцент для недель отдыха. Можно собрать свои цвета фона, карточек и текста — приложение подскажет, если контраст слабый." },
+            { q:"Размер шрифта", a:"Четыре размера: мелкий, обычный, крупный, очень крупный. Меняется весь интерфейс, графики тоже; длинные названия переносятся на новую строку." },
             { q:"Резервная копия", a:function(){
                 return "Сохранить и вернуть всё. Вверху — дата последней копии; если копия просрочена, статус выделен цветом. "
                     +(BACKUP_ENDPOINT?"«Отправить в чат» — файл приходит в чат с ботом: JSON (полная копия для восстановления), Excel или CSV (только журнал, для просмотра). Если копия старше заданного интервала, приложение само отправит её в чат при запуске; это выключается переключателем «Автоотправка в чат». "
@@ -3483,10 +3504,240 @@
         document.documentElement.style.overflow="";
         syncBackButton();
     }
+    // ============ тур по интерфейсу ============
+    // ПРАВИЛО: каждое ТЗ, меняющее интерфейс, обновляет шаги тура (TOUR), атрибуты data-tour в разметке и тексты справочника (HELP).
+    // Шаги — данные: { target (значение data-tour), title, text (строка или функция), place?: "top"|"bottom", demo?: "editor"|"prog-open"|"summary" }.
+    // Шаг, цель которого не найдена на экране, пропускается (console.warn). Тексты — на «ты», не длиннее двух коротких предложений.
+    const TOUR={
+        today:[
+            { target:"week-badge", title:"Неделя цикла", text:"Рабочая или отдых — по циклу из настроек. Тап по плашке меняет тип недели вне схемы." },
+            { target:"day-title", title:"Название тренировки", text:"Подставляется из шаблона, можно вписать своё. Оно видно в календаре и в сводке." },
+            { target:"day-note", title:"Заметка к дню", text:"Самочувствие, сон, что угодно про тренировку целиком." },
+            { target:"rec-badge", title:"Рекомендация", text:"Что делать сегодня. Тап подставит значения в строку подхода." },
+            { target:"prev-line", title:"Прошлая тренировка", text:"Последний раз этого же варианта. Нет такого — без варианта, затем другой с пометкой." },
+            { target:"warmup-line", title:"Разминка", text:"Вес разминочного подхода. Настраивается в «Настройках»." },
+            { target:"next-set", title:"Следующий подход", text:"Уже заполнен. ± меняют вес и повторы, тап по числу — ввод с клавиатуры." },
+            { target:"set-confirm", title:"Записать", text:"Галочка сохраняет подход. Следующая строка заполнится этими же цифрами." },
+            { target:"set-delete", title:"Удалить подход", text:"Крестик убирает подход. Внизу появится «Вернуть»." },
+            { target:"ex-delete", title:"Убрать упражнение", text:"Только из сегодняшнего дня, шаблон не меняется." },
+            { target:"ex-timer", title:"Таймер отдыха", text:"Запускает отсчёт, в конце — вибрация. Кнопки нет, если таймер выключен в настройках." },
+            { target:"ex-variant", title:"Вариант", text:"Меняет исполнение только на сегодня. Прошлые записи не трогаются." },
+            { target:"ex-note", title:"Заметка к упражнению", text:"Появится в следующий раз под этим упражнением." },
+            { target:"superset", title:"Суперсет", text:"Упражнения в рамке делаются поочерёдно." },
+            { target:"day-tpl", title:"Начать по шаблону", text:"Тап по шаблону подставит его упражнения в этот день. Подходы будут пустыми." },
+            { target:"tabbar", title:"Вкладки", text:"Прогресс, календарь, шаблоны и настройки. У каждой вкладки свой тур по «?»." }
+        ],
+        templates:[
+            { target:"tpl-list", title:"Шаблоны", text:"Тренировочные дни. «Изменить» открывает редактор, «Применить» подставляет шаблон в выбранный день." },
+            { target:"tpl-import", title:"Импорт из текста", text:"Вставь программу из заметок — шаблоны создадутся сами, с превью." },
+            { target:"tpl-plan", title:"План", text:"Формат 3х8-12: подходы и диапазон повторов. По нему строятся рекомендации.", demo:"editor" },
+            { target:"tpl-variants", title:"Варианты", text:"«+ вариант» добавляет по одному. Подсвечен тот, что будет следующим.", demo:"editor" },
+            { target:"tpl-alt", title:"Чередование", text:"Как часто менять вариант: каждые N тренировок.", demo:"editor" },
+            { target:"tpl-superset", title:"Суперсет", text:"Объединить упражнение со следующим в одну пару.", demo:"editor" },
+            { target:"tpl-order", title:"Порядок", text:"Стрелки переставляют блоки.", demo:"editor" }
+        ],
+        calendar:[
+            { target:"cal-week", title:"Тип недели", text:"Недели отдыха подкрашены, остальные — рабочие. Схема цикла задаётся в настройках." },
+            { target:"cal-day", title:"День", text:"Тап открывает тренировку этого дня. Пустую дату тоже можно открыть и внести тренировку задним числом." }
+        ],
+        progress:[
+            { target:"prog-ex", title:"Упражнение", text:"Тап раскрывает график максимального веса и историю подходов." },
+            { target:"prog-lines", title:"Линии", text:"Разные варианты — разные линии, план в названии не важен.", demo:"prog-open" },
+            { target:"prog-tonnage", title:"Тоннаж", text:"Сумма «вес × повторы» по тренировкам. Недели отдыха отмечены другим цветом.", demo:"summary" },
+            { target:"prog-cycles", title:"Сравнение циклов", text:"Тренировки и тоннаж по циклам, рядом — изменение к предыдущему.", demo:"summary" }
+        ],
+        settings:[
+            { target:"set-cycle", title:"Цикл", text:"Сколько рабочих недель и недель отдыха и с какой даты считать." },
+            { target:"set-timer", title:"Таймер отдыха", text:"Выключен, вручную (кнопка в упражнении) или автоматически после подхода." },
+            { target:"set-font", title:"Размер шрифта", text:"Крупнее или мельче — вся вёрстка подстраивается." },
+            { target:"set-theme", title:"Тема", text:"Готовые палитры или свои цвета для акцента, фона и остального." },
+            { target:"set-backup", title:"Резервная копия", text:function(){ return BACKUP_ENDPOINT?"Отправить копию в чат или восстановить. Просроченная копия уходит в чат сама.":"Скопировать копию или восстановить из неё. Отправка в чат заработает после подключения сервера."; } },
+            { target:"set-import", title:"Импорт", text:"Загрузить тренировки из Excel/CSV, в том числе из старой версии." },
+            { target:"set-cleanup", title:"Порядок в данных", text:"Проверка записей, объединение шаблонов и названий." },
+            { target:"set-help", title:"Помощь", text:"Тур, справочник и приветствие — здесь." }
+        ]
+    };
+    const TOUR_ORDER=[["day","today"],["tpl","templates"],["cal","calendar"],["prg","progress"],["set","settings"]];
+    // демо-данные тура: фиксированный набор (интерфейс рендерится на нём, хранилище не трогается)
+    const TOUR_DEMO={
+        name:"Пример: Тяговая",
+        tpl:{ id:"tour_tpl", name:"Пример: Тяговая", title:"Пример: Тяговая", blocks:[
+            { type:"single", items:[{ name:"Тяга верхнего блока", plan:"3х8-12", vars:["Широкий хват","Узкий хват"], alt:1 }] },
+            { type:"superset", items:[{ name:"Подтягивания", plan:"3х6-10" },{ name:"Тяга к лицу", plan:"3х12-15" }] } ] },
+        base:"Тяга верхнего блока", plan:"3х8-12",
+        // дни относительно понедельника текущей недели; цикл 2+1, текущая неделя — первая рабочая
+        past:[ { off:-13, variant:"Широкий хват", sets:[{w:60,r:12},{w:60,r:12},{w:60,r:11}] },    // рабочая неделя
+               { off:-6,  variant:"Узкий хват",   sets:[{w:50,r:10},{w:50,r:10}] } ],              // неделя отдыха; два прошлых дня → сегодня первый вариант по очереди
+        today:{w:60,r:12}
+    };
+    function makeTourData(real){
+        const M=getMondayKey(toKey(new Date()));
+        return normalizeData({
+            cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:addDays(M,-21)}, timerMode:"manual", restTimerSec:90, warmupCount:1, warmupPercent:35,
+                  theme:real.theme, accent:real.accent, fontScale:real.fontScale, onboardingSeen:ONBOARDING_VERSION, autoBackup:false },
+            templates:[JSON.parse(JSON.stringify(TOUR_DEMO.tpl))], log:{} });
+    }
+    // вызывается, когда data уже демо и TOUR_MODE включён: прошлые дни + сегодняшний с записанным подходом
+    function fillTourLog(){
+        const D=TOUR_DEMO, M=getMondayKey(toKey(new Date()));
+        for(const pd of D.past){
+            const k=addDays(M,pd.off), ex=newEx(D.base,D.plan,pd.variant);
+            ex.sets=pd.sets.map(function(s){ return {w:s.w,r:s.r}; });
+            const wi=weekInfo(k);
+            data.log[k]={ title:D.name, exercises:[ex], weekType:wi&&wi.isRest?"rest":"work", up:1 };
+        }
+        applyTemplate(data.templates[0]);
+        const day=getDay();
+        day.exercises[0].sets.push({w:D.today.w,r:D.today.r});
+        commitDay(curDate,day);
+    }
+    function tourSteps(mode){
+        const out=[];
+        for(const pair of TOUR_ORDER){
+            if(mode!=="all"&&pair[0]!==ui.tab) continue;
+            for(const s of TOUR[pair[1]]) out.push(Object.assign({tab:pair[0]},s));
+        }
+        return out;
+    }
+    function startTour(mode){
+        if(tour) return;
+        if(ui.help) closeHelp();
+        if(ui.onb) closeOnboarding(false);
+        const steps=tourSteps(mode);
+        if(!steps.length) return;
+        const saved={data:data,ui:ui,cur:curDate,cal:calMonth,prog:progEx,scroll:window.scrollY};
+        TOUR_MODE=true;
+        ui=Object.assign({},saved.ui,{ nextSet:{}, drafts:{}, exNoteOpen:{}, variantOpen:{}, dayNoteOpen:false, weekTypeOpen:false, savingTpl:false, confirmDel:false, tplDelId:null,
+            editTpl:null, histEx:null, tplParsed:null, tplFromText:false, importText:false, importParsed:null, tblImport:null, themeScreen:false, aliasScreen:false, aliasForm:null,
+            hygiene:null, testScreen:false, diag:false, cloneIncomplete:false, progMode:"ex", onb:null, onbSuppressed:true, help:null, cloudChecked:true, stateChecked:true });
+        data=makeTourData(saved.data.cfg); curDate=toKey(new Date()); calMonth=curDate.slice(0,7); progEx=null;
+        fillTourLog();
+        applyTheme();
+        const el=document.createElement("div"); el.id="tour";
+        el.innerHTML='<div class="tour-banner">Пример — данные не сохраняются</div><div class="tour-hole"></div>'
+            +'<div class="tour-tip" role="dialog"><button class="tour-skip" data-t="skip">Пропустить</button><div class="tour-title"></div><div class="tour-text"></div>'
+            +'<div class="tour-foot"><span class="tour-count"></span><span class="tour-btns"><button data-t="prev">Назад</button><button data-t="help">Вся справка</button><button class="primary" data-t="next">Далее</button></span></div>'
+            +'<i class="tour-arrow"></i></div>';
+        tour={ el:el, steps:steps, idx:-1, path:[], cur:null, saved:saved, mode:mode, x0:null };
+        el.addEventListener("click",function(e){
+            const b=e.target.closest("[data-t]"); if(!b||!tour) return;
+            const a=b.dataset.t;
+            if(a==="next") tourNext(); else if(a==="prev") tourPrev(); else if(a==="skip") tourEnd();
+            else if(a==="help") tourEnd(tourHelpId());
+        });
+        el.addEventListener("pointerdown",function(e){ if(tour&&!e.target.closest("[data-t]")) tour.x0=e.clientX; });
+        el.addEventListener("pointerup",function(e){
+            if(!tour||tour.x0===null) return; const dx=e.clientX-tour.x0; tour.x0=null;
+            if(dx<-50) tourNext(); else if(dx>50) tourPrev();
+        });
+        el.addEventListener("pointercancel",function(){ if(tour) tour.x0=null; });
+        el.addEventListener("wheel",function(e){ e.preventDefault(); },{passive:false});
+        tour.onPlace=function(){ tourPlace(false); };
+        tour.onHide=function(){ if(document.hidden) tourEnd(); };
+        tour.onKey=function(e){ if(e.key==="Escape") tourEnd(); };
+        window.addEventListener("resize",tour.onPlace); window.addEventListener("scroll",tour.onPlace,true);
+        document.addEventListener("visibilitychange",tour.onHide); document.addEventListener("keydown",tour.onKey);
+        if(tg&&tg.onEvent) for(const ev of ["viewportChanged","safeAreaChanged","contentSafeAreaChanged"]) tg.onEvent(ev,tour.onPlace);
+        document.body.appendChild(el);
+        el.classList.add("noanim");
+        if(!tourShow(0,1)){ tourEnd(); return; }
+        syncBackButton();
+    }
+    function tourHelpId(){ const s=tour.cur; return s?s.tab:"day"; }
+    // показывает ближайший шаг с найденной целью начиная с i в направлении dir; false — показывать нечего
+    function tourShow(i,dir,noPush){
+        const t=tour;
+        while(i>=0&&i<t.steps.length){
+            const s=t.steps[i];
+            tourSetup(s);
+            const tgt=document.querySelector('[data-tour="'+s.target+'"]');
+            if(tgt){
+                t.idx=i; t.cur=s; if(!noPush) t.path.push(i);
+                t.el.classList.toggle("noanim",!t.shown); t.shown=true;
+                tourFill(s);
+                if(getComputedStyle(tgt).position!=="fixed") tgt.scrollIntoView({block:"center",inline:"nearest",behavior:"instant"});
+                tourPlace(true);
+                syncBackButton();
+                return true;
+            }
+            console.warn("[tour] цель шага не найдена: "+s.target);
+            i+=dir;
+        }
+        return false;
+    }
+    function tourSetup(s){
+        ui.tab=s.tab; ui.editTpl=null; ui.histEx=null; ui.progMode="ex"; progEx=null;
+        if(s.demo==="editor") ui.editTpl=JSON.parse(JSON.stringify(data.templates[0]));
+        else if(s.demo==="prog-open") progEx=TOUR_DEMO.base;
+        else if(s.demo==="summary") ui.progMode="summary";
+        render();
+    }
+    function tourFill(s){
+        const t=tour, tip=t.el.querySelector(".tour-tip"), last=t.idx===t.steps.length-1;
+        tip.querySelector(".tour-title").textContent=s.title;
+        tip.querySelector(".tour-text").textContent=typeof s.text==="function"?s.text():s.text;
+        tip.querySelector(".tour-count").textContent=(t.idx+1)+" / "+t.steps.length;
+        tip.querySelector('[data-t="prev"]').style.display=t.path.length>1?"":"none";
+        tip.querySelector('[data-t="help"]').style.display=last?"":"none";
+        tip.querySelector('[data-t="skip"]').style.display=last?"none":"";
+        tip.querySelector('[data-t="next"]').textContent=last?"Готово":"Далее";
+    }
+    function tourNext(){
+        const t=tour; if(!t) return;
+        if(t.idx>=t.steps.length-1||!tourShow(t.idx+1,1)) tourEnd();
+    }
+    function tourPrev(){
+        const t=tour; if(!t||t.path.length<2) return;
+        t.path.pop(); tourShow(t.path[t.path.length-1],-1,true);
+    }
+    function cssPx(name){ return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name))||0; }
+    // окно вокруг цели + подсказка со стрелкой; anim=false — мгновенно (scroll/resize)
+    function tourPlace(anim){
+        const t=tour; if(!t||!t.cur) return;
+        const tgt=document.querySelector('[data-tour="'+t.cur.target+'"]'); if(!tgt) return;
+        const el=t.el, hole=el.querySelector(".tour-hole"), tip=el.querySelector(".tour-tip"), arrow=tip.querySelector(".tour-arrow");
+        if(!anim) el.classList.add("noanim");
+        const vw=window.innerWidth, vh=window.innerHeight, pad=6, gap=12;
+        const r=tgt.getBoundingClientRect();
+        let T=r.top-pad, B=r.bottom+pad;
+        if(T<0) T=0; if(B>vh) B=vh;                      // цель выше экрана — окно по границам видимой части
+        const L=r.left-pad, R=r.right+pad;
+        hole.style.left=L+"px"; hole.style.top=T+"px"; hole.style.width=(R-L)+"px"; hole.style.height=(B-T)+"px";
+        const banner=el.querySelector(".tour-banner").getBoundingClientRect();
+        const topLim=Math.max(cssPx("--sa-top")+cssPx("--csa-top"),banner.bottom)+8;
+        const tb=document.getElementById("tabbar"), tbr=tb&&tb.style.display!=="none"?tb.getBoundingClientRect():null;
+        const botLim=(tbr&&tbr.height>0?tbr.top:vh-cssPx("--sa-bottom")-cssPx("--csa-bottom"))-8;
+        const tw=tip.offsetWidth, th=tip.offsetHeight, m=12+Math.max(cssPx("--sa-left"),cssPx("--sa-right"));
+        const below=botLim-(B+gap), above=(T-gap)-topLim;
+        let place=t.cur.place; if(place!=="top"&&place!=="bottom") place=null;
+        if(!place) place=below>=th?"bottom":above>=th?"top":(below>=above?"bottom":"top");
+        let top=place==="bottom"?B+gap:T-gap-th, fits=true;
+        if(top<topLim){ top=topLim; fits=false; }
+        if(top+th>botLim){ top=Math.max(topLim,botLim-th); fits=false; }
+        const cx=(r.left+r.right)/2, left=Math.max(m,Math.min(vw-m-tw,cx-tw/2));
+        tip.style.left=left+"px"; tip.style.top=top+"px";
+        const ax=Math.max(20,Math.min(tw-20,cx-left));
+        arrow.style.left=ax+"px"; arrow.style.display=fits?"":"none";
+        arrow.style.top=place==="bottom"?"-0.4375rem":"auto"; arrow.style.bottom=place==="top"?"-0.4375rem":"auto";
+        tip.dataset.place=place;
+    }
+    // выход: убрать оверлей и слушатели, вернуть реальные данные и состояние интерфейса; helpId — открыть справочник на разделе
+    function tourEnd(helpId){
+        const t=tour; if(!t) return;
+        window.removeEventListener("resize",t.onPlace); window.removeEventListener("scroll",t.onPlace,true);
+        document.removeEventListener("visibilitychange",t.onHide); document.removeEventListener("keydown",t.onKey);
+        if(tg&&tg.offEvent) for(const ev of ["viewportChanged","safeAreaChanged","contentSafeAreaChanged"]) tg.offEvent(ev,t.onPlace);
+        t.el.remove();
+        tour=null; TOUR_MODE=false;
+        data=t.saved.data; ui=t.saved.ui; curDate=t.saved.cur; calMonth=t.saved.cal; progEx=t.saved.prog;
+        applyTheme(); render(); window.scrollTo(0,t.saved.scroll);
+        if(helpId) openHelp(helpId);
+    }
+
     const TIMER_MODE_HINT={off:"Кнопки таймера в упражнениях нет.",manual:"Кнопка таймера есть, запускаешь сам.",auto:"Кнопка есть, таймер стартует после записи подхода."};
     function setPage(){
         const c=data.cfg.cycle;
-        let h='<div class="sec-label" style="margin-top:1rem">Цикл</div><div class="card">'
+        let h='<div class="sec-label" style="margin-top:1rem">Цикл</div><div class="card" data-tour="set-cycle">'
             +'<div class="row2"><div><div class="lbl">Рабочих недель</div>'
             +'<input type="number" inputmode="numeric" min="1" max="8" value="'+c.workWeeks+'" data-chg="workWeeks"></div>'
             +'<div><div class="lbl">Недель отдыха</div>'
@@ -3541,7 +3792,7 @@
             syncNote='Режим браузера: данные хранятся локально, синхронизации нет. Откройте аппку внутри Telegram (кнопка меню у бота). Для переноса из старой версии: там «Скачать Excel», здесь «Импорт».';
         }
         const tm=data.cfg.timerMode||"auto";
-        h+='<div class="sec-label" data-tour="set-timer">Таймер отдыха</div><div class="card">'
+        h+='<div class="sec-label">Таймер отдыха</div><div class="card" data-tour="set-timer">'
             +'<div class="seg" id="timerSeg">'
             +[["off","Выключен"],["manual","Вручную"],["auto","Автоматически"]].map(function(m){ return '<button class="'+(tm===m[0]?'on':'')+'" data-act="timerMode" data-mode="'+m[0]+'">'+m[1]+'</button>'; }).join("")+'</div>'
             +'<div class="note">'+esc(TIMER_MODE_HINT[tm])+'</div>'
@@ -3549,9 +3800,10 @@
             +'<input type="number" inputmode="numeric" min="30" max="300" value="'+(data.cfg.restTimerSec||90)+'" data-chg="restTimerSec"></div></div>';
 
         h+=fontSectionHtml();
-        h+='<div class="sec-label" data-tour="set-theme">Тема</div><div class="card">'+linkRow('Цвета и акцент',themeSummary(),'themeOpen')+'</div>';
+        h+='<div class="sec-label">Тема</div><div class="card" data-tour="set-theme">'+linkRow('Цвета и акцент',themeSummary(),'themeOpen')+'</div>';
 
-        h+=backupSectionHtml()+importSectionHtml()+orderSectionHtml()+testSectionLinkHtml()+helpSectionHtml();
+        function tw(id,html){ return '<div data-tour="'+id+'">'+html+'</div>'; }
+        h+=tw("set-backup",backupSectionHtml())+tw("set-import",importSectionHtml())+tw("set-cleanup",orderSectionHtml())+testSectionLinkHtml()+tw("set-help",helpSectionHtml());
 
         h+='<div class="sec-label">Опасная зона</div><div class="card">';
         if(ui.wipeStep===1){
@@ -3598,6 +3850,7 @@
 
     // системная кнопка «Назад» Telegram: закрывает верхний из открытых экранов
     function currentBackAction(){
+        if(tour) return tour.path.length>1?tourPrev:function(){ tourEnd(); };
         if(ui.onb) return ui.onb.idx>0?function(){ onbGo(ui.onb.idx-1); }:null;   // на первой карточке кнопка скрыта
         if(ui.help) return closeHelp;
         if(ui.aliasForm) return function(){ ui.aliasForm=null; render(); };
@@ -4167,7 +4420,8 @@
                 const dur=document.getElementById("timerDur"); if(dur) dur.style.display=m==="off"?"none":"";
                 break;
             }
-            case "helpOpen": openHelp(ui.tab); break;
+            case "tourStart": startTour("tab"); break;
+            case "tourAll": startTour("all"); break;
             case "helpOpenAll": openHelp(null); break;
             case "onbShow": openOnboarding(true); break;
             case "tplMergeGo":{ const r=mergeGroups([ds.key]); if(r) render(); break; }

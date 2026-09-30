@@ -106,7 +106,7 @@ async def main():
             # справка (фаза 11/4)
             ok_help = True
             for tab in ("day", "cal", "tpl", "prg", "set"):
-                await t.click('button[data-tab="%s"]' % tab); await t.click("header .help-btn"); await t.wait_for_timeout(120)
+                await t.click('button[data-tab="%s"]' % tab); await t.evaluate("openHelp(ui.tab); 0"); await t.wait_for_timeout(120)
                 ok_help &= await t.evaluate("[...document.querySelectorAll('#helpOv .help-body')].map(b=>b.dataset.sec)") == [tab]
                 await t.click('#helpOv [data-act="helpClose"]')
             check("фаза 11/4: каждый раздел справки открывается «?» из своего таба", ok_help)
