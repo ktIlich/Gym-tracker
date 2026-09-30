@@ -416,17 +416,17 @@
         if(i>=0) return {base:t.slice(0,i).trim(), variant:t.slice(i+3).trim()||null};
         return {base:t, variant:null};
     }
-    // написание варианта как в актуальном шаблоне (сначала шаблонное упражнение с тем же base, затем любой шаблон)
+    // написание варианта как в актуальном шаблоне: приоритет — упражнение шаблона с тем же base, затем свежесть шаблона (up)
     function templateVariant(v,base){
         const low=v.toLowerCase(), bl=base?String(base).trim().toLowerCase():null;
         const tpls=(migCtx&&migCtx.templates)||(typeof data!=="undefined"&&data.templates)||[];
-        let any=null;
+        let best=null;
         for(const t of tpls) for(const b of (t.blocks||[])) for(const it of (b.items||[])) for(const x of (it.vars||[])){
             if(String(x).trim().toLowerCase()!==low) continue;
-            if(bl&&String(it.name||"").trim().toLowerCase()===bl) return String(x).trim();
-            if(!any) any=String(x).trim();
+            const score=[bl&&String(it.name||"").trim().toLowerCase()===bl?1:0, t.up||0];
+            if(!best||score[0]>best.score[0]||(score[0]===best.score[0]&&score[1]>best.score[1])) best={score:score, v:String(x).trim()};
         }
-        return any;
+        return best?best.v:null;
     }
     function canonVariant(v,base){
         v=v==null?"":String(v).trim(); if(!v) return null;
