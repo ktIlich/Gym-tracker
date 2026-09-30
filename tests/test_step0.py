@@ -120,8 +120,8 @@ async def main():
             check("test: бейдж TEST на экране первичной настройки", await t.evaluate("document.getElementById('envBadge')?.textContent==='TEST'"))
             b = await t.evaluate("""(()=>{ const e=document.getElementById('envBadge'), cs=getComputedStyle(e), r=e.getBoundingClientRect();
                 const a=document.querySelector('.setup').getBoundingClientRect().top; e.style.display='none'; const a2=document.querySelector('.setup').getBoundingClientRect().top; e.style.display='';
-                return {pos:cs.position, top:r.top, right:innerWidth-r.right, shift:a-a2, pe:cs.pointerEvents}; })()""")
-            check("бейдж TEST: position:fixed в углу, не сдвигает контент", b["pos"] == "fixed" and 0 <= b["top"] <= 20 and 0 < b["right"] <= 20 and b["shift"] == 0 and b["pe"] == "none", b)
+                return {pos:cs.position, top:r.top, right:r.left, shift:a-a2, pe:cs.pointerEvents}; })()""")
+            check("бейдж TEST: position:fixed в левом верхнем углу (справа — кнопка «?»), не сдвигает контент", b["pos"] == "fixed" and 0 <= b["top"] <= 20 and 0 < b["right"] <= 20 and b["shift"] == 0 and b["pe"] == "none", b)
             check("бейдж TEST: top учитывает safe-area (CSS-переменные Telegram)", "--tg-safe-area-inset-top" in open(REPO+"/test/index.html", encoding="utf-8").read())
             check("test: на первом экране (setup) есть кнопка клонирования", await t.locator('[data-act="cloneProd"]').count() == 1)
             check("test: title содержит TEST", "TEST" in await t.title())

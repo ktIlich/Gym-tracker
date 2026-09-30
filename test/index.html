@@ -98,6 +98,24 @@
         .seg{display:flex; background:var(--card2); border-radius:10px; padding:2px; gap:2px}
         .seg button{flex:1; min-height:44px; border-radius:8px; color:var(--mut); font-weight:600}
         .seg button.on{background:var(--btn); color:var(--btn-text)}
+        header{display:flex; align-items:center; gap:4px}
+        .hdr-main{flex:1; min-width:0}
+        .help-btn{flex:0 0 44px; width:44px; height:44px; margin-right:-10px; display:flex; align-items:center; justify-content:center; color:var(--mut); border-radius:50%}
+        .help-btn:active{background:var(--card2)}
+        .help-btn svg.icon{width:22px; height:22px; vertical-align:0}
+        .env-fixed{left:calc(var(--sa-left) + 6px) !important; right:auto !important}
+        #helpOv{position:fixed; inset:0; z-index:2500; background:var(--bg); overflow-y:auto; overscroll-behavior:contain;
+            padding:calc(var(--sa-top) + var(--csa-top) + 8px) max(14px, var(--sa-right)) calc(24px + var(--sa-bottom) + var(--csa-bottom)) max(14px, var(--sa-left))}
+        #helpOv .help-in{max-width:480px; margin:0 auto}
+        .help-title{font-weight:800; font-size:20px; margin:4px 0 10px}
+        .help-head{display:flex; align-items:center; gap:8px; width:100%; min-height:48px; padding:6px 12px; margin-top:8px; background:var(--card); border:1px solid var(--border); border-radius:12px; text-align:left; font-weight:700; font-size:16px}
+        .help-head .lbl2{flex:1; min-width:0}
+        .help-head.on{border-color:var(--accent)}
+        .help-body{padding:4px 12px 8px}
+        .help-q{font-weight:700; margin-top:12px}
+        .help-a{color:var(--mut); font-size:14px; line-height:1.5; margin-top:2px}
+        .help-ic{display:inline-block; color:var(--text)}
+        .help-ic svg.icon{width:16px; height:16px; vertical-align:-3px}
         .datenav{display:flex; align-items:center; justify-content:space-between; margin-top:12px}
         .datenav .nav{padding:6px 10px; color:var(--mut); font-size:24px; line-height:1; min-width:var(--touch); min-height:var(--touch)}
         .datenav .nav svg.icon{width:22px; height:22px; vertical-align:-6px}
@@ -2126,6 +2144,7 @@
     const ICON_TIMER=svgIcon('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>');
     const ICON_CLIPBOARD=svgIcon('<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/>');
     const ICON_DOWNLOAD=svgIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
+    const ICON_HELP=svgIcon('<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>');
     const ICON_INFO=svgIcon('<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>');
     const ICON_UPLOAD=svgIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>');
     const ICON_SYNC=svgIcon('<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>');
@@ -2153,9 +2172,10 @@
         let segs="", labels="";
         for(let i=0;i<c.workWeeks;i++){ segs+='<i class="s-work"></i>'; labels+='<span>раб. '+(i+1)+'</span>'; }
         for(let i=0;i<c.restWeeks;i++){ segs+='<i class="s-rest"></i>'; labels+='<span>отдых'+(c.restWeeks>1?" "+(i+1):"")+'</span>'; }
-        return '<header><div class="strip">'+segs
+        return '<header><div class="hdr-main"><div class="strip">'+segs
             +(wi?'<span class="dot" style="left:calc('+(wi.day/wi.cycleLen*100)+'% - 4px)"></span>':'')
-            +'</div><div class="strip-labels">'+labels+'</div></header>';
+            +'</div><div class="strip-labels">'+labels+'</div></div>'
+            +'<button class="help-btn" data-act="helpOpen" title="Справка" aria-label="Справка">'+ICON_HELP+'</button></header>';
     }
 
     // подпись варианта у строки «прошлая тренировка»: шаг 3 — «другой вариант: Блок»
@@ -2699,6 +2719,9 @@
         if(ENV!=="test") return "";
         return sectionHead("Тестовая среда","Служебные действия. Основная версия не затрагивается.")+'<div class="card">'+linkRow("Тестовая среда",null,'testOpen')+'</div>';
     }
+    function helpSectionHtml(){
+        return sectionHead("Справка","Как пользоваться приложением.")+'<div class="card">'+linkRow("Справка",null,'helpOpenAll')+'</div>';
+    }
     function testScreenHtml(){ return '<button class="hist-back" data-act="testClose">'+ICON_CHEVRON_LEFT+' Назад</button>'+cloneCardHtml(); }
     function testSectionHtml(){ return cloneCardHtml(); }
 
@@ -3097,6 +3120,103 @@
         const box=document.getElementById("alMsgs"); if(box) box.outerHTML=aliasFormMsgsHtml(f);
         const save=document.getElementById("alSave"); if(save) save.disabled=!aliasFormState(f).ok;
     }
+    // ============ справка ============
+    // ПРАВИЛО: каждое ТЗ, меняющее поведение приложения, обновляет HELP. Тексты сверены с кодом; «на ты», коротко, без восклицательных знаков.
+    // Разметка в текстах — только <b> и перенос строки; {check} {plus} {minus} {trash} {timer} {note} {help} {link} {close} — те же SVG-иконки, что в интерфейсе.
+    // a — строка или функция (для текстов, зависящих от конфигурации); only:"test" — пункт только в тестовой среде.
+    const HELP=[
+        { id:"day", title:"Сегодня", items:[
+            { q:"Выбор тренировки", a:"Внизу экрана, в блоке «Начать по шаблону», выбери шаблон — упражнения подставятся в этот день, подходы пустые. Поле вверху — название тренировки, его можно вписать самому. «Повторить прошлую тренировку» переносит упражнения последнего дня." },
+            { q:"Рекомендация", a:"В рабочую неделю над подходами стоит кнопка «Реком.: 70×8» — что делать сегодня. Тап подставляет значения в строку следующего подхода. Если в прошлый раз достигнут верх диапазона повторов из плана — вес растёт на шаг, повторы с нижней границы; если нет — тот же вес и +1–2 повтора.\nВ неделю отдыха вместо кнопки показывается бейдж со сниженной нагрузкой: вес на шаг ниже прошлого рабочего, а если в прошлый раз достигнут верх диапазона — тот же вес и на 4–5 повторов меньше. Рекомендация строится по записям того же варианта или без варианта; от другого варианта — нет." },
+            { q:"Прошлые тренировки", a:"Строки «Рабочая 23.09: …» и «Отдых 16.09: …» — последняя тренировка этого упражнения. Ищется тот же вариант, затем запись без варианта, затем другой вариант — тогда в строке пометка «другой вариант: Блок»." },
+            { q:"Разминка", a:"Для первых упражнений дня показан вес разминочного подхода. Сколько упражнений и на сколько процентов снижается вес — задаётся в настройках." },
+            { q:"Запись подхода", a:"Строка с пунктирной рамкой уже заполнена рекомендацией или прошлым подходом. {minus} и {plus} меняют вес на шаг, повторы — на 1; тап по числу — ввод с клавиатуры; {check} записывает подход. Следующая строка заполнится значениями только что записанного." },
+            { q:"Удаление", a:"Крестик у подхода удаляет подход, {trash} у упражнения — упражнение из этого дня (шаблон не меняется). После удаления в нижней плашке есть «Вернуть»." },
+            { q:"Вариант", a:"Кнопка варианта переключает исполнение, например «Блок» или «Свободный». Выбор меняет только эту запись, прошлые тренировки остаются как были. Новый вариант, добавленный здесь, попадает в список вариантов шаблона. Какой вариант подставится при старте по шаблону, определяет чередование в шаблоне." },
+            { q:"Суперсеты", a:"Упражнения суперсета стоят в общей рамке «Суперсет» — их делают поочерёдно." },
+            { q:"Таймер отдыха", a:"Кнопка {timer} запускает таймер, по окончании — вибрация и плашка «Отдых окончен». Автозапуск после записи подхода включается в настройках." },
+            { q:"Заметки", a:"{note} у упражнения — заметка к упражнению, «Заметка» вверху — к дню. Заметки прошлой тренировки показываются под упражнением." },
+            { q:"Неделя цикла", a:"Плашка рядом с датой («Рабочая · неделя 2», «Отдых») показывает тип недели. Тап по ней позволяет сделать неделю рабочей или отдыха вне схемы; «Сбросить» возвращает расчёт по циклу." }
+        ]},
+        { id:"cal", title:"Календарь", items:[
+            { q:"Цикл", a:"Недели отдыха подкрашены зелёным, дни с тренировками отмечены. Схема недель (сколько рабочих и сколько отдыха) и дата начала первой рабочей недели задаются в настройках." },
+            { q:"Переход к дню", a:"Тап по дате открывает её тренировку на вкладке «Сегодня». Дату без записи тоже можно открыть и внести тренировку задним числом." },
+            { q:"Смена типа недели", a:"Если неделю нужно сделать отдыхом вне схемы — на вкладке «Сегодня» тапни по плашке недели рядом с датой и выбери тип." }
+        ]},
+        { id:"tpl", title:"Шаблоны", items:[
+            { q:"Шаблон", a:"Тренировочный день: список блоков. Блок — одно упражнение или суперсет." },
+            { q:"План", a:"Пишется как <b>3х8-12</b>: 3 подхода по 8–12 повторов. Диапазон повторов используется для рекомендаций." },
+            { q:"Порядок", a:"Блоки переставляются стрелками. Кнопка {link} объединяет блок со следующим в суперсет, «разъед.» делит суперсет обратно; внутри суперсета упражнения тоже переставляются." },
+            { q:"Варианты", a:"Чипы вариантов: «+ вариант» добавляет по одному, крестик удаляет. Варианты чередуются от тренировки к тренировке: поле «чередовать каждые N тр.» задаёт, через сколько тренировок вариант меняется. Выбор в дне можно поменять." },
+            { q:"Импорт из текста", a:"Вставь текст программы — приложение распознает упражнения и планы и покажет превью перед сохранением. Тренировки с результатами загружаются из заметок в настройках, в разделе «Импорт»." }
+        ]},
+        { id:"prg", title:"Прогресс", items:[
+            { q:"Графики", a:"Вкладка «Упражнение»: тап по упражнению раскрывает график максимального веса по тренировкам и историю подходов. Разные варианты одного упражнения — разные линии, план на группировку не влияет." },
+            { q:"Тоннаж", a:"Вкладка «Сводка»: сумма «вес × повторы» по тренировкам за месяц, 3 месяца или всё время." },
+            { q:"Сравнение циклов", a:"В «Сводке» — таблица по циклам: число тренировок, тоннаж и изменение относительно предыдущего цикла. Ниже — рекорды по упражнениям." }
+        ]},
+        { id:"set", title:"Настройки", items:[
+            { q:"Цикл и отображение", a:"Схема недель и какие строки показывать в карточке упражнения." },
+            { q:"Разминка и таймер", a:"Сколько упражнений с разминкой, её процент, шаг веса, длительность отдыха и автозапуск таймера." },
+            { q:"Тема", a:"Цветовая схема и акцентный цвет." },
+            { q:"Резервная копия", a:function(){
+                return "Сохранить и вернуть всё. Вверху — дата последней копии; если копия просрочена, статус выделен цветом. "
+                    +(BACKUP_ENDPOINT?"«Отправить в чат» — файл приходит в чат с ботом: JSON (полная копия для восстановления), Excel или CSV (только журнал, для просмотра). Если копия старше заданного интервала, приложение само отправит её в чат при запуске; это выключается переключателем «Автоотправка в чат». "
+                        :"Отправка в чат заработает после подключения сервера; пока нажми «Скопировать JSON» и сохрани текст в «Избранное» в Telegram (вне Telegram можно скачать файл). ")
+                    +"«Восстановить из копии» — из файла или вставкой текста, с превью перед применением."; } },
+            { q:"Импорт", a:"Загрузить тренировки из Excel/CSV, в том числе из версии 1.0, или из текстовых заметок. Перед применением — превью по датам." },
+            { q:"Порядок в данных", a:"Чистка внутри приложения, файлы не участвуют. «Проверка данных» — пустые дни, упражнения без подходов, подходов больше плана, подозрительно малый вес. «Похожие шаблоны» — одинаковые копии удаляются, недостающие упражнения добавляются в последний использованный шаблон; перед применением можно выбрать основной и отметить упражнения. «Алиасы» — объединение разных названий одного упражнения или варианта." },
+            { q:"Тестовая среда", only:"test", a:"Скопировать данные из основной версии, очистить тестовые данные, диагностика. Основная версия не затрагивается." }
+        ]}
+    ];
+    function helpIcons(str){
+        const map={check:ICON_CHECK,plus:ICON_PLUS,minus:ICON_MINUS,trash:ICON_TRASH,timer:ICON_TIMER,note:ICON_NOTE,help:ICON_HELP,link:ICON_LINK,close:ICON_CLOSE};
+        return str.replace(/\{(\w+)\}/g,function(m,k){ return map[k]?'<span class="help-ic">'+map[k]+'</span>':m; });
+    }
+    // текст справки → HTML: экранируем всё, кроме <b></b>, переносы строк → <br>
+    function helpText(str){
+        return helpIcons(esc(str).replace(/&lt;b&gt;/g,"<b>").replace(/&lt;\/b&gt;/g,"</b>").replace(/\n/g,"<br>"));
+    }
+    function helpHtml(){
+        const h=ui.help;
+        let out='<div class="help-in"><button class="hist-back" data-act="helpClose">'+ICON_CHEVRON_LEFT+' Назад</button><div class="help-title">Справка</div>';
+        for(const sec of HELP){
+            const items=sec.items.filter(function(it){ return !it.only||it.only===ENV; });
+            const open=!!h.open[sec.id];
+            out+='<button class="help-head'+(open?' on':'')+'" data-act="helpToggle" data-id="'+sec.id+'" aria-expanded="'+open+'"><span class="lbl2">'+esc(sec.title)+'</span>'+(open?ICON_CHEVRON_DOWN:ICON_CHEVRON_RIGHT)+'</button>';
+            if(open){
+                out+='<div class="help-body" data-sec="'+sec.id+'">';
+                for(const it of items) out+='<div class="help-q">'+esc(it.q)+'</div><div class="help-a">'+helpText(typeof it.a==="function"?it.a():it.a)+'</div>';
+                out+='</div>';
+            }
+        }
+        return out+'</div>';
+    }
+    // startId: id раздела (таб), который раскрыть; null — «с начала» (раскрыт первый раздел)
+    function openHelp(startId){
+        ui.help={open:{}};
+        ui.help.open[startId||HELP[0].id]=true;
+        let ov=document.getElementById("helpOv");
+        if(!ov){
+            ov=document.createElement("div"); ov.id="helpOv"; ov.setAttribute("role","dialog");
+            ov.addEventListener("click",function(e){
+                const b=e.target.closest("[data-act]"); if(!b) return;
+                if(b.dataset.act==="helpClose") closeHelp();
+                else if(b.dataset.act==="helpToggle"){ ui.help.open[b.dataset.id]=!ui.help.open[b.dataset.id]; refreshHelp(); }
+            });
+            document.body.appendChild(ov);
+        }
+        refreshHelp(); ov.scrollTop=0;
+        document.documentElement.style.overflow="hidden";
+        syncBackButton();
+    }
+    function refreshHelp(){ const ov=document.getElementById("helpOv"); if(ov&&ui.help){ const y=ov.scrollTop; ov.innerHTML=helpHtml(); ov.scrollTop=y; } }
+    function closeHelp(){
+        ui.help=null;
+        const ov=document.getElementById("helpOv"); if(ov) ov.remove();
+        document.documentElement.style.overflow="";
+        syncBackButton();
+    }
     function setPage(){
         const c=data.cfg.cycle;
         let h='<div class="sec-label" style="margin-top:16px">Цикл</div><div class="card">'
@@ -3169,7 +3289,7 @@
         for(const a of ACCENT_PRESETS) h+='<button class="swatch'+(a===ac?' sel':'')+'" style="background:'+a+'" data-act="setAccent" data-accent="'+a+'"></button>';
         h+='</div></div>';
 
-        h+=backupSectionHtml()+importSectionHtml()+orderSectionHtml()+testSectionLinkHtml();
+        h+=backupSectionHtml()+importSectionHtml()+orderSectionHtml()+testSectionLinkHtml()+helpSectionHtml();
 
         h+='<div class="sec-label">Опасная зона</div><div class="card">';
         if(ui.wipeStep===1){
@@ -3216,6 +3336,7 @@
 
     // системная кнопка «Назад» Telegram: закрывает верхний из открытых экранов
     function currentBackAction(){
+        if(ui.help) return closeHelp;
         if(ui.aliasForm) return function(){ ui.aliasForm=null; render(); };
         if(ui.tab==="set"&&ui.aliasScreen) return function(){ ui.aliasScreen=false; render(); };
         if(ui.tab==="set"&&ui.hygiene) return function(){ ui.hygiene=null; ui.dupConfirm=null; render(); };
@@ -3753,6 +3874,8 @@
             case "hygOpen": ui.hygiene=ds.screen; ui.dupConfirm=null; render(); break;
             case "hygClose": ui.hygiene=null; ui.dupConfirm=null; render(); break;
             case "hygOpenDay": curDate=ds.date; ui.hygiene=null; ui.tab="day"; ui.histEx=null; render(); break;
+            case "helpOpen": openHelp(ui.tab); break;
+            case "helpOpenAll": openHelp(null); break;
             case "tplMergeGo":{ const r=mergeGroups([ds.key]); if(r) render(); break; }
             case "tplMergeSkip": (ui.tplSkip||(ui.tplSkip={}))[ds.key]=true; render(); break;
             case "tplMergeAllAsk":{
