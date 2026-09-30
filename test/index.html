@@ -373,16 +373,21 @@
         .mini-btn:active{opacity:.7}
         .mini-btn.warn{color:var(--danger)}
         .mini-btn svg.icon{width:1rem; height:1rem; vertical-align:-0.1875rem}
-        .et-item{border-top:1px solid var(--border); padding-top:0.625rem; margin-top:0.625rem}
+        .et-item{border-top:1px solid var(--border); padding-top:0.625rem; margin-top:0.625rem; display:flex; flex-direction:column; gap:0.75rem}
         .et-item:first-of-type{border-top:none; padding-top:0; margin-top:0.375rem}
-        .et-row{display:flex; flex-wrap:wrap; gap:0.375rem; margin-top:0.375rem; align-items:center}
+        .et-row{display:flex; flex-wrap:wrap; gap:0.375rem; margin-top:0; align-items:center}
         .et-row .plan{width:6rem; text-align:center; flex-shrink:0}
         .et-row .plan::placeholder{text-align:center}
         .chip-x{display:inline-flex; align-items:center; justify-content:center; min-width:var(--touch-w); min-height:var(--touch); color:inherit; border-radius:6.1875rem}
         .chip-x svg.icon{width:0.875rem; height:0.875rem}
-        .et-chip{min-height:var(--touch); padding-top:0; padding-bottom:0; padding-right:0}
-        .et-vadd{flex-shrink:0; min-height:var(--touch); white-space:nowrap}
-        .et-vars{display:flex; gap:0.375rem; margin-top:0.375rem; align-items:center; font-size:0.8125rem; color:var(--text-muted)}
+        .et-vars2{display:flex; flex-direction:column; gap:0.75rem}
+        .et-vars2 .chips,.et-vars2 .addex,.et-vars2 .et-vars,.et-vars2 .et-now{margin-top:0}
+        .chip.et-chip{justify-content:space-between; gap:0.375rem; min-height:var(--touch); padding:0 0 0 0.75rem; border-radius:0.75rem; background:var(--surface-2); color:var(--text); border:1.5px solid transparent; font-size:0.875rem; flex:0 1 auto; max-width:100%}
+        .chip.et-chip.on{background:transparent; border-color:var(--accent); color:var(--accent)}
+        .chip.et-chip .chip-x{border-radius:0.75rem}
+        .et-vars2 .addex input{flex:1; min-width:0}
+        .et-vadd{flex:0 0 auto; flex-shrink:0; min-height:var(--touch); white-space:nowrap; justify-content:center}
+        .et-vars{display:flex; gap:0.375rem; margin-top:0; align-items:center; font-size:0.8125rem; color:var(--text-muted)}
         .et-vars input.alt{width:3.25rem; text-align:center; flex-shrink:0}
         .et-vars input.alt::placeholder{text-align:center}
 
@@ -2646,16 +2651,16 @@
                     const vars=it.vars||[], due=variantIndex(countBase(it.name),it.alt,vars.length);
                     h+='<div class="et-vars2" data-tour="tpl-variants">';
                     if(vars.length){
-                        h+='<div class="chips" style="margin-top:0">';
+                        h+='<div class="chips">';
                         vars.forEach(function(v,vi){
                             h+='<span class="chip et-chip'+(vi===due?' on':'')+'" data-vi="'+vi+'">'+esc(v)
                                 +'<button class="chip-x" data-act="etVarDel" data-k="'+k+'" data-i="'+i+'" data-vi="'+vi+'" title="Удалить вариант">'+ICON_CLOSE+'</button></span>';
                         });
-                        h+='</div><div class="note" style="margin-top:0.375rem">Сейчас по очереди: '+esc(vars[due]||"")+'</div>';
+                        h+='</div><div class="note et-now">Сейчас по очереди: '+esc(vars[due]||"")+'</div>';
                     }
-                    h+='<div class="addex" style="margin-top:0.5rem"><input id="etv-'+k+'-'+i+'" placeholder="Новый вариант…" data-enter="etVarAdd" data-k="'+k+'" data-i="'+i+'" style="flex:1;min-width:0">'
+                    h+='<div class="addex"><input id="etv-'+k+'-'+i+'" placeholder="Новый вариант…" data-enter="etVarAdd" data-k="'+k+'" data-i="'+i+'" style="flex:1;min-width:0">'
                         +'<button class="btn-gray et-vadd" data-act="etVarAdd" data-k="'+k+'" data-i="'+i+'">'+ICON_PLUS+' вариант</button></div>'
-                        +(vars.length?'<div class="et-vars" data-tour="tpl-alt" style="margin-top:0.5rem">чередовать каждые <input class="alt" type="number" inputmode="numeric" min="1" value="'+(it.alt||1)+'" data-et="alt" data-k="'+k+'" data-i="'+i+'"> тр.</div>':'')
+                        +(vars.length?'<div class="et-vars" data-tour="tpl-alt">чередовать каждые <input class="alt" type="number" inputmode="numeric" min="1" value="'+(it.alt||1)+'" data-et="alt" data-k="'+k+'" data-i="'+i+'"> тр.</div>':'')
                         +'</div>';
                 }
                 h+='</div>';
