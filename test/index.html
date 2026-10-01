@@ -186,6 +186,8 @@
         .br-ic{color:var(--warn); display:flex; padding-top:0.125rem}
         .link-btn{display:block; width:100%; margin-top:0.5rem; min-height:var(--touch); color:var(--text-muted); font-size:0.8125rem; text-decoration:underline}
         .br-txt{flex:1; min-width:0}
+        .br-link{display:block; margin-top:0.375rem; color:var(--accent); text-decoration:underline; min-height:1.5rem}
+        a.link-row{text-decoration:none; color:inherit}
         .br-safari{display:block; margin-top:0.375rem; color:var(--text-muted)}
         .br-x{width:var(--touch-w); height:var(--touch); margin:-0.5rem 0; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted)}
         .br-info{display:flex; align-items:center; justify-content:center; width:var(--touch-w); height:var(--touch); margin:0.25rem 0 0 -0.625rem; color:var(--warn)}
@@ -2238,6 +2240,7 @@
     }
 
     // ============ отправка копии в чат через Cloudflare Worker (worker/) ============
+    const BOT_URL="https://t.me/gymtracker_ktilcih_bot";   // бот приложения: из браузера — ссылка на открытие в Telegram
     const BACKUP_ENDPOINT="https://gym-tracker-backup.ktilich-gym-tracker.workers.dev";   // адрес Worker после деплоя; пусто — кнопки отправки скрыты, приложение работает без сервера
     function bytesToBase64(u8){
         let bin=""; const arr=new Uint8Array(u8);
@@ -2590,6 +2593,7 @@
         if(IN_TG) return "";
         if(browserWarnCollapsed()) return '<button class="br-info" id="brWarn" data-act="brWarnToggle" aria-label="Открыто в браузере: данные хранятся только здесь" title="Открыто в браузере">'+ICON_INFO+'</button>';
         return '<div class="br-warn" id="brWarn" role="note"><span class="br-ic">'+ICON_INFO+'</span><span class="br-txt">Открыто в браузере: данные хранятся только здесь и не синхронизируются с Telegram'
+            +'<a class="br-link" href="'+BOT_URL+'" target="_blank" rel="noopener">Открыть бота в Telegram</a>'
             +(ui.persistDenied&&isSafariBrowser()?'<span class="br-safari">Safari может удалить данные, если не открывать сайт 7 дней. Добавь сайт на экран «Домой» или регулярно скачивай копию.</span>':'')+'</span>'
             +'<button class="br-x" data-act="brWarnToggle" aria-label="Свернуть">'+ICON_CLOSE+'</button></div>';
     }
@@ -3404,7 +3408,8 @@
         return sectionHead("Тестовая среда","Служебные действия. Основная версия не затрагивается.")+'<div class="card">'+linkRow("Тестовая среда",null,'testOpen')+'</div>';
     }
     function helpSectionHtml(){
-        return sectionHead("Помощь","Тур по интерфейсу, справочник и приветствие.")+'<div class="card">'+linkRow("Пройти тур",null,'tourAll')+linkRow("Справочник",null,'helpOpenAll')+linkRow("Показать приветствие",null,'onbShow')+'</div>';
+        return sectionHead("Помощь","Тур по интерфейсу, справочник и приветствие.")+'<div class="card">'+linkRow("Пройти тур",null,'tourAll')+linkRow("Справочник",null,'helpOpenAll')+linkRow("Показать приветствие",null,'onbShow')
+            +'<a class="link-row" id="botLink" href="'+BOT_URL+'" target="_blank" rel="noopener"><span class="lbl2">Бот в Telegram <span class="cnt">· @gymtracker_ktilcih_bot</span></span>'+ICON_CHEVRON_RIGHT+'</a></div>';
     }
     function testScreenHtml(){ return '<button class="hist-back" data-act="testClose">'+ICON_CHEVRON_LEFT+' Назад</button>'+cloneCardHtml(); }
     function testSectionHtml(){ return cloneCardHtml(); }

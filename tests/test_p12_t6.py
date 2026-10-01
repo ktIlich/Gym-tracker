@@ -169,7 +169,7 @@ async def main():
             # ---- «Пройти тур» из настроек: все табы подряд
             await page.click('button[data-tab="set"]'); await page.wait_for_timeout(200)
             rows = await page.evaluate("[...document.querySelectorAll('[data-tour=set-help] .link-row')].map(b=>b.textContent.trim())")
-            check("6.1: в «Настройках» раздел «Помощь»: «Пройти тур», «Справочник», «Показать приветствие»", rows == ["Пройти тур", "Справочник", "Показать приветствие"], rows)
+            check("6.1: в «Настройках» раздел «Помощь»: «Пройти тур», «Справочник», «Показать приветствие», «Бот в Telegram»", rows == ["Пройти тур", "Справочник", "Показать приветствие", "Бот в Telegram · @gymtracker_ktilcih_bot"], rows)
             await page.click('[data-act="tourAll"]'); await page.wait_for_timeout(300)
             steps, bad = await walk(page, "all")
             tabs_seen = []

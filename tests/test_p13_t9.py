@@ -30,8 +30,8 @@ async def main():
             await page.set_viewport_size({"width": 390, "height": 844})
             await page.goto(BASE + "/test/index.html"); await page.wait_for_timeout(2500)
             check("9.2: в браузере IN_TG = false", await page.evaluate("IN_TG") is False)
-            w = await page.evaluate("(()=>{ const e=document.getElementById('brWarn'); if(!e) return null; const r=e.getBoundingClientRect(), h=document.querySelector('header').getBoundingClientRect(); return {txt:e.textContent.trim(), below:r.top>=h.bottom-0.5, x:!!e.querySelector('.br-x'), xH:e.querySelector('.br-x')?e.querySelector('.br-x').getBoundingClientRect().height:0, w:r.width, vw:innerWidth}; })()")
-            check("9.2: под шапкой постоянная строка-предупреждение: «%s»" % WARN, w and w["txt"] == WARN and w["below"] and w["x"] and w["xH"] >= 43.5 and w["w"] <= w["vw"], w)
+            w = await page.evaluate("(()=>{ const e=document.getElementById('brWarn'); if(!e) return null; const r=e.getBoundingClientRect(), h=document.querySelector('header').getBoundingClientRect(); return {txt:e.querySelector('.br-txt').firstChild.textContent.trim(), link:(e.querySelector('.br-link')||{}).href||'', linkTxt:(e.querySelector('.br-link')||{}).textContent||'', target:(e.querySelector('.br-link')||{}).target||'',  below:r.top>=h.bottom-0.5, x:!!e.querySelector('.br-x'), xH:e.querySelector('.br-x')?e.querySelector('.br-x').getBoundingClientRect().height:0, w:r.width, vw:innerWidth}; })()")
+            check("9.2: под шапкой постоянная строка-предупреждение: «%s»" % WARN, w and w["txt"] == WARN and w["link"] == "https://t.me/gymtracker_ktilcih_bot" and w["linkTxt"] == "Открыть бота в Telegram" and w["target"] == "_blank" and w["below"] and w["x"] and w["xH"] >= 43.5 and w["w"] <= w["vw"], w)
             for tab in ("cal", "tpl", "prg", "set", "day"):
                 await page.click('button[data-tab="%s"]' % tab); await page.wait_for_timeout(120)
                 assert await page.locator("#brWarn").count() == 1, tab
@@ -44,6 +44,9 @@ async def main():
             await page.click('#brWarn'); await page.wait_for_timeout(200)
             check("9.2: тап по значку разворачивает строку обратно", await page.evaluate("document.getElementById('brWarn').className") == "br-warn" and await page.evaluate("localStorage.getItem('tst_br_warn')") == "1")
 
+            await page.click('button[data-tab="set"]'); await page.wait_for_timeout(200)
+            bl = await page.evaluate("(()=>{ const a=document.getElementById('botLink'); return a&&{href:a.href, target:a.target, rel:a.rel, txt:a.textContent.trim(), h:a.getBoundingClientRect().height, tag:a.tagName}; })()")
+            check("ссылка на бота: в «Настройках → Помощь» строка «Бот в Telegram · @gymtracker_ktilcih_bot» — ссылка https://t.me/gymtracker_ktilcih_bot (новая вкладка, noopener), высота ≥ 44", bl and bl["tag"] == "A" and bl["href"] == "https://t.me/gymtracker_ktilcih_bot" and bl["target"] == "_blank" and "noopener" in bl["rel"] and bl["txt"].startswith("Бот в Telegram") and bl["h"] >= 43.5, bl)
             # резервная копия: скачивание трёх форматов
             await page.click('button[data-tab="set"]'); await page.wait_for_timeout(200)
             sec = await page.evaluate("({send:[...document.querySelectorAll('[data-act=sendBackup]')].length, dl:['backupDownload','export','exportCsv'].map(a=>document.querySelectorAll('[data-act='+a+']').length), txt:document.querySelector('[data-tour=set-backup]').textContent})")
