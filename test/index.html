@@ -502,6 +502,7 @@
     const DEFAULT_THEME={base:"tg",accent:"#ff9f0a",accent2:null,rest:"#30d158",custom:{}};
     // THEME-DATA-END
     // ============ среда: test / prod, изоляция ключей ============
+    let LOAD_OK=false;   // данные загружены (или хранилище подтверждено пустым): до этого любая запись в хранилище запрещена
     let TOUR_MODE=false, tour=null;   // тур по интерфейсу: на демо-данных, любая запись в хранилище запрещена
     const ENV = location.pathname.includes("/test/") ? "test" : "prod";
     const KP  = ENV === "test" ? "tst_" : "";   // префикс ключей CloudStorage и localStorage
@@ -509,6 +510,11 @@
     // защита: в test любая запись/удаление ключа без префикса tst_ запрещена
     function guardKey(fullKey){
         if(TOUR_MODE) throw new Error("Blocked write in TOUR_MODE: "+fullKey);
+        if(!LOAD_OK){
+            // служебные ключи (флаг версии, локальные копии, снапшоты) пишутся и до загрузки; данные — нет
+            const nm=(KP&&String(fullKey).indexOf(KP)===0)?String(fullKey).slice(KP.length):String(fullKey);
+            if(!(nm==="lastSeenVersion"||nm==="prerestore"||nm==="br_warn"||nm.indexOf("rawdump_")===0||nm.indexOf("premig_")===0)) throw new Error("Запись заблокирована: данные ещё не загружены ("+fullKey+")");
+        }
         if(ENV==="test" && String(fullKey).indexOf("tst_")!==0){
             try{ toast("Попытка записи в боевые данные заблокирована"); }catch(e){}
             throw new Error("Blocked write to prod key: "+fullKey);
@@ -856,8 +862,21 @@
     }
 
     // ============ storage: localStorage cache + Telegram CloudStorage ============
-    function saveCache(){ if(TOUR_MODE) return; try{ lsSet(CACHE_KEY, JSON.stringify(data)); }catch(e){} maybeSnapshot(); }
-    function loadCache(){ try{ const r=lsGet(CACHE_KEY); if(r){ data=normalizeData(JSON.parse(r)); return true; } }catch(e){} return false; }
+    function saveCache(){ if(TOUR_MODE||!LOAD_OK) return; try{ lsSet(CACHE_KEY, JSON.stringify(data)); }catch(e){} maybeSnapshot(); }
+    function loadCache(){
+        ui.cacheError=null;
+        try{ const r=lsGet(CACHE_KEY); if(r){ data=normalizeData(JSON.parse(r)); return true; } }
+        catch(e){ ui.cacheError=e; }   // кэш есть, но не читается — это не «нет данных»
+        return false;
+    }
+    // ключи данных приложения (служебные — marker клонирования и т. п. — не считаются)
+    function isDataKey(k){ return k==="cfg"||k.indexOf("tpl_")===0||k.indexOf("w_")===0; }
+    // ошибка загрузки: данные не удалены, мастер не показываем, ничего не пишем (экран ошибки)
+    function loadFail(msg,err){
+        ui.loadError={ msg:msg, stack:(err&&err.stack)||"", at:new Date().toISOString() };
+        syncState.busy=false;
+        render();
+    }
 
     // ============ backup / restore ============
     function buildBackupDump(){
@@ -968,10 +987,10 @@
 
     let warnedCloud=false;
     function csSetWarn(k,v){ csSet(k,v).then(function(ok){ if(cs&&!ok&&!warnedCloud){ warnedCloud=true; toast("Запись в облако не прошла ("+k+")"); } }); }
-    function persistDay(k){ if(TOUR_MODE) return; saveCache(); if(data.log[k]) csSetWarn("w_"+k, JSON.stringify(data.log[k])); else csDel("w_"+k); }
-    function persistCfg(){ if(TOUR_MODE) return; data.cfg.up=Date.now(); saveCache(); csSetWarn("cfg", JSON.stringify(data.cfg)); }
-    function persistTpl(t){ if(TOUR_MODE) return; t.up=Date.now(); saveCache(); csSetWarn("tpl_"+t.id, JSON.stringify(t)); }
-    function unpersistTpl(id){ if(TOUR_MODE) return; saveCache(); csDel("tpl_"+id); }
+    function persistDay(k){ if(TOUR_MODE||!LOAD_OK) return; saveCache(); if(data.log[k]) csSetWarn("w_"+k, JSON.stringify(data.log[k])); else csDel("w_"+k); }
+    function persistCfg(){ if(TOUR_MODE||!LOAD_OK) return; data.cfg.up=Date.now(); saveCache(); csSetWarn("cfg", JSON.stringify(data.cfg)); }
+    function persistTpl(t){ if(TOUR_MODE||!LOAD_OK) return; t.up=Date.now(); saveCache(); csSetWarn("tpl_"+t.id, JSON.stringify(t)); }
+    function unpersistTpl(id){ if(TOUR_MODE||!LOAD_OK) return; saveCache(); csDel("tpl_"+id); }
 
     // ============ миграции данных (по записям, а не по cfg.schema) ============
     // Состояние миграции определяется самими записями: cfg может быть новее отдельных дней (слияние, старый клиент).
@@ -1040,7 +1059,7 @@
     }
     let flushing=false;
     async function flushDirty(){
-        if(flushing||TOUR_MODE||ui.gateBusy) return; flushing=true;
+        if(flushing||TOUR_MODE||ui.gateBusy||!LOAD_OK) return; flushing=true;
         try{
             const dirty=getDirty();
             if(!dirty.days.length&&!dirty.tpls.length) return;
@@ -1156,7 +1175,7 @@
             if(await confirmNoCopy()){ mark(); return; }
         }
     }
-    function applyGateAccess(){ if(typeof ui.gateWriteAccess==="boolean"){ data.cfg.writeAccess=ui.gateWriteAccess; delete ui.gateWriteAccess; persistCfg(); } }
+    function applyGateAccess(){ if(LOAD_OK&&typeof ui.gateWriteAccess==="boolean"){ data.cfg.writeAccess=ui.gateWriteAccess; delete ui.gateWriteAccess; persistCfg(); } }
     // сырой дамп → обычная резервная копия {cfg,templates,log} (дальше — обычное «Восстановить из копии» с превью и миграциями)
     function isRawDump(o){ return !!(o&&typeof o==="object"&&o.kind==="raw-dump"&&o.app==="gym-tracker"&&o.keys&&typeof o.keys==="object"); }
     function rawDumpToBackup(raw){
@@ -1430,7 +1449,7 @@
         if(keys) for(const k of keys) await csDel(k);
         await cloudPushAll();
     }
-    function cloudObjFromItems(keys,items){
+    function cloudObjFromItems(keys,items,errs){
         const cloud=emptyData();
         for(const k of keys){
             const v=items[k]; if(!v) continue;
@@ -1439,7 +1458,8 @@
                 if(k==="cfg") cloud.cfg=o;
                 else if(k.indexOf("tpl_")===0) cloud.templates.push(o);
                 else if(k.indexOf("w_")===0) cloud.log[k.slice(2)]=o;
-            }catch(e){}
+                if(errs&&isDataKey(k)) errs.ok=(errs.ok||0)+1;
+            }catch(e){ if(errs) errs.push(k+": "+errText(e)); }
         }
         return cloud;
     }
@@ -1458,13 +1478,24 @@
         if(!cs||syncState.busy||ui.cloneIncomplete||TOUR_MODE||ui.gateBusy) return;
         syncState.busy=true;
         try{
-            const keys=await csKeys();
-            if(keys===null){ syncState.busy=false; return; }
+            const kr=await withTimeout(csKeys(),LOAD_OK?60000:10000,"Чтение списка ключей CloudStorage");
+            const keys=(kr&&kr.err)?null:kr;
+            if(keys===null){
+                if(!LOAD_OK) loadFail("Не удалось прочитать список ключей CloudStorage"+((kr&&kr.err)?": "+kr.err:"")+(lastCsErr?" — "+lastCsErr:""));
+                syncState.busy=false; return;
+            }
             syncState.verified=true;
-            if(!keys.length){ maybeCreateDefaults(); await cloudPushAll(); syncState.last=new Date(); syncState.count=1+data.templates.length+Object.keys(data.log).length; syncState.busy=false; render(); return; }
+            const dataKeys=keys.filter(isDataKey);
+            if(!dataKeys.length){ LOAD_OK=true; maybeCreateDefaults(); await cloudPushAll(); syncState.last=new Date(); syncState.count=1+data.templates.length+Object.keys(data.log).length; syncState.busy=false; render(); return; }
             const items=await csGetItems(keys);
             if(TOUR_MODE) return;   // тур начался во время загрузки: демо-данные не трогаем, в следующий раз
-            const cloud=cloudObjFromItems(keys,items);
+            const perr=[];
+            const cloud=cloudObjFromItems(keys,items,perr);
+            if(!LOAD_OK&&!perr.ok){
+                // ключи данных есть, но ничего не прочиталось/не разобралось — не мастер и не запись, а экран ошибки
+                loadFail("В облаке есть ключи данных ("+dataKeys.length+"), но прочитать их не удалось"+(perr.length?": "+perr.slice(0,3).join("; "):"")+(lastCsErr?" — "+lastCsErr:""));
+                return;
+            }
             // слияние по меткам времени .up: новее — побеждает; чего нет в облаке — доливаем
             const before=JSON.stringify(data);
             const push=[];
@@ -1481,12 +1512,16 @@
                 else if((t.up||0)>(merged.templates[i].up||0)){ merged.templates[i]=t; push.push(["tpl_"+t.id,JSON.stringify(t)]); }
             }
             data=merged;
+            LOAD_OK=true;                 // разбор и слияние прошли: запись разрешена
             maybeCreateDefaults();
             applyMigrations();
             syncState.last=new Date(); syncState.count=keys.length;
             if(JSON.stringify(data)!==before){ saveCache(); render(); }
             else if(ui.tab==="set") render(); // обновить строку статуса
             for(const p of push){ const v=serializeKey(p[0]); if(v!==null) await csSet(p[0],v); }
+        }catch(e){
+            if(!LOAD_OK) loadFail("Ошибка при загрузке данных: "+errText(e),e);   // сбой разбора до загрузки: не мастер и не запись, а экран ошибки
+            else throw e;
         }finally{ syncState.busy=false; }
     }
     document.addEventListener("visibilitychange",function(){ if(!document.hidden) cloudLoad(); });
@@ -2316,7 +2351,7 @@
     }
     // Проверка при запуске — только после синхронизации с CloudStorage (иначе в копию попадёт устаревший кэш); не чаще одной попытки за запуск
     async function maybeAutoBackup(){
-        if(TOUR_MODE) return;
+        if(TOUR_MODE||!LOAD_OK) return;
         if(ui.autoBackupTried) return;
         if(cs&&!syncState.verified) return;                       // синхронизация не завершена — копию не шлём
         if(ui.onb||onboardingDue()) return;                        // сначала приветствие; после закрытия проверка повторится
@@ -4279,6 +4314,11 @@
         return "Цикл по умолчанию: "+w+" "+plural(w,"рабочая неделя","рабочие недели","рабочих недель")
             +(r>0?", потом "+r+" "+plural(r,"неделя","недели","недель")+" отдыха":", без недель отдыха");
     }
+    // экран «Не удалось загрузить данные» (кнопки «Сохранить сырые данные» и «Сообщить об ошибке» — задача 4)
+    function loadErrorHtml(){
+        return '<div class="setup"><div class="sec-label" style="margin-top:1rem">Не удалось загрузить данные</div><div class="card"><div class="note" style="margin-top:0">Не удалось загрузить данные. Они не удалены — ничего не нажимай, кроме кнопок ниже.</div>'
+            +'<button class="wide-btn primary" data-act="loadRetry">Повторить</button></div></div>';
+    }
     function renderSetup(){
         document.getElementById("tabbar").style.display="none";
         if(ui.setupStep!==2){
@@ -4333,6 +4373,8 @@
         if(key!==ui._screenKey){ ui._screenKey=key; window.scrollTo(0,0); }
     }
     function renderMain(){
+        if(ui.loadError){ document.getElementById("tabbar").style.display="none"; app.innerHTML=loadErrorHtml(); return; }
+        if(!LOAD_OK){ document.getElementById("tabbar").style.display="none"; app.innerHTML='<div class="setup"><div class="note">Загрузка данных…</div></div>'; return; }
         if(ENV==="test"&&cs&&!ui.stateChecked){ document.getElementById("tabbar").style.display="none"; app.innerHTML='<div class="setup"><div class="note">Загрузка тестовых данных…</div></div>'; return; }
         if(ENV==="test"&&ui.diag){ document.getElementById("tabbar").style.display="none"; app.innerHTML=diagPageHtml(); return; }
         if(ENV==="test"&&ui.cloneIncomplete){ document.getElementById("tabbar").style.display="none"; app.innerHTML=incompleteHtml(); return; }
@@ -4845,6 +4887,10 @@
                 toast("Копия сохранена");
                 break;
             }
+            case "loadRetry":
+                ui.loadError=null; render();
+                if(cs){ syncState.busy=false; cloudLoad().then(function(){ ui.cloudChecked=true; render(); }); } else location.reload();
+                break;
             case "brWarnToggle":{ try{ lsSet("br_warn",browserWarnCollapsed()?"1":"0"); }catch(e){} render(); break; }
             case "cloneProd": cloneFromProd(); break;
             case "bannerDupOpen": ui.tab="set"; ui.hygiene="dups"; ui.dupConfirm=null; ui.aliasScreen=false; hap("light"); render(); break;
@@ -5147,12 +5193,21 @@
         try{ app.innerHTML='<div class="setup"><div class="note">Загрузка…</div></div>'; await versionGate(); }catch(e){}
         ui.gateBusy=false;
         const hadCache=loadCache();
-        if(!hadCache){
-            if(migrateOld()) toast("Данные перенесены из старой версии");
-            else if(cs){ ui.needDefaults=true; saveCache(); }   // облако ещё не проверено — шаблоны по умолчанию создадим после проверки
-            else { data.templates=makeDefaultTemplates(); saveCache(); }
+        if(hadCache) LOAD_OK=true;                      // кэш прочитан: можно работать (облако досинхронизируется)
+        else {
+            const lsKeysNow=lsItems("",true), hasOld=!!lsKeysNow[OLD_KEY];
+            if(hasOld){
+                LOAD_OK=true;                            // migrateOld пишет кэш; при неудаче вернём запрет
+                let okOld=false; try{ okOld=migrateOld(); }catch(e){}
+                if(okOld) toast("Данные перенесены из старой версии");
+                else { LOAD_OK=false; loadFail("Данные старой версии (v1) есть, но не прочитались"); }
+            }
+            else if(ui.cacheError&&!cs) loadFail("Данные в этом браузере есть, но не прочитались: "+errText(ui.cacheError),ui.cacheError);   // кэш повреждён, облака нет — ничего не трогаем
+            else if(cs){ ui.needDefaults=true; }         // облако ещё не проверено: LOAD_OK и мастер/шаблоны по умолчанию — только после проверки
+            else if(!lsKeysNow[CACHE_KEY]){ LOAD_OK=true; data.templates=makeDefaultTemplates(); saveCache(); }   // хранилище физически пустое — новый пользователь
+            else loadFail("Данные в этом браузере есть, но не прочитались");
         }
-        applyMigrations();
+        if(LOAD_OK) applyMigrations();
         applyTheme();
         if(tg&&tg.BackButton&&tg.BackButton.onClick) tg.BackButton.onClick(function(){ const a=currentBackAction(); if(a) a(); });
         if(ENV==="test"){
