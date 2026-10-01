@@ -872,8 +872,9 @@
     // ключи данных приложения (служебные — marker клонирования и т. п. — не считаются)
     function isDataKey(k){ return k==="cfg"||k.indexOf("tpl_")===0||k.indexOf("w_")===0; }
     // ошибка загрузки: данные не удалены, мастер не показываем, ничего не пишем (экран ошибки)
-    function loadFail(msg,err){
-        ui.loadError={ msg:msg, stack:(err&&err.stack)||"", at:new Date().toISOString() };
+    function loadFail(msg,err,nkeys){
+        let n=nkeys; if(n==null) n=ui.cloudKeyCount; if(n==null){ try{ n=Object.keys(lsItems("",true)).length; }catch(e){ n=null; } }
+        ui.loadError={ msg:msg, stack:(err&&err.stack)||"", at:new Date().toISOString(), keys:n, view:null, text:"" };
         syncState.busy=false;
         render();
     }
@@ -1093,9 +1094,9 @@
     // lastSeenVersion — в localStorage (проверка на каждом устройстве отдельно). Служебные ключи (сам флаг, копии, снапшоты) в дамп и в «есть ли данные» не входят.
     const LS_SERVICE=function(name){ return name==="lastSeenVersion"||name==="prerestore"||name.indexOf("rawdump_")===0||name.indexOf("premig_")===0; };
     function rawDumpName(version){ return "gym-tracker-before-"+version+"-"+toKey(new Date())+".json"; }
-    async function buildRawDump(prevVersion){
+    async function buildRawDump(prevVersion,forceLocal){
         const dump={ kind:"raw-dump", app:"gym-tracker", version:APP_VERSION, prevVersion:prevVersion||null, env:ENV, source:"local", created:new Date().toISOString(), keys:{} };
-        if(IN_TG&&cs){
+        if(IN_TG&&cs&&!forceLocal){
             // Telegram: список ключей и значения CloudStorage как есть (в prod — без tst_*, в test — только tst_*, имена без префикса)
             const all=await csKeys();
             if(all===null) throw new Error("не удалось прочитать список ключей CloudStorage"+(lastCsErr?" — "+lastCsErr:""));
@@ -1484,7 +1485,7 @@
                 if(!LOAD_OK) loadFail("Не удалось прочитать список ключей CloudStorage"+((kr&&kr.err)?": "+kr.err:"")+(lastCsErr?" — "+lastCsErr:""));
                 syncState.busy=false; return;
             }
-            syncState.verified=true;
+            syncState.verified=true; ui.cloudKeyCount=keys.length;
             const dataKeys=keys.filter(isDataKey);
             if(!dataKeys.length){ LOAD_OK=true; maybeCreateDefaults(); await cloudPushAll(); syncState.last=new Date(); syncState.count=1+data.templates.length+Object.keys(data.log).length; syncState.busy=false; render(); return; }
             const items=await csGetItems(keys);
@@ -1493,7 +1494,7 @@
             const cloud=cloudObjFromItems(keys,items,perr);
             if(!LOAD_OK&&!perr.ok){
                 // ключи данных есть, но ничего не прочиталось/не разобралось — не мастер и не запись, а экран ошибки
-                loadFail("В облаке есть ключи данных ("+dataKeys.length+"), но прочитать их не удалось"+(perr.length?": "+perr.slice(0,3).join("; "):"")+(lastCsErr?" — "+lastCsErr:""));
+                loadFail("В облаке есть ключи данных ("+dataKeys.length+"), но прочитать их не удалось"+(perr.length?": "+perr.slice(0,3).join("; "):"")+(lastCsErr?" — "+lastCsErr:""),null,keys.length);
                 return;
             }
             // слияние по меткам времени .up: новее — побеждает; чего нет в облаке — доливаем
@@ -4314,10 +4315,44 @@
         return "Цикл по умолчанию: "+w+" "+plural(w,"рабочая неделя","рабочие недели","рабочих недель")
             +(r>0?", потом "+r+" "+plural(r,"неделя","недели","недель")+" отдыха":", без недель отдыха");
     }
-    // экран «Не удалось загрузить данные» (кнопки «Сохранить сырые данные» и «Сообщить об ошибке» — задача 4)
+    // экран «Не удалось загрузить данные»: «Повторить», «Сохранить сырые данные» (сырой дамп без разбора), «Сообщить об ошибке»
+    function loadErrorReport(){
+        const le=ui.loadError||{};
+        return ["Gym Tracker v"+APP_VERSION, "ENV: "+ENV, "IN_TG: "+IN_TG, "Платформа: "+((tg&&tg.platform)||navigator.platform||"?")+(tg&&tg.version?" (Telegram "+tg.version+")":""),
+            "Ключей в хранилище: "+(le.keys==null?"?":le.keys), "Время: "+(le.at||new Date().toISOString()), "Ошибка: "+(le.msg||"?"), le.stack?("Стек:\n"+le.stack):""].join("\n");
+    }
     function loadErrorHtml(){
-        return '<div class="setup"><div class="sec-label" style="margin-top:1rem">Не удалось загрузить данные</div><div class="card"><div class="note" style="margin-top:0">Не удалось загрузить данные. Они не удалены — ничего не нажимай, кроме кнопок ниже.</div>'
-            +'<button class="wide-btn primary" data-act="loadRetry">Повторить</button></div></div>';
+        const le=ui.loadError||{};
+        let h='<div class="setup"><div class="sec-label" style="margin-top:1rem">Не удалось загрузить данные</div><div class="card"><div class="note" style="margin-top:0">Не удалось загрузить данные. Они не удалены — ничего не нажимай, кроме кнопок ниже.</div>'
+            +'<button class="wide-btn primary" data-act="loadRetry"'+(le.busy?' disabled':'')+'>Повторить</button>'
+            +'<button class="wide-btn" data-act="loadSaveRaw"'+(le.busy?' disabled':'')+'>'+(le.busy?'Сохраняем…':'Сохранить сырые данные')+'</button>'
+            +'<button class="wide-btn" data-act="loadReport"'+(le.busy?' disabled':'')+'>Сообщить об ошибке</button></div>';
+        if(le.msgOut) h+='<div class="note" id="loadMsg">'+esc(le.msgOut)+'</div>';
+        if(le.view==="report") h+='<div class="sec-label">Сведения об ошибке</div><div class="card"><textarea id="loadTxt" readonly style="min-height:11rem;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.75rem">'+esc(loadErrorReport())+'</textarea><button class="wide-btn" data-act="loadCopy">Скопировать</button></div>';
+        if(le.view==="raw") h+='<div class="sec-label">Сырые данные</div><div class="card"><div class="note" style="margin-top:0">Не удалось отправить копию. Скопируй текст и сохрани его в «Избранное» в Telegram.</div><textarea id="loadTxt" readonly style="min-height:11rem;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.75rem">'+esc(le.text||"")+'</textarea><button class="wide-btn" data-act="loadCopy">Скопировать</button></div>';
+        return h+'</div>';
+    }
+    // сырые данные: сначала как обычно (облако), при сбое — локальные ключи; браузер — скачивание, Telegram — отправка в чат, при неудаче — текст для копирования
+    async function loadSaveRaw(){
+        const le=ui.loadError; if(!le||le.busy) return;
+        le.busy=true; le.msgOut=""; le.view=null; render();
+        const done=function(msg,view,text){ le.busy=false; le.msgOut=msg||""; le.view=view||null; if(text!=null) le.text=text; render(); };
+        let dump;
+        try{ dump=await buildRawDump(lsGet("lastSeenVersion")||null); }
+        catch(e){ try{ dump=await buildRawDump(lsGet("lastSeenVersion")||null,true); }catch(e2){ return done("Не удалось прочитать данные для копии: "+errText(e2)); } }
+        if(!Object.keys(dump.keys).length) return done("Сохранять нечего: ключей данных в хранилище нет.");
+        const text=JSON.stringify(dump), fname=rawDumpName(APP_VERSION);
+        if(!IN_TG){ downloadJson(fname,text); saveRawDumpLocal(dump); return done("Файл со всеми данными скачан: "+fname); }
+        let granted=false; try{ granted=JSON.parse(dump.keys.cfg||"{}").writeAccess===true; }catch(e){}
+        if(!granted&&BACKUP_ENDPOINT){
+            granted=await new Promise(function(r){ if(!tg||typeof tg.requestWriteAccess!=="function"){ r(false); return; } try{ tg.requestWriteAccess(function(a){ r(!!a); }); }catch(e){ r(false); } });
+        }
+        if(granted&&BACKUP_ENDPOINT){
+            const r=await postBackup("json","Сырые данные (ошибка загрузки) v"+APP_VERSION,{text:text,filename:fname});
+            if(r.ok) return done("Копия отправлена в чат с ботом.");
+        }
+        saveRawDumpLocal(dump);
+        return done("",  "raw", text);
     }
     function renderSetup(){
         document.getElementById("tabbar").style.display="none";
@@ -4885,6 +4920,14 @@
                 downloadJson("gym-tracker-"+toKey(new Date())+".json", JSON.stringify(dump,null,2));
                 data.cfg.lastBackup=new Date().toISOString(); persistCfg(); render();
                 toast("Копия сохранена");
+                break;
+            }
+            case "loadSaveRaw": loadSaveRaw(); break;
+            case "loadReport": if(ui.loadError){ ui.loadError.view=ui.loadError.view==="report"?null:"report"; ui.loadError.msgOut=""; render(); } break;
+            case "loadCopy":{
+                const le=ui.loadError; if(!le) break;
+                const txt=le.view==="raw"?le.text:loadErrorReport();
+                copyToClipboard(txt).then(function(){ toast("Скопировано"); }).catch(function(){ const ta=document.getElementById("loadTxt"); if(ta){ ta.focus(); ta.select(); } toast("Выдели текст и скопируй вручную"); });
                 break;
             }
             case "loadRetry":

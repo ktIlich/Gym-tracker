@@ -19,3 +19,4 @@ python tests/test_final.py      # итоговая проверка: боевы�
 python tests/test_prod_prep.py   # подготовка к prod: алиасы по шаблонам, writeAccess, копия перед миграцией, браузер
 python tests/test_rel_t1.py   # релиз, задача 1: копия (сырой дамп) при смене версии
 python tests/test_rel_t3.py   # релиз, задача 3: мастер только для пустого хранилища, LOAD_OK, экран ошибки
+python tests/test_rel_t4.py   # релиз, задача 4: экран «Не удалось загрузить данные»
