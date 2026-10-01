@@ -40,6 +40,7 @@ async def main():
             src = open(os.path.join(REPO, "test", "index.html"), encoding="utf-8").read()
             check("3.3: флаг LOAD_OK; guardKey бросает исключение для записи данных до загрузки (служебные ключи — исключение)", "let LOAD_OK=false" in src and "Запись заблокирована: данные ещё не загружены" in src)
 
+            check("релиз: <title> в файле без «TEST»; заголовок «TEST · Gym Tracker» ставится из кода только при ENV=test", "<title>Gym Tracker</title>" in src and 'if(ENV==="test") document.title="TEST · Gym Tracker"' in src)
             # ---------- 3.1 Telegram: хранилище пустое → мастер, запись разрешена
             STORE.clear()
             page, errs = await tg_page(browser); await page.goto(URL); await page.wait_for_timeout(2500)

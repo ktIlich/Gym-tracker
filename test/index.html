@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>TEST · Gym Tracker</title>
+    <title>Gym Tracker</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -4409,7 +4409,7 @@
     }
     function renderMain(){
         if(ui.loadError){ document.getElementById("tabbar").style.display="none"; app.innerHTML=loadErrorHtml(); return; }
-        if(!LOAD_OK){ document.getElementById("tabbar").style.display="none"; app.innerHTML='<div class="setup"><div class="note">Загрузка данных…</div></div>'; return; }
+        if(!LOAD_OK&&!(ENV==="test"&&ui.cloneIncomplete)){ document.getElementById("tabbar").style.display="none"; app.innerHTML='<div class="setup"><div class="note">Загрузка данных…</div></div>'; return; }
         if(ENV==="test"&&cs&&!ui.stateChecked){ document.getElementById("tabbar").style.display="none"; app.innerHTML='<div class="setup"><div class="note">Загрузка тестовых данных…</div></div>'; return; }
         if(ENV==="test"&&ui.diag){ document.getElementById("tabbar").style.display="none"; app.innerHTML=diagPageHtml(); return; }
         if(ENV==="test"&&ui.cloneIncomplete){ document.getElementById("tabbar").style.display="none"; app.innerHTML=incompleteHtml(); return; }
@@ -5231,6 +5231,7 @@
 
     // ============ init ============
     (async function init(){
+        if(ENV==="test") document.title="TEST · Gym Tracker";   // в prod заголовок без «TEST»; файл одинаков в test/ и v2/
         // 1) копия при новой версии — до загрузки данных, миграций, мастера и любой записи в хранилище
         ui.gateBusy=true;
         try{ app.innerHTML='<div class="setup"><div class="note">Загрузка…</div></div>'; await versionGate(); }catch(e){}
