@@ -2037,7 +2037,7 @@
     }
 
     // ============ отправка копии в чат через Cloudflare Worker (worker/) ============
-    const BACKUP_ENDPOINT="";   // адрес Worker после деплоя; пусто — кнопки отправки скрыты, приложение работает без сервера
+    const BACKUP_ENDPOINT="https://gym-tracker-backup.ktilich-gym-tracker.workers.dev";   // адрес Worker после деплоя; пусто — кнопки отправки скрыты, приложение работает без сервера
     function bytesToBase64(u8){
         let bin=""; const arr=new Uint8Array(u8);
         for(let i=0;i<arr.length;i+=0x8000) bin+=String.fromCharCode.apply(null,arr.subarray(i,i+0x8000));
