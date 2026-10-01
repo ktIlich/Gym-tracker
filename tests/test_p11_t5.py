@@ -36,7 +36,7 @@ async def main():
     if not os.path.exists(DUMP):
         print("SKIP: нет", DUMP); return
     dump = json.load(open(DUMP, encoding="utf-8"))
-    srv = subprocess.Popen([sys.executable, "-m", "http.server", "8765"], cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    srv = subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "serve.py"), "8765"], cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.5)
     try:
         async with async_playwright() as p:

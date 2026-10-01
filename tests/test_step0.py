@@ -89,7 +89,7 @@ async def open_page(ctx, path, mock=True):
     return page, logs
 
 async def main():
-    srv = subprocess.Popen([sys.executable, "-m", "http.server", "8765"], cwd=REPO,
+    srv = subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "serve.py"), "8765"], cwd=REPO,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.5)
     try:

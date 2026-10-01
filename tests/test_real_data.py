@@ -16,7 +16,7 @@ async def main():
     for tpl in dump["templates"]: STORE["tst_tpl_" + tpl["id"]] = json.dumps(tpl)
     for k, day in dump["log"].items(): STORE["tst_w_" + k] = json.dumps(day)
     orig = dump["log"]
-    srv = subprocess.Popen([sys.executable, "-m", "http.server", "8765"], cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    srv = subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "serve.py"), "8765"], cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.5)
     try:
         async with async_playwright() as p:

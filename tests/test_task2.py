@@ -29,7 +29,7 @@ def seed():
         STORE["tst_w_" + d] = json.dumps({"title": "Д", "up": 100, "weekType": wt, "exercises": exs})
 
 async def main():
-    srv = subprocess.Popen([sys.executable, "-m", "http.server", "8765"], cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    srv = subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "serve.py"), "8765"], cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.5)
     try:
         async with async_playwright() as p:
