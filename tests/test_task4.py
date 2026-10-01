@@ -15,7 +15,7 @@ def ensure_xlsx_lib():
     except Exception:
         return False
 
-async def new_page(browser, dump, mock=False, xlsx=True, snooze=True):
+async def new_page(browser, dump, mock=False, xlsx=True, snooze=True, skip_mig=True):
     ctx = await browser.new_context(viewport={"width": 390, "height": 900}, accept_downloads=True)
     if mock:
         await ctx.expose_binding("__cs", cs_handler); await ctx.expose_binding("__log", log_handler); await ctx.add_init_script(MOCK)
@@ -23,6 +23,7 @@ async def new_page(browser, dump, mock=False, xlsx=True, snooze=True):
     if snooze: cfg["backupSnooze"] = int(time.time() * 1000) + 365 * 86400000   # автокопия-диалог браузера (фаза 13/9) не мешает тестам
     cache = {"cfg": cfg, "templates": dump["templates"], "log": dump["log"]}
     await ctx.add_init_script("if(!localStorage.getItem('tst_gt2:cache'))localStorage.setItem('tst_gt2:cache',%s);" % json.dumps(json.dumps(cache)))
+    if skip_mig and not mock: await ctx.add_init_script("setInterval(()=>{ const d=document.getElementById('dlg'); if(d&&d.textContent.includes('Приложение обновилось')){ const b=d.querySelector('[data-dlg=\"1\"]'); if(b) b.click(); } },30);")   # браузер: диалог «Приложение обновилось» (копия перед миграцией, фаза «prod») закрываем — «Продолжить без копии»
     page = await ctx.new_page(); errs = []
     page.on("pageerror", lambda e: errs.append(str(e)))
     await page.route("**/telegram.org/**", lambda r: r.abort())

@@ -41,6 +41,9 @@ async def main():
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(channel="msedge", headless=True)
+            raw_dump = json.loads(json.dumps(dump))
+            seed_raw(dump); _pg, _e, _r = await open_page(browser); await _pg.goto(BASE + "/test/index.html"); await _pg.wait_for_timeout(2500)
+            mig_dump = await _pg.evaluate("({cfg:data.cfg,templates:data.templates,log:data.log})"); await _pg.context.close()   # уже мигрированные данные (копия перед миграцией — в test_prod_prep)
             load = lambda page, w=2500: (page.goto(BASE + "/test/index.html"))
 
             # ---- существующий пользователь: поля onboardingSeen нет
@@ -180,7 +183,7 @@ async def main():
             check("5.1: после мастера показывается приветствие", await page.locator("#onb").count() == 1)
 
             # ---- автоотправка копии ждёт закрытия приветствия
-            seed_raw(dump, lastBackup=time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 20 * 86400)), autoBackup=True)
+            seed_raw(mig_dump, lastBackup=time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 20 * 86400)), autoBackup=True, writeAccess=True)
             page, e8, reqs = await open_page(browser, endpoint="https://worker.test/")
             await page.goto(BASE + "/test/index.html"); await page.wait_for_timeout(3000)
             before = len(reqs)

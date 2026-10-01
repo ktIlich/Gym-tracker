@@ -133,6 +133,7 @@ async def client_tests(browser, dump):
         if tg:
             await ctx.expose_binding("__cs", cs_handler); await ctx.expose_binding("__log", log_handler); await ctx.add_init_script(MOCK)
         await ctx.add_init_script("if(!localStorage.getItem('tst_gt2:cache'))localStorage.setItem('tst_gt2:cache',%s);" % (cache if tg else cache_b))
+        if not tg: await ctx.add_init_script("setInterval(()=>{ const d=document.getElementById('dlg'); if(d&&d.textContent.includes('Приложение обновилось')){ const b=d.querySelector('[data-dlg=\"1\"]'); if(b) b.click(); } },30);")
         page = await ctx.new_page(); state = {"reqs": [], "mode": mode}
         await page.route("**/telegram.org/**", lambda r: r.abort())
         if have_xlsx: await page.route("**/cdnjs.cloudflare.com/**", lambda r: r.fulfill(path=XLSX_JS, content_type="application/javascript"))
@@ -152,6 +153,7 @@ async def client_tests(browser, dump):
             await route.fulfill(status=200, headers=cors, content_type="application/json", body=json.dumps({"ok": True}))
         await page.route("https://worker.test/**", worker)
         await page.goto(BASE + "/test/index.html"); await page.wait_for_timeout(1500)
+        if await page.locator("#dlg").count(): await page.click('#dlg [data-dlg="1"]'); await page.wait_for_timeout(200)   # автоотправка при старте (writeAccess уже есть в облаке) может показать диалог
         await page.click('button[data-tab="set"]'); await page.wait_for_timeout(300)
         return page, state
     send_sel = '[data-act="sendBackup"]'

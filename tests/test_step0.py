@@ -39,6 +39,7 @@ MOCK = """
     platform: 'ios', version: '8.0', initData: 'user=%7B%22id%22%3A4242%7D', initDataUnsafe: { user: { id: 4242 } },
     colorScheme: 'dark', CloudStorage: cs, showConfirm(msg, cb){ window.__log('confirm', msg); cb(true); },
     showAlert(msg, cb){ window.__log('alert_cache', localStorage.getItem('tst_gt2:cache') || ''); window.__log('alert', msg); if (cb) cb(); },
+    requestWriteAccess(cb){ window.__wa = (window.__wa || 0) + 1; cb(window.__waAllow !== false); },
     enableClosingConfirmation(){ window.__log('closing', 'on'); }, disableClosingConfirmation(){ window.__log('closing', 'off'); },
     HapticFeedback: { impactOccurred(){}, notificationOccurred(){} } } };
 })();
@@ -417,7 +418,7 @@ async def main():
             src = open(REPO+"/test/index.html", encoding="utf-8").read()
             check("статика: нет localStorage.clear; removeItems — один вызов, только в rawDelMany с guardKey по каждому ключу", "localStorage.clear" not in src and src.count("cs.removeItems(") == 1 and "keys.forEach(guardKey)" in src)
             raw_ls = [m.start() for m in re.finditer(r"localStorage\.", src)]
-            check("статика: прямой localStorage только внутри lsGet/lsSet/lsDel/lsKeys", len(raw_ls) == 5, len(raw_ls))
+            check("статика: прямой localStorage только внутри lsGet/lsSet/lsDel/lsKeys", len(raw_ls) == 8, len(raw_ls))
             check("статика: прямых cs.* нет вне raw-слоя", len(re.findall(r"\bcs\.(setItem|removeItem|getKeys|getItems)", src)) == 5)
             check("статика: APP_VERSION 2.13.0", 'APP_VERSION="2.13.0"' in src)
 

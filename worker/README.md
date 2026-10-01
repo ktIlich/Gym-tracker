@@ -20,7 +20,7 @@ wrangler deploy
 
 ```json
 { "initData": "<Telegram.WebApp.initData>", "env": "test|prod", "format": "json|xlsx|csv",
-  "filename": "gym-tracker-2026-09-30.xlsx", "content": "<текст или base64>", "encoding": "text|base64" }
+  "filename": "gym-tracker-2026-09-30.xlsx", "content": "<текст или base64>", "encoding": "text|base64", "note": "необязательная подпись" }
 ```
 
 Ответ — JSON `{ ok, error?, description? }`:

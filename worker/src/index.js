@@ -127,7 +127,9 @@ async function handle(request, env) {
   if (!bytes.length) throw new HttpError(400, "bad_request", "Пустой файл");
 
   const fmt = FORMATS[format];
-  const caption = "Резервная копия Gym Tracker · " + new Date().toISOString().slice(0, 10) + (appEnv === "test" ? " · TEST" : "");
+  // необязательная подпись `note` (например «Копия перед обновлением до v2.13.0»): одна строка, до 120 символов; чат берётся только из initData
+  const note = typeof body.note === "string" ? body.note.replace(/[\r\n]+/g, " ").trim().slice(0, 120) : "";
+  const caption = (note || "Резервная копия Gym Tracker") + " · " + new Date().toISOString().slice(0, 10) + (appEnv === "test" ? " · TEST" : "");
   const form = new FormData();
   form.append("chat_id", String(user.id));   // только из проверенного initData, никогда из тела
   form.append("caption", caption);

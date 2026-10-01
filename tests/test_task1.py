@@ -14,6 +14,11 @@ def seed():
     STORE["tst_tpl_a"] = json.dumps({"id": "a", "name": "Ноги", "title": "Ноги", "up": 1, "blocks": [
         {"type": "single", "items": [{"name": "Сгибания голени", "plan": "2х8-12", "vars": ["Лёжа", "Сидя"], "alt": 1}]},
         {"type": "single", "items": [{"name": "Молотки", "plan": "2х8-15", "vars": ["Свободный", "Блок"], "alt": 1}]}]})
+    # канонические названия для алиасов по умолчанию (как в реальных шаблонах): алиас применяется, только если название есть в шаблонах
+    STORE["tst_tpl_b"] = json.dumps({"id": "b", "name": "Каноны", "title": "Каноны", "up": 1, "blocks": [
+        {"type": "single", "items": [{"name": "Голень стоя (икры)", "plan": "3х10-20"}]},
+        {"type": "single", "items": [{"name": "Гиперэкстензия, акцент разгибатели и поясница", "plan": "3х12-15"}]},
+        {"type": "single", "items": [{"name": "Приседания в гакк-машине", "plan": "2х8-12", "vars": ["Спиной", "лицом"], "alt": 1}]}]})
     days = {
         "2026-07-06": (100, [old_ex(1, "Голень стоя (3х10-20)", [{"w": 20, "r": 15}], note="икры болели"),
                              old_ex(2, "Гиперэкстензия, акцент на разгибатели и поясница (3х12-15)", [{"w": 10, "r": 12}], ss="s1")]),
@@ -57,6 +62,8 @@ async def main():
             check("сборка: name = base + (plan) + · variant", await t.evaluate("composeName('A','2х8-12','Б')==='A (2х8-12) · Б' && composeName('A',null,null)==='A' && composeName('A',null,'Б')==='A · Б'"))
 
             # ---- 1.2 алиасы
+            # алиасы по умолчанию действуют, если канонические названия есть в шаблонах пользователя (подготовка к prod)
+            await t.evaluate("""window.__d0=data; data=normalizeData({cfg:{},templates:[{id:'a',name:'A',blocks:[{type:'single',items:[{name:'Голень стоя (икры)',plan:''},{name:'Гиперэкстензия, акцент разгибатели и поясница',plan:''},{name:'Сгибания голени',plan:''},{name:'Приседания в гакк-машине',plan:'',vars:['Спиной','лицом','Свободный']}]}]}],log:{}}); 0""")
             r = await t.evaluate("""[ 'Голень стоя', 'Гиперэкстензия, акцент на разгибатели и поясница', 'Сгибания голени сидя или стоя',
                  'Приседания в гаке лицом назад', 'Приседания в гаке лицом к тренажёру', 'голень СТОЯ ' ].map(n=>{ const a=applyAliases(n,null); return [a.base,a.variant]; })""")
             check("алиасы: начальное наполнение (5 пар) применяется к base",
@@ -65,6 +72,12 @@ async def main():
             check("алиасы: гакк «назад» → вариант «Спиной», «к тренажёру» → «лицом» (как в шаблоне)", (r[3][1], r[4][1]) == ("Спиной", "лицом"), r[3:5])
             check("алиасы вариантов: «свободный вес» → «Свободный» (без учёта регистра и пробелов)", await t.evaluate("canonVariant(' Свободный ВЕС ')==='Свободный' && canonVariant('Лёжа')==='Лёжа' && canonVariant('  ')===null"))
             check("cfg.aliases / cfg.variantAliases заполнены по умолчанию", await t.evaluate("Object.keys(data.cfg.aliases).length>=5 && data.cfg.variantAliases['свободный вес']==='Свободный'"))
+            await t.evaluate("data=window.__d0; 0")
+            fl = await t.evaluate("""(()=>{ const e=normalizeData({cfg:{},templates:[],log:{}}).cfg; const p=normalizeData({cfg:{},templates:[{id:'a',name:'A',blocks:[{type:'single',items:[{name:'Сгибания голени',plan:''},{name:'Приседания в гакк-машине',plan:'',vars:['лицом']}]}]}],log:{}}).cfg;
+                const nv=normalizeData({cfg:{},templates:[{id:'a',name:'A',blocks:[{type:'single',items:[{name:'Приседания в гакк-машине',plan:'',vars:['Спиной']}]}]}],log:{}}).cfg;
+                const own=normalizeData({cfg:{aliases:{'x':'Y'},variantAliases:{}},templates:[],log:{}}).cfg; return {empty:[Object.keys(e.aliases).length,Object.keys(e.variantAliases).length], part:Object.keys(p.aliases).sort(), pv:Object.keys(p.variantAliases).length, noLits:Object.keys(nv.aliases), own:own.aliases}; })()""")
+            check("алиасы по умолчанию — только для пар, чьё каноническое название есть в шаблонах: новый пользователь — пусто; «Сгибания голени» и «гакк · лицом» — только их пары; вариант «Спиной» без «лицом» — пара «назад» есть, «к тренажёру» нет; свои алиасы не трогаются",
+                  fl["empty"] == [0, 0] and fl["part"] == ["Приседания в гаке лицом к тренажёру", "Сгибания голени сидя или стоя"] and fl["pv"] == 0 and fl["noLits"] == ["Приседания в гаке лицом назад"] and fl["own"] == {"x": "Y"}, fl)
 
             # ---- 1.3 миграция log-fields
             check("миграция: log-fields зарегистрирована, needs по записи (нет base)", await t.evaluate("MIGRATIONS.some(m=>m.id==='log-fields') && MIGRATIONS[0].needs({exercises:[{name:'x'}]},'day')===true && MIGRATIONS[0].needs({exercises:[{name:'x',base:'x'}]},'day')===false"))

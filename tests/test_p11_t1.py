@@ -29,6 +29,8 @@ async def open_ep(browser, endpoint="https://worker.test/", mode="ok", getkeys_d
         if req.method == "OPTIONS": return await route.fulfill(status=204, headers=cors)
         st["reqs"].append(json.loads(req.post_data)); st["t"].append(time.time())
         if st["mode"] == "abort": return await route.abort()
+        if st["mode"] == "blocked": return await route.fulfill(status=502, headers=cors, content_type="application/json", body=json.dumps({"ok": False, "error": "telegram_error", "description": "Forbidden: bot can't initiate conversation with a user"}))
+        if st["mode"] == "blocked2": return await route.fulfill(status=502, headers=cors, content_type="application/json", body=json.dumps({"ok": False, "error": "telegram_error", "description": "Forbidden: bot was blocked by the user"}))
         if st["mode"] == "fail": return await route.fulfill(status=502, headers=cors, content_type="application/json", body=json.dumps({"ok": False, "error": "telegram_error", "description": "Bad Request: chat not found"}))
         await route.fulfill(status=200, headers=cors, content_type="application/json", body=json.dumps({"ok": True}))
     await page.route("https://worker.test/**", worker)
@@ -51,6 +53,9 @@ async def main():
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(channel="msedge", headless=True)
+            # данные уже мигрированы: иначе перед миграцией уходит ещё и «копия перед обновлением» (проверяется в test_prod_prep)
+            seed(dump); page, _st, _e = await open_ep(browser, endpoint=""); await load(page)
+            dump = await page.evaluate("({cfg:data.cfg,templates:data.templates,log:data.log})"); dump["cfg"]["onboardingSeen"] = 1; await page.context.close()
 
             # ================= 1.1 структура настроек =================
             seed_cfg(dump, autoBackup=False, backupSnooze=int(time.time() * 1000) + 9 * DAY)   # без автоотправки: только проверяем экран
@@ -104,7 +109,7 @@ async def main():
 
             # ================= 1.2 автоотправка =================
             # A: копия старше 14 дней, autoBackup=true → шлём после синхронизации
-            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True, backupReminderDays=14)
+            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True, writeAccess=True, backupReminderDays=14)
             page, st, errs = await open_ep(browser)
             await load(page)
             r = st["reqs"]
@@ -119,7 +124,7 @@ async def main():
             check("1.2: не больше одной автоотправки за запуск / копия свежая", len(st["reqs"]) == 1)
 
             # B: Worker недоступен → диалог с причиной; «Позже» = сутки
-            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True)
+            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True, writeAccess=True)
             page, st, errs = await open_ep(browser, mode="fail")
             await load(page)
             dlg = await page.evaluate("(()=>{ const d=document.getElementById('dlg'); return d&&{t:d.querySelector('.dlg-title').textContent, x:d.querySelector('.dlg-text').textContent, b:[...d.querySelectorAll('button')].map(b=>b.textContent.trim())}; })()")
@@ -129,7 +134,7 @@ async def main():
             check("1.2: «Повторить» — повторная отправка (2 запроса), диалог снова с причиной", len(st["reqs"]) == 2 and await page.locator("#dlg").count() == 1, len(st["reqs"]))
             st["mode"] = "ok"; await page.click('#dlg [data-dlg="0"]'); await page.wait_for_timeout(700)
             check("1.2: после исправления «Повторить» отправляет, диалог закрыт, lastBackup обновлён", len(st["reqs"]) == 3 and await page.locator("#dlg").count() == 0 and await page.evaluate("Date.now()-new Date(data.cfg.lastBackup).getTime()<60000"))
-            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True)
+            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True, writeAccess=True)
             page, st, errs = await open_ep(browser, endpoint="http://127.0.0.1:9/", mode="ok")
             await load(page, 3500)
             check("1.2: неверный адрес Worker (сеть недоступна) → диалог с причиной", await page.locator("#dlg").count() == 1 and "Не удалось отправить" in await page.inner_text("#dlg .dlg-text"), await page.evaluate("document.getElementById('dlg')?.textContent"))
@@ -154,24 +159,24 @@ async def main():
             check("1.2: «Позже» в диалоге напоминания — snooze 24 ч, отправки не было", not st["reqs"] and abs(await page.evaluate("data.cfg.backupSnooze") - (time.time() * 1000 + DAY)) < 120000)
 
             # D: условия, при которых не запускается
-            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True)
+            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True, writeAccess=True)
             page, st, errs = await open_ep(browser, endpoint=""); await load(page)
             check("1.2: BACKUP_ENDPOINT пуст → отправки и диалога нет, прежний баннер-напоминание остаётся", not st["reqs"] and await page.locator("#dlg").count() == 0 and await page.locator(".backup-banner:has([data-act=bannerBackupOpen])").count() == 1)
-            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True, backupReminderDays=0)
+            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True, writeAccess=True, backupReminderDays=0)
             page, st, errs = await open_ep(browser); await load(page)
             check("1.2: интервал 0 — автоотправка выключена", not st["reqs"] and await page.locator("#dlg").count() == 0)
-            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True, backupSnooze=int(time.time() * 1000) + DAY)
+            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True, writeAccess=True, backupSnooze=int(time.time() * 1000) + DAY)
             page, st, errs = await open_ep(browser); await load(page)
             check("1.2: активный snooze — не запускается", not st["reqs"] and await page.locator("#dlg").count() == 0)
-            seed_cfg(dump, lastBackup=iso_ago(13), autoBackup=True)
+            seed_cfg(dump, lastBackup=iso_ago(13), autoBackup=True, writeAccess=True)
             page, st, errs = await open_ep(browser); await load(page)
             check("1.2: копия моложе интервала (13 из 14 дней) — не запускается", not st["reqs"])
-            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True); STORE["tst_clone_state"] = "running"
+            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True, writeAccess=True); STORE["tst_clone_state"] = "running"
             page, st, errs = await open_ep(browser); await load(page)
             check("1.2: незавершённое клонирование (экран «не завершено») — автоотправка не запускается", not st["reqs"] and "Копирование не завершено" in await page.inner_text("#app"))
             STORE.pop("tst_clone_state", None)
             # до завершения синхронизации не шлём
-            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True)
+            seed_cfg(dump, lastBackup=iso_ago(20), autoBackup=True, writeAccess=True)
             page, st, errs = await open_ep(browser, getkeys_delay=1800)
             await page.goto(BASE + "/test/index.html"); await page.wait_for_timeout(700)
             early = len(st["reqs"]); await page.wait_for_timeout(4000)

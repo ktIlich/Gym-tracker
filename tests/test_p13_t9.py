@@ -65,7 +65,7 @@ async def main():
             # клонирование скрыто
             await page.evaluate("ui.testScreen=true; render(); 0"); await page.wait_for_timeout(200)
             cl = await page.evaluate("({clone:document.querySelectorAll('[data-act=cloneProd]').length, diag:document.querySelectorAll('[data-act=diagOpen]').length})")
-            check("9.2: клонирование из prod в test в браузере скрыто (кнопки «Скопировать данные из основной версии» нет)", cl["clone"] == 0, cl)
+            check("9.2: клонирование в браузере доступно (читает localStorage основной версии — см. test_prod_prep)", cl["clone"] == 1, cl)
             check("нет pageerror (браузер)", not errs, errs[:2])
             await page.context.close()
 

@@ -185,6 +185,7 @@
         .br-warn{display:flex; align-items:flex-start; gap:0.5rem; margin-top:0.5rem; padding:0.5rem 0.25rem 0.5rem 0.75rem; border-radius:0.75rem; background:color-mix(in srgb, var(--warn) 14%, transparent); border:1px solid color-mix(in srgb, var(--warn) 35%, transparent); font-size:0.8125rem; line-height:1.35}
         .br-ic{color:var(--warn); display:flex; padding-top:0.125rem}
         .br-txt{flex:1; min-width:0}
+        .br-safari{display:block; margin-top:0.375rem; color:var(--text-muted)}
         .br-x{width:var(--touch-w); height:var(--touch); margin:-0.5rem 0; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted)}
         .br-info{display:flex; align-items:center; justify-content:center; width:var(--touch-w); height:var(--touch); margin:0.25rem 0 0 -0.625rem; color:var(--warn)}
         .fld{position:relative; width:100%}
@@ -517,6 +518,12 @@
     function lsSet(name,v){ const k=K(name); guardKey(k); if(typeof frozen!=="undefined"&&frozen) return; localStorage.setItem(k,v); }
     function lsDel(name){ const k=K(name); guardKey(k); localStorage.removeItem(k); }
     // имена (без префикса) ключей localStorage, начинающихся с prefix; только чтение
+    // только чтение: ключи без префикса tst_ (основная версия на том же origin) с данным префиксом → {полный ключ: значение}
+    function lsProdItems(prefix){
+        const out={};
+        for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.indexOf(KP)!==0&&k.indexOf(prefix)===0) out[k]=localStorage.getItem(k); }
+        return out;
+    }
     function lsKeys(prefix){
         const out=[], full=K(prefix);
         for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.indexOf(full)===0) out.push(k.slice(KP.length)); }
@@ -571,7 +578,7 @@
                 "Жим ногами, стандартная постановка (2х8-12)","Болгарские приседания (2х10-15)","Разгибания сидя (2х10-15)",
                 "Голень стоя (3х10-20)","Задняя дельта Пек-Дек (3х12)","Задняя дельта гантели в наклоне (2х15)"]}
     ];
-    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, defaultWeightStep:null, warmupCount:4, warmupPercent:35, restTimerSec:90, autoTimer:true, theme:{base:DEFAULT_THEME.base,accent:DEFAULT_THEME.accent,accent2:null,custom:{}}, accent:DEFAULT_THEME.accent, weekOverrides:{}, lastBackup:null, backupReminderDays:14, backupSnooze:null, dupSnooze:null, autoBackup:true, schema:1 }, templates:[], log:{} }; }
+    function emptyData(){ return { cfg:{ cycle:{workWeeks:2,restWeeks:1,anchorDate:null}, view:{lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, defaultWeightStep:null, warmupCount:4, warmupPercent:35, restTimerSec:90, autoTimer:true, theme:{base:DEFAULT_THEME.base,accent:DEFAULT_THEME.accent,accent2:null,custom:{}}, accent:DEFAULT_THEME.accent, weekOverrides:{}, lastBackup:null, backupReminderDays:(IN_TG?14:7), backupSnooze:null, dupSnooze:null, autoBackup:true, schema:1 }, templates:[], log:{} }; }
     function normalizeData(d){
         const base=emptyData();
         const hadSchema=d.cfg&&d.cfg.schema;
@@ -580,6 +587,7 @@
         d.cfg=Object.assign(base.cfg, d.cfg||{});
         d.cfg.schema=hadSchema||1; // отсутствует → 1
         d.cfg.fontScale=FONT_SCALES.some(function(f){return f[0]===+hadFont;})?+hadFont:1;
+        if(typeof d.cfg.writeAccess!=="boolean") delete d.cfg.writeAccess;   // разрешение боту писать: true/false, пока не спрашивали — поля нет
         d.cfg.recentColors=(Array.isArray(d.cfg.recentColors)?d.cfg.recentColors:[]).filter(function(c){return HEX_RE.test(c||"");}).map(function(c){return c.toLowerCase();}).slice(0,8);
         d.cfg.theme=normTheme(hadTheme,hadAccent); d.cfg.accent=d.cfg.theme.accent;   // cfg.theme был строкой, cfg.accent — отдельным полем
         // режим таймера: autoTimer true → «auto», false → «manual» (кнопка остаётся); autoTimer больше не читается
@@ -587,10 +595,11 @@
         d.cfg.cycle=Object.assign(base.cfg.cycle, d.cfg.cycle||{});
         d.cfg.view=Object.assign({lastWork:true,lastRest:true,viewRec:true,viewWarmup:true,viewNotes:true,viewPastNotes:true}, d.cfg.view||{});
         if(!d.cfg.weekOverrides) d.cfg.weekOverrides={};
-        if(!d.cfg.aliases||typeof d.cfg.aliases!=="object") d.cfg.aliases=Object.assign({},DEFAULT_ALIASES);
-        if(!d.cfg.variantAliases||typeof d.cfg.variantAliases!=="object") d.cfg.variantAliases=Object.assign({},DEFAULT_VARIANT_ALIASES);
         if(d.cfg.compact){ d.cfg.view.lastWork=false; d.cfg.view.lastRest=false; delete d.cfg.compact; }
         d.templates=(d.templates||[]).map(normalizeTpl); d.log=d.log||{};
+        // алиасы по умолчанию — только для пар, чьё каноническое название есть в шаблонах этого пользователя
+        const hasAl=d.cfg.aliases&&typeof d.cfg.aliases==="object", hasVal=d.cfg.variantAliases&&typeof d.cfg.variantAliases==="object";
+        if(!hasAl||!hasVal){ const def=defaultAliasesFor(d.templates); if(!hasAl) d.cfg.aliases=def.aliases; if(!hasVal) d.cfg.variantAliases=def.variantAliases; }
         return d;
     }
     // шаблон: {id,name,title,blocks:[{type:"single"|"superset",items:[{name,plan,vars?,alt?}]}]}
@@ -631,6 +640,25 @@
         "Приседания в гаке лицом к тренажёру":"Приседания в гакк-машине · вариант «лицом»"
     };
     const DEFAULT_VARIANT_ALIASES={ "свободный вес":"Свободный" };
+    // DEFAULT_ALIASES / DEFAULT_VARIANT_ALIASES применяются к паре, только если её каноническое название (правая часть) есть в шаблонах пользователя:
+    // для пары-упражнения — название (и вариант, если он указан в цели) среди упражнений шаблонов; для алиаса варианта — такой вариант есть в vars какого-либо упражнения
+    function defaultAliasesFor(templates){
+        const names={}, pairs={}, vars={};
+        for(const t of (templates||[])) for(const b of (t.blocks||[])) for(const it of (b.items||[])){
+            const n=String(it.name||"").trim().toLowerCase(); if(!n) continue;
+            names[n]=true;
+            for(const v of (it.vars||[])){ const x=String(v).trim().toLowerCase(); pairs[n+"|"+x]=true; vars[x]=true; }
+        }
+        const out={aliases:{},variantAliases:{}};
+        for(const k of Object.keys(DEFAULT_ALIASES)){
+            const p=parseAliasTarget(DEFAULT_ALIASES[k]), bn=String(p.base).trim().toLowerCase();
+            if(!names[bn]) continue;
+            if(p.variant&&!pairs[bn+"|"+String(p.variant).trim().toLowerCase()]) continue;
+            out.aliases[k]=DEFAULT_ALIASES[k];
+        }
+        for(const k of Object.keys(DEFAULT_VARIANT_ALIASES)) if(vars[String(DEFAULT_VARIANT_ALIASES[k]).trim().toLowerCase()]) out.variantAliases[k]=DEFAULT_VARIANT_ALIASES[k];
+        return out;
+    }
     let migCtx=null;   // во время migrateAll алиасы берутся из мигрируемых данных, а не из глобальных
     function aliasCfg(){ return (migCtx&&migCtx.cfg)||data.cfg||{}; }
     function composeName(base,plan,variant){ return base+(plan?" ("+plan+")":"")+(variant?" · "+variant:""); }
@@ -956,13 +984,19 @@
         migCtx={cfg:d.cfg||{}, templates:d.templates||[]};
         try{ return migrateAllInner(d,list); }finally{ migCtx=null; }
     }
+    // записи, которым нужна миграция (без изменения данных): [["day",дата] | ["tpl",id]]
+    function migTodo(d,list){
+        list=list||MIGRATIONS;
+        const todo=[];
+        for(const k of Object.keys(d.log||{}).sort()) if(list.some(function(m){ return migNeeds(m,d.log[k],"day"); })) todo.push(["day",k]);
+        for(const t of (d.templates||[])) if(list.some(function(m){ return migNeeds(m,t,"tpl"); })) todo.push(["tpl",t.id]);
+        return todo;
+    }
     function migrateAllInner(d, list){
         list=list||MIGRATIONS;
         const res={days:[], tpls:[], errors:0, snapshot:null};
         if(!list.length) return res;
-        const todo=[];
-        for(const k of Object.keys(d.log||{}).sort()) if(list.some(function(m){ return migNeeds(m,d.log[k],"day"); })) todo.push(["day",k]);
-        for(const t of (d.templates||[])) if(list.some(function(m){ return migNeeds(m,t,"tpl"); })) todo.push(["tpl",t.id]);
+        const todo=migTodo(d,list);
         if(!todo.length) return res;
         // снапшот перед применением: localStorage (в CloudStorage лимит 4096 символов), храним PREMIG_KEEP последних
         const snapName="premig_"+new Date().toISOString().replace(/[:.]/g,"-");
@@ -1010,8 +1044,35 @@
     }
     // единая точка: вызывается везде, где данные попадают в память (загрузка, слияние, восстановление, импорт, клон).
     // true — если что-то мигрировало
+    // копия перед первой миграцией: в Telegram — JSON в чат (если есть разрешение писать), в браузере — блокирующий диалог со скачиванием; локальный снапшот делает migrateAll в обоих случаях
+    let migGateActive=false;
+    function migrationBackupMode(){
+        if(!IN_TG) return "download";
+        return (data.cfg.writeAccess===true&&canSendBackup())?"send":null;   // нет разрешения — только снапшот в localStorage, запуск не блокируем
+    }
+    async function startMigrationGate(){
+        migGateActive=true; ui.migGate=true;
+        const mode=migrationBackupMode();
+        try{
+            if(mode==="send"){
+                const r=await postBackup("json","Копия перед обновлением до v"+APP_VERSION);   // ошибка отправки запуск не блокирует
+                if(r.ok) markBackupDone();
+            } else {
+                const i=await showDialog({title:"Приложение обновилось",text:"Скачай копию данных перед обновлением.",buttons:[{label:"Скачать и продолжить",primary:true},{label:"Продолжить без копии"}]});
+                if(i===0){ downloadJson("gym-tracker-before-v"+APP_VERSION+"-"+toKey(new Date())+".json", JSON.stringify(buildBackupDump(),null,2)); markBackupDone(); }
+            }
+        }catch(e){}
+        migGateActive=false; ui.migGate=false;
+        runMigrations(); saveCache(); render();
+        setTimeout(maybeAutoBackup,0);
+    }
     function applyMigrations(){
         if((data.cfg.schema||1)<APP_SCHEMA) data.cfg.schema=APP_SCHEMA;
+        if(migGateActive) return false;                                           // копия ещё не сделана — не мигрируем
+        if(!TOUR_MODE&&migrationBackupMode()&&migTodo(data).length){ startMigrationGate(); return false; }
+        return runMigrations();
+    }
+    function runMigrations(){
         const r=migrateAll(data);
         if(r.errors) toast("Часть данных не мигрирована ("+r.errors+"), будет повтор при следующей загрузке");
         const changed=r.days.length+r.tpls.length>0;
@@ -1066,7 +1127,31 @@
         const btn=document.querySelector('[data-act="cloneProd"]'); if(btn) btn.innerHTML=ICON_SYNC+" "+txt;
     }
     function ms(t0){ return Math.round(performance.now()-t0); }
+    // браузер (нет CloudStorage): читаем основные ключи localStorage «gt2:…» без префикса (только чтение), пишем их через lsSet — с префиксом tst_
+    async function cloneFromLocal(){
+        if(ui.cloneBusy) return;
+        let step="Проверка среды";
+        try{
+            if(ENV!=="test") throw new Error("клонирование доступно только в test");
+            step="Чтение основных данных";
+            const items=lsProdItems("gt2:"), keys=Object.keys(items);
+            if(!keys.length||!items["gt2:cache"]) throw new Error("основные данные не найдены: в localStorage этого браузера нет ключей «gt2:…» без префикса «"+KP+"» (основная версия открывалась в другом браузере?)");
+            try{ JSON.parse(items["gt2:cache"]); }catch(e){ throw new Error("данные основной версии повреждены (gt2:cache не разбирается)"); }
+            step="Подтверждение";
+            if(!(await askConfirm("Скопировать данные основной версии в тестовую? Тестовые данные будут заменены. Основная версия не изменится."))) return;
+            ui.cloneBusy=true; ui.cloneMsg="Копирование…"; ui.cloneIsErr=false; render();
+            step="Запись тестовых ключей";
+            for(const k of keys) lsSet(k,items[k]);      // lsSet добавляет префикс tst_; guardKey не пропустит боевой ключ
+            ui.cloneMsg="Скопировано ключей: "+keys.length; ui.cloneBusy=false;
+            await showAlertP("Скопировано ключей: "+keys.length+". Страница перезагрузится.");
+            location.reload();
+        }catch(e){
+            ui.cloneBusy=false; ui.cloneIsErr=true; ui.cloneMsg="Шаг «"+step+"»: "+errText(e); render();
+            await showAlertP(ui.cloneMsg);
+        }
+    }
     async function cloneFromProd(){
+        if(!IN_TG) return cloneFromLocal();
         if(ui.cloneBusy) return;
         ui.cloneBusy=true; ui.cloneMsg="Копирование…"; ui.cloneIsErr=false; render();
         let step="Проверка среды", ownBusy=false, success=null, closingOn=false, markerWritten=false;
@@ -1194,7 +1279,7 @@
         return '<div class="card full" style="width:100%">'
             +'<div class="sec-label" style="margin-top:0">Тестовая среда <span class="env-badge">TEST</span></div>'
             +'<div class="note" style="margin-top:0">Ключи хранилища с префиксом «'+KP+'». Основные данные не изменяются.</div>'
-            +(IN_TG?'<button class="wide-btn" data-act="cloneProd"'+(ui.cloneBusy?' disabled':'')+'>'+ICON_SYNC+' Скопировать данные из основной версии</button>':'')
+            +'<button class="wide-btn" data-act="cloneProd"'+(ui.cloneBusy?' disabled':'')+'>'+ICON_SYNC+' Скопировать данные из основной версии</button>'
             +'<button class="wide-btn" data-act="diagOpen">'+ICON_INFO+' Диагностика</button>'
             +'<button class="wide-btn danger" data-act="clearTest"'+(ui.cloneBusy?' disabled':'')+'>'+ICON_TRASH+' Очистить тестовые данные</button>'
             +(ui.cloneMsg?'<div class="note'+(ui.cloneIsErr?' res-err':'')+'" style="user-select:text">'+esc(ui.cloneMsg)+'</div>':'')
@@ -2045,7 +2130,7 @@
     }
     function canSendBackup(){ return !!(BACKUP_ENDPOINT&&IN_TG); }
     // ядро отправки: {ok:true} | {ok:false, text, expired}
-    async function postBackup(format){
+    async function postBackup(format,note){
         let content, encoding="text";
         if(format==="json") content=JSON.stringify(buildBackupDump());
         else if(format==="csv") content=buildCsv();
@@ -2056,26 +2141,52 @@
         const ctl=new AbortController(), timer=setTimeout(function(){ ctl.abort(); },30000);
         try{
             const res=await fetch(BACKUP_ENDPOINT,{ method:"POST", headers:{"Content-Type":"application/json"}, signal:ctl.signal,
-                body:JSON.stringify({ initData:tg.initData, env:ENV, format:format, filename:exportFilename(format), content:content, encoding:encoding }) });
+                body:JSON.stringify({ initData:tg.initData, env:ENV, format:format, filename:exportFilename(format), content:content, encoding:encoding, note:note||undefined }) });
             let j=null; try{ j=await res.json(); }catch(parseErr){ j=null; }
             if(res.ok&&j&&j.ok) return {ok:true};
             const why=(j&&(j.description||j.error))||("HTTP "+res.status);
             if(res.status===403&&j&&j.error==="expired") return {ok:false,text:"Сессия устарела — откройте приложение заново",expired:true,reason:why};
+            // бот не может писать пользователю (не нажал «Start» / заблокировал / не разрешил) — не сбой, а запрос разрешения
+            if(res.status===502&&/can'?t initiate conversation|blocked/i.test(String(why))) return {ok:false,needAccess:true,text:"Разреши боту писать тебе",reason:why};
             return {ok:false,text:"Не отправлено: "+why,reason:why};
         }catch(e){
             if(e&&e.name==="AbortError") return {ok:false,text:"Не отправлено: сервер не ответил за 30 с",reason:"сервер не ответил за 30 с"};
             return {ok:false,text:"Не удалось отправить: "+errText(e),reason:errText(e)};
         }finally{ clearTimeout(timer); }
     }
+    // разрешение боту писать пользователю: Telegram.WebApp.requestWriteAccess() перед первой отправкой; результат — cfg.writeAccess (true/false)
+    function requestWriteAccess(){
+        return new Promise(function(res){
+            if(!tg||typeof tg.requestWriteAccess!=="function"){ res(true); return; }   // старый клиент без API: пробуем отправить без запроса
+            let done=false;
+            const fin=function(ok){ if(done) return; done=true; data.cfg.writeAccess=!!ok; persistCfg(); res(!!ok); };
+            try{ tg.requestWriteAccess(function(ok){ fin(ok); }); }catch(e){ fin(false); }
+        });
+    }
+    async function ensureWriteAccess(){ return data.cfg.writeAccess===true ? true : await requestWriteAccess(); }
+    // «Разреши боту писать тебе» с кнопкой повторного запроса; true — разрешение получено
+    async function askWriteAccessDialog(){
+        const i=await showDialog({title:"Разреши боту писать тебе",text:"Чтобы отправить копию в чат, боту нужно разрешение писать тебе. Если ты ещё не запускал бота — открой чат с ним и нажми «Start».",buttons:[{label:"Разрешить",primary:true},{label:"Закрыть"}]});
+        if(i!==0) return false;
+        return await requestWriteAccess();
+    }
     async function sendBackup(format){
         if(!canSendBackup()||ui.sending) return;
         if(format==="xlsx"&&typeof XLSX==="undefined"){ toast("Нет интернета — библиотека Excel не загрузилась"); return; }
         ui.sending=format; render();
-        const r=await postBackup(format);
+        let r;
+        if(!(await ensureWriteAccess())) r={ok:false,needAccess:true,text:"Разреши боту писать тебе"};
+        else r=await postBackup(format);
         ui.sending=null;
         if(r.ok){
             toast("Отправлено в чат");
-            if(format==="json"){ data.cfg.lastBackup=new Date().toISOString(); persistCfg(); }   // только JSON — полная копия
+            if(data.cfg.writeAccess!==true) data.cfg.writeAccess=true;   // отправка прошла — бот может писать
+            if(format==="json") data.cfg.lastBackup=new Date().toISOString();   // только JSON — полная копия
+            persistCfg();
+        } else if(r.needAccess){
+            data.cfg.writeAccess=false; persistCfg(); render();
+            if(await askWriteAccessDialog()){ ui.sending=null; sendBackup(format); }
+            return;
         } else toast(r.text);
         render();
     }
@@ -2100,6 +2211,11 @@
             const r=await postBackup("json");
             ui.sending=null;
             if(r.ok){ markBackupDone(); toast("Копия отправлена в чат"); render(); return; }
+            if(r.needAccess){
+                data.cfg.writeAccess=false; persistCfg(); render();
+                if(await askWriteAccessDialog()) continue;
+                snoozeBackup(24); return;
+            }
             render();
             const i=await showDialog({title:"Копия не отправлена",text:r.text,buttons:[{label:"Повторить",primary:true},{label:"Позже"}]});
             if(i!==0){ snoozeBackup(24); return; }
@@ -2120,7 +2236,7 @@
     // Проверка при запуске — только после синхронизации с CloudStorage (иначе в копию попадёт устаревший кэш); не чаще одной попытки за запуск
     async function maybeAutoBackup(){
         if(TOUR_MODE) return;
-        if(ui.autoBackupTried) return;
+        if(ui.autoBackupTried||ui.migGate) return;
         if(cs&&!syncState.verified) return;                       // синхронизация не завершена — копию не шлём
         if(ui.onb||onboardingDue()) return;                        // сначала приветствие; после закрытия проверка повторится
         if(ui.cloneBusy||ui.cloneIncomplete||ui.tblImport||ui.backupParsed||ui.importParsed||ui.sending) return;
@@ -2132,7 +2248,10 @@
         if(data.cfg.backupSnooze&&Date.now()<data.cfg.backupSnooze) return;
         const last=data.cfg.lastBackup?new Date(data.cfg.lastBackup).getTime():null;
         if(last!==null&&Date.now()-last<=n*86400000) return;
-        if(data.cfg.autoBackup!==false){ await autoBackupSend(); return; }
+        if(data.cfg.autoBackup!==false){
+            if(data.cfg.writeAccess===true) await autoBackupSend();   // без разрешения боту писать автоотправки нет — остаётся обычное напоминание-баннер, без ошибок
+            return;
+        }
         const days=daysSinceBackup();
         const i=await showDialog({title:"Пора сделать копию",text:isFinite(days)?"Последняя была "+days+" "+ruPlural(days,"день","дня","дней")+" назад":"Копия ещё не делалась",
             buttons:[{label:"Отправить в чат",primary:true},{label:"Позже"}]});
@@ -2349,10 +2468,12 @@
 
     // под шапкой в браузере: данные локальные; строка сворачивается до значка ⓘ (состояние — в localStorage)
     function browserWarnCollapsed(){ try{ return lsGet("br_warn")==="0"; }catch(e){ return false; } }
+    function isSafariBrowser(){ return /^((?!chrome|chromium|android|crios|fxios|edgios|edg\/).)*safari/i.test(navigator.userAgent||""); }
     function browserWarnHtml(){
         if(IN_TG) return "";
         if(browserWarnCollapsed()) return '<button class="br-info" id="brWarn" data-act="brWarnToggle" aria-label="Открыто в браузере: данные хранятся только здесь" title="Открыто в браузере">'+ICON_INFO+'</button>';
-        return '<div class="br-warn" id="brWarn" role="note"><span class="br-ic">'+ICON_INFO+'</span><span class="br-txt">Открыто в браузере: данные хранятся только здесь и не синхронизируются с Telegram</span>'
+        return '<div class="br-warn" id="brWarn" role="note"><span class="br-ic">'+ICON_INFO+'</span><span class="br-txt">Открыто в браузере: данные хранятся только здесь и не синхронизируются с Telegram'
+            +(ui.persistDenied&&isSafariBrowser()?'<span class="br-safari">Safari может удалить данные, если не открывать сайт 7 дней. Добавь сайт на экран «Домой» или регулярно скачивай копию.</span>':'')+'</span>'
             +'<button class="br-x" data-act="brWarnToggle" aria-label="Свернуть">'+ICON_CLOSE+'</button></div>';
     }
     function headerHtml(){
@@ -3690,7 +3811,9 @@
                 return "Сохранить и вернуть всё. Вверху — дата последней копии; если копия просрочена, статус выделен цветом. "
                     +(BACKUP_ENDPOINT?"«Отправить в чат» — файл приходит в чат с ботом: JSON (полная копия для восстановления), Excel или CSV (только журнал, для просмотра). Если копия старше заданного интервала, приложение само отправит её в чат при запуске; это выключается переключателем «Автоотправка в чат». "
                         :"Отправка в чат заработает после подключения сервера; пока нажми «Скопировать JSON» и сохрани текст в «Избранное» в Telegram (вне Telegram можно скачать файл). ")
-                    +"«Восстановить из копии» — из файла или вставкой текста, с превью перед применением."; } },
+                    +"«Восстановить из копии» — из файла или вставкой текста, с превью перед применением. "
+                    +(IN_TG?"Перед первой отправкой Telegram спросит разрешение боту писать тебе; без него автоотправки нет, остаётся напоминание. Перед обновлением приложения, которое меняет записи, копия уходит в чат сама (если разрешение есть)."
+                        :"Вне Telegram данные хранятся только в этом браузере: напоминание предложит скачать копию, а перед обновлением приложение попросит скачать её."); } },
             { q:"Импорт", a:"Загрузить тренировки из Excel/CSV, в том числе из версии 1.0, или из текстовых заметок. Перед применением — превью по датам." },
             { q:"Порядок в данных", a:"Чистка внутри приложения, файлы не участвуют. «Проверка данных» — пустые дни, упражнения без подходов, подходов больше плана, подозрительно малый вес. «Похожие шаблоны» — одинаковые копии удаляются, недостающие упражнения добавляются в последний использованный шаблон; перед применением можно выбрать основной и отметить упражнения. «Алиасы» — объединение разных названий одного упражнения или варианта." },
             { q:"Алиасы", a:"Алиасы объединяют разные названия одного упражнения или варианта. Например, в старых записях было «Голень стоя», а в шаблоне — «Голень стоя (икры)». Без алиаса это два разных упражнения: история, графики и рекомендации разрываются.\nСверху — название, как оно записано в истории. Снизу — как оно должно называться (как в шаблоне). После сохранения старые записи пересчитаются, сами тренировки не меняются." },
@@ -4949,6 +5072,10 @@
             const b=document.createElement("div"); b.id="envBadge"; b.className="env-badge env-fixed"; b.textContent="TEST"; document.body.appendChild(b);
         }
         render();
+        // браузер: просим постоянное хранилище; Safari при отказе может чистить данные через 7 дней без визитов — предупреждаем в строке под шапкой
+        if(!IN_TG){
+            try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().then(function(ok){ if(!ok){ ui.persistDenied=true; render(); } },function(){}); }catch(e){}
+        }
         // до первой проверки облака мастер в test не показываем: тестовые данные могут уже лежать в tst_-ключах
         const cloudChecked=function(){ if(!ui.cloudChecked){ ui.cloudChecked=true; render(); } };
         setTimeout(function(){ ui.stateChecked=true; cloudChecked(); },6000);
