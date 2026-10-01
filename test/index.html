@@ -184,6 +184,7 @@
         .sw-picked{margin-top:0.5rem}
         .br-warn{display:flex; align-items:flex-start; gap:0.5rem; margin-top:0.5rem; padding:0.5rem 0.25rem 0.5rem 0.75rem; border-radius:0.75rem; background:color-mix(in srgb, var(--warn) 14%, transparent); border:1px solid color-mix(in srgb, var(--warn) 35%, transparent); font-size:0.8125rem; line-height:1.35}
         .br-ic{color:var(--warn); display:flex; padding-top:0.125rem}
+        .link-btn{display:block; width:100%; margin-top:0.5rem; min-height:var(--touch); color:var(--text-muted); font-size:0.8125rem; text-decoration:underline}
         .br-txt{flex:1; min-width:0}
         .br-safari{display:block; margin-top:0.375rem; color:var(--text-muted)}
         .br-x{width:var(--touch-w); height:var(--touch); margin:-0.5rem 0; flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-muted)}
@@ -518,10 +519,17 @@
     function lsSet(name,v){ const k=K(name); guardKey(k); if(typeof frozen!=="undefined"&&frozen) return; localStorage.setItem(k,v); }
     function lsDel(name){ const k=K(name); guardKey(k); localStorage.removeItem(k); }
     // имена (без префикса) ключей localStorage, начинающихся с prefix; только чтение
-    // только чтение: ключи без префикса tst_ (основная версия на том же origin) с данным префиксом → {полный ключ: значение}
-    function lsProdItems(prefix){
+    // только чтение. own=false — ключи основной версии (без tst_) с данным префиксом → {полный ключ: значение};
+    // own=true — ключи текущей среды: в test это tst_*, в prod — всё, кроме tst_*; имена возвращаются без префикса среды
+    function lsItems(prefix,own){
         const out={};
-        for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.indexOf(KP)!==0&&k.indexOf(prefix)===0) out[k]=localStorage.getItem(k); }
+        for(let i=0;i<localStorage.length;i++){
+            const k=localStorage.key(i); if(!k) continue;
+            let name;
+            if(own){ if(KP){ if(k.indexOf(KP)!==0) continue; name=k.slice(KP.length); } else { if(k.indexOf("tst_")===0) continue; name=k; } }
+            else { if(k.indexOf("tst_")===0) continue; name=k; }
+            if(name.indexOf(prefix)===0) out[name]=localStorage.getItem(k);
+        }
         return out;
     }
     function lsKeys(prefix){
@@ -1032,7 +1040,7 @@
     }
     let flushing=false;
     async function flushDirty(){
-        if(flushing||TOUR_MODE) return; flushing=true;
+        if(flushing||TOUR_MODE||ui.gateBusy) return; flushing=true;
         try{
             const dirty=getDirty();
             if(!dirty.days.length&&!dirty.tpls.length) return;
@@ -1044,32 +1052,8 @@
     }
     // единая точка: вызывается везде, где данные попадают в память (загрузка, слияние, восстановление, импорт, клон).
     // true — если что-то мигрировало
-    // копия перед первой миграцией: в Telegram — JSON в чат (если есть разрешение писать), в браузере — блокирующий диалог со скачиванием; локальный снапшот делает migrateAll в обоих случаях
-    let migGateActive=false;
-    function migrationBackupMode(){
-        if(!IN_TG) return "download";
-        return (data.cfg.writeAccess===true&&canSendBackup())?"send":null;   // нет разрешения — только снапшот в localStorage, запуск не блокируем
-    }
-    async function startMigrationGate(){
-        migGateActive=true; ui.migGate=true;
-        const mode=migrationBackupMode();
-        try{
-            if(mode==="send"){
-                const r=await postBackup("json","Копия перед обновлением до v"+APP_VERSION);   // ошибка отправки запуск не блокирует
-                if(r.ok) markBackupDone();
-            } else {
-                const i=await showDialog({title:"Приложение обновилось",text:"Скачай копию данных перед обновлением.",buttons:[{label:"Скачать и продолжить",primary:true},{label:"Продолжить без копии"}]});
-                if(i===0){ downloadJson("gym-tracker-before-v"+APP_VERSION+"-"+toKey(new Date())+".json", JSON.stringify(buildBackupDump(),null,2)); markBackupDone(); }
-            }
-        }catch(e){}
-        migGateActive=false; ui.migGate=false;
-        runMigrations(); saveCache(); render();
-        setTimeout(maybeAutoBackup,0);
-    }
     function applyMigrations(){
         if((data.cfg.schema||1)<APP_SCHEMA) data.cfg.schema=APP_SCHEMA;
-        if(migGateActive) return false;                                           // копия ещё не сделана — не мигрируем
-        if(!TOUR_MODE&&migrationBackupMode()&&migTodo(data).length){ startMigrationGate(); return false; }
         return runMigrations();
     }
     function runMigrations(){
@@ -1086,6 +1070,102 @@
         return changed;
     }
 
+    // ============ копия при каждой новой версии (сырой дамп, без разбора данных) ============
+    // lastSeenVersion — в localStorage (проверка на каждом устройстве отдельно). Служебные ключи (сам флаг, копии, снапшоты) в дамп и в «есть ли данные» не входят.
+    const LS_SERVICE=function(name){ return name==="lastSeenVersion"||name==="prerestore"||name.indexOf("rawdump_")===0||name.indexOf("premig_")===0; };
+    function rawDumpName(version){ return "gym-tracker-before-"+version+"-"+toKey(new Date())+".json"; }
+    async function buildRawDump(prevVersion){
+        const dump={ kind:"raw-dump", app:"gym-tracker", version:APP_VERSION, prevVersion:prevVersion||null, env:ENV, source:"local", created:new Date().toISOString(), keys:{} };
+        if(IN_TG&&cs){
+            // Telegram: список ключей и значения CloudStorage как есть (в prod — без tst_*, в test — только tst_*, имена без префикса)
+            const all=await csKeys();
+            if(all===null) throw new Error("не удалось прочитать список ключей CloudStorage"+(lastCsErr?" — "+lastCsErr:""));
+            const names=all.filter(function(k){ return ENV==="test"||k.indexOf("tst_")!==0; });
+            for(let i=0;i<names.length;i+=CLONE_BATCH){
+                const part=names.slice(i,i+CLONE_BATCH), got=await csGetItems(part);
+                for(const k of part) if(got[k]!=null) dump.keys[k]=got[k];
+            }
+            dump.source="cloud";
+        } else {
+            const items=lsItems("",true);
+            for(const k of Object.keys(items)) if(!LS_SERVICE(k)) dump.keys[k]=items[k];
+        }
+        return dump;
+    }
+    function verCmp(a,b){ const x=String(a).split(".").map(Number), y=String(b).split(".").map(Number); for(let i=0;i<Math.max(x.length,y.length);i++){ const d=(x[i]||0)-(y[i]||0); if(d) return d; } return 0; }
+    // локальная копия K("rawdump_<версия>"): хранятся две последние; при нехватке места молча пропускаем
+    function saveRawDumpLocal(dump){
+        try{
+            lsSet("rawdump_"+dump.version,JSON.stringify(dump));
+            const all=lsKeys("rawdump_").sort(function(a,b){ return verCmp(a.slice(8),b.slice(8)); });
+            while(all.length>2) lsDel(all.shift());
+            return true;
+        }catch(e){ return false; }
+    }
+    // блокирующий диалог браузера: большая кнопка «Скачать копию» и маленькая ссылка «Продолжить без копии»
+    function showBrowserCopyDialog(){
+        return new Promise(function(res){
+            const old=document.getElementById("dlg"); if(old) old.remove();
+            const d=document.createElement("div"); d.id="dlg"; d.setAttribute("role","dialog");
+            d.innerHTML='<div class="dlg-card"><div class="dlg-title">Приложение обновилось — скачай копию данных</div>'
+                +'<div class="dlg-text">Обязательно скачай файл, чтобы не потерять данные, если что-то пойдёт не так. Данные в браузере хранятся только на этом устройстве, другой копии нет.</div>'
+                +'<div class="dlg-btns"><button class="wide-btn primary" style="margin-top:0" data-dlg="0">Скачать копию</button>'
+                +'<button class="link-btn" data-dlg="1">Продолжить без копии</button></div></div>';
+            d.addEventListener("click",function(e){ const b=e.target.closest("[data-dlg]"); if(!b) return; d.remove(); res(+b.dataset.dlg); });
+            document.body.appendChild(d);
+        });
+    }
+    async function confirmNoCopy(){
+        const i=await showDialog({title:"Продолжить без копии?",text:"Без копии данные нельзя будет восстановить при сбое. Продолжить?",buttons:[{label:"Продолжить"},{label:"Назад",primary:true}]});
+        return i===0;
+    }
+    // вызывается при старте ДО загрузки данных, миграций, мастера и любой записи в хранилище
+    async function versionGate(){
+        const last=lsGet("lastSeenVersion");
+        if(last===APP_VERSION) return;
+        let dump;
+        try{ dump=await buildRawDump(last); }
+        catch(e){ return; }                       // не удалось прочитать хранилище — не блокируем, отметку не ставим (повтор при следующем запуске)
+        if(!Object.keys(dump.keys).length){ lsSet("lastSeenVersion",APP_VERSION); return; }   // новый пользователь: копировать нечего
+        const text=JSON.stringify(dump), fname=rawDumpName(APP_VERSION), mark=function(){ try{ lsSet("lastSeenVersion",APP_VERSION); }catch(e){} };
+        if(!IN_TG){
+            for(;;){
+                const i=await showBrowserCopyDialog();
+                if(i===0){ downloadJson(fname,text); break; }
+                if(await confirmNoCopy()) break;
+            }
+            saveRawDumpLocal(dump); mark(); return;
+        }
+        // Telegram: разрешение на сообщения берём из «сырого» cfg (приложение ещё не загружено, писать cfg нельзя)
+        let granted=false; try{ granted=JSON.parse(dump.keys.cfg||"{}").writeAccess===true; }catch(e){}
+        const send=function(){ return BACKUP_ENDPOINT?postBackup("json","Копия перед обновлением до v"+APP_VERSION,{text:text,filename:fname}):Promise.resolve({ok:false}); };
+        const afterSend=function(ok){
+            if(ok){ mark(); return; }
+            if(saveRawDumpLocal(dump)){ mark(); toast("Копия сохранена только на этом устройстве"); }
+        };
+        if(granted){ send().then(function(r){ afterSend(!!r.ok); },function(){ afterSend(false); }); return; }   // в фоне, запуск не блокируется
+        for(;;){
+            const i=await showDialog({title:"Приложение обновилось",text:"Перед обновлением сохраним копию твоих данных в чат с ботом — на случай сбоя.",buttons:[{label:"Разрешить и сохранить",primary:true},{label:"Продолжить без копии"}]});
+            if(i===0){
+                const ok=await new Promise(function(r){ if(!tg||typeof tg.requestWriteAccess!=="function"){ r(true); return; } try{ tg.requestWriteAccess(function(a){ r(!!a); }); }catch(e){ r(false); } });
+                ui.gateWriteAccess=ok;                  // запишется в cfg после загрузки данных
+                if(ok){ const r=await send(); afterSend(!!r.ok); }
+                else afterSend(false);
+                return;
+            }
+            if(await confirmNoCopy()){ mark(); return; }
+        }
+    }
+    function applyGateAccess(){ if(typeof ui.gateWriteAccess==="boolean"){ data.cfg.writeAccess=ui.gateWriteAccess; delete ui.gateWriteAccess; persistCfg(); } }
+    // сырой дамп → обычная резервная копия {cfg,templates,log} (дальше — обычное «Восстановить из копии» с превью и миграциями)
+    function isRawDump(o){ return !!(o&&typeof o==="object"&&o.kind==="raw-dump"&&o.app==="gym-tracker"&&o.keys&&typeof o.keys==="object"); }
+    function rawDumpToBackup(raw){
+        let cloud=null;
+        if(raw.source==="cloud"){ if(Object.keys(raw.keys).some(function(k){ return k==="cfg"||k.indexOf("tpl_")===0||k.indexOf("w_")===0; })) cloud=cloudObjFromItems(Object.keys(raw.keys),raw.keys); }
+        else if(raw.keys["gt2:cache"]){ try{ const c=JSON.parse(raw.keys["gt2:cache"]); cloud={cfg:c.cfg||{},templates:c.templates||[],log:c.log||{}}; }catch(e){} }
+        if(!cloud||(!Object.keys(cloud.log).length&&!cloud.templates.length&&!(raw.keys.cfg||raw.keys["gt2:cache"]))) return null;
+        return { app:"gym-tracker", version:raw.version, created:raw.created, cfg:cloud.cfg, templates:cloud.templates, log:cloud.log };
+    }
     // ============ test: клонирование боевых данных (только чтение прода) ============
     function showAlertP(msg){
         return new Promise(function(res){
@@ -1134,7 +1214,7 @@
         try{
             if(ENV!=="test") throw new Error("клонирование доступно только в test");
             step="Чтение основных данных";
-            const items=lsProdItems("gt2:"), keys=Object.keys(items);
+            const items=lsItems("gt2:",false), keys=Object.keys(items);
             if(!keys.length||!items["gt2:cache"]) throw new Error("основные данные не найдены: в localStorage этого браузера нет ключей «gt2:…» без префикса «"+KP+"» (основная версия открывалась в другом браузере?)");
             try{ JSON.parse(items["gt2:cache"]); }catch(e){ throw new Error("данные основной версии повреждены (gt2:cache не разбирается)"); }
             step="Подтверждение";
@@ -1375,7 +1455,7 @@
         render();
     }
     async function cloudLoad(){
-        if(!cs||syncState.busy||ui.cloneIncomplete||TOUR_MODE) return;
+        if(!cs||syncState.busy||ui.cloneIncomplete||TOUR_MODE||ui.gateBusy) return;
         syncState.busy=true;
         try{
             const keys=await csKeys();
@@ -2130,9 +2210,10 @@
     }
     function canSendBackup(){ return !!(BACKUP_ENDPOINT&&IN_TG); }
     // ядро отправки: {ok:true} | {ok:false, text, expired}
-    async function postBackup(format,note){
-        let content, encoding="text";
-        if(format==="json") content=JSON.stringify(buildBackupDump());
+    async function postBackup(format,note,raw){
+        let content, encoding="text", fname=exportFilename(format);
+        if(raw){ content=raw.text; fname=raw.filename; }
+        else if(format==="json") content=JSON.stringify(buildBackupDump());
         else if(format==="csv") content=buildCsv();
         else if(format==="xlsx"){
             if(typeof XLSX==="undefined") return {ok:false,text:"Нет интернета — библиотека Excel не загрузилась",noLib:true};
@@ -2141,7 +2222,7 @@
         const ctl=new AbortController(), timer=setTimeout(function(){ ctl.abort(); },30000);
         try{
             const res=await fetch(BACKUP_ENDPOINT,{ method:"POST", headers:{"Content-Type":"application/json"}, signal:ctl.signal,
-                body:JSON.stringify({ initData:tg.initData, env:ENV, format:format, filename:exportFilename(format), content:content, encoding:encoding, note:note||undefined }) });
+                body:JSON.stringify({ initData:tg.initData, env:ENV, format:format, filename:fname, content:content, encoding:encoding, note:note||undefined }) });
             let j=null; try{ j=await res.json(); }catch(parseErr){ j=null; }
             if(res.ok&&j&&j.ok) return {ok:true};
             const why=(j&&(j.description||j.error))||("HTTP "+res.status);
@@ -2236,7 +2317,7 @@
     // Проверка при запуске — только после синхронизации с CloudStorage (иначе в копию попадёт устаревший кэш); не чаще одной попытки за запуск
     async function maybeAutoBackup(){
         if(TOUR_MODE) return;
-        if(ui.autoBackupTried||ui.migGate) return;
+        if(ui.autoBackupTried) return;
         if(cs&&!syncState.verified) return;                       // синхронизация не завершена — копию не шлём
         if(ui.onb||onboardingDue()) return;                        // сначала приветствие; после закрытия проверка повторится
         if(ui.cloneBusy||ui.cloneIncomplete||ui.tblImport||ui.backupParsed||ui.importParsed||ui.sending) return;
@@ -4332,7 +4413,8 @@
             const reader=new FileReader();
             reader.onload=function(ev){
                 try{
-                    const obj=JSON.parse(ev.target.result);
+                    let obj=JSON.parse(ev.target.result);
+                    if(isRawDump(obj)){ obj=rawDumpToBackup(obj); if(!obj){ toast("В копии нет данных приложения"); return; } }
                     if(!isBackupDump(obj)){ toast("Файл не похож на резервную копию"); return; }
                     ui.backupParsed=obj; ui.backupParsedSrc="file"; ui.backupMode="merge"; ui.backupConfirmStep=0;
                     render();
@@ -4850,6 +4932,7 @@
                 const raw=(document.getElementById("backupText")||{}).value||"";
                 let obj;
                 try{ obj=JSON.parse(raw); }catch(e){ toast("Не удалось разобрать JSON"); return; }
+                if(isRawDump(obj)){ obj=rawDumpToBackup(obj); if(!obj){ toast("В копии нет данных приложения"); return; } }
                 if(!isBackupDump(obj)){ toast("Это не похоже на резервную копию Gym Tracker"); return; }
                 ui.backupParsed=obj; ui.backupParsedSrc="paste"; ui.backupMode="merge"; ui.backupConfirmStep=0;
                 render();
@@ -5058,7 +5141,11 @@
     }
 
     // ============ init ============
-    (function init(){
+    (async function init(){
+        // 1) копия при новой версии — до загрузки данных, миграций, мастера и любой записи в хранилище
+        ui.gateBusy=true;
+        try{ app.innerHTML='<div class="setup"><div class="note">Загрузка…</div></div>'; await versionGate(); }catch(e){}
+        ui.gateBusy=false;
         const hadCache=loadCache();
         if(!hadCache){
             if(migrateOld()) toast("Данные перенесены из старой версии");
@@ -5080,7 +5167,7 @@
         const cloudChecked=function(){ if(!ui.cloudChecked){ ui.cloudChecked=true; render(); } };
         setTimeout(function(){ ui.stateChecked=true; cloudChecked(); },6000);
         checkCloneState().then(function(){ ui.stateChecked=true; },function(e){ ui.stateChecked=true; ui.lastCloneError="Шаг «Проверка маркера клонирования»: "+errText(e); })
-            .then(function(){ render(); return cloudLoad(); }).then(cloudChecked,cloudChecked).then(maybeAutoBackup); // фоновая синхронизация с Telegram CloudStorage
+            .then(function(){ render(); return cloudLoad(); }).then(cloudChecked,cloudChecked).then(function(){ applyGateAccess(); }).then(maybeAutoBackup); // фоновая синхронизация с Telegram CloudStorage
     })();
 </script>
 </body>

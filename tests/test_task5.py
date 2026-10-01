@@ -1,7 +1,7 @@
 """Задача 5: Cloudflare Worker (логика гоняется в браузере: Web Crypto/fetch/FormData те же, что в workerd) и клиент отправки в чат."""
 import asyncio, base64, hashlib, hmac, io, json, os, subprocess, sys, tempfile, time, urllib.parse
 sys.path.insert(0, os.path.dirname(__file__))
-from test_step0 import STORE, MOCK, cs_handler, log_handler, check, RESULTS, REPO, BASE
+from test_step0 import STORE, MOCK, cs_handler, log_handler, check, RESULTS, REPO, BASE, SEEN_JS
 from test_task4 import ensure_xlsx_lib, XLSX_JS, HEADER
 from playwright.async_api import async_playwright
 
@@ -133,7 +133,7 @@ async def client_tests(browser, dump):
         if tg:
             await ctx.expose_binding("__cs", cs_handler); await ctx.expose_binding("__log", log_handler); await ctx.add_init_script(MOCK)
         await ctx.add_init_script("if(!localStorage.getItem('tst_gt2:cache'))localStorage.setItem('tst_gt2:cache',%s);" % (cache if tg else cache_b))
-        if not tg: await ctx.add_init_script("setInterval(()=>{ const d=document.getElementById('dlg'); if(d&&d.textContent.includes('Приложение обновилось')){ const b=d.querySelector('[data-dlg=\"1\"]'); if(b) b.click(); } },30);")
+        if not tg: await ctx.add_init_script(SEEN_JS)
         page = await ctx.new_page(); state = {"reqs": [], "mode": mode}
         await page.route("**/telegram.org/**", lambda r: r.abort())
         if have_xlsx: await page.route("**/cdnjs.cloudflare.com/**", lambda r: r.fulfill(path=XLSX_JS, content_type="application/javascript"))

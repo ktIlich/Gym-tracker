@@ -1,7 +1,7 @@
 """Подготовка к переносу в prod: фильтр алиасов, разрешение на сообщения (writeAccess), копия перед миграцией, браузерный режим."""
 import asyncio, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(__file__))
-from test_step0 import STORE, WRITES, check, RESULTS, REPO, BASE, MOCK, cs_handler, log_handler
+from test_step0 import STORE, WRITES, check, RESULTS, REPO, BASE, MOCK, cs_handler, log_handler, SEEN_JS
 from test_task7 import seed, open_tg
 from test_p11_t1 import open_ep, seed_cfg, load, iso_ago, DAY
 from playwright.async_api import async_playwright
@@ -15,6 +15,7 @@ async def browser_page(browser, cache, ua=None, persist=None, extra=None, viewpo
     kw = {"viewport": {"width": viewport[0], "height": viewport[1]}, "accept_downloads": True}
     if ua: kw["user_agent"] = ua
     ctx = await browser.new_context(**kw)
+    await ctx.add_init_script(SEEN_JS)
     init = "if(!localStorage.getItem('__seeded')){ localStorage.setItem('__seeded','1'); const c=%s; for(const k of Object.keys(c)) localStorage.setItem(k,c[k]); }" % json.dumps(cache)
     await ctx.add_init_script(init)
     if persist is not None: await ctx.add_init_script("Object.defineProperty(navigator,'storage',{configurable:true,value:{persist:()=>Promise.resolve(%s)}});" % ("true" if persist else "false"))
@@ -114,53 +115,11 @@ async def main():
             check("автоотправка: writeAccess=true — копия при старте отправляется (1 запрос), requestWriteAccess не вызывается", len(st["reqs"]) == 1 and (await page.evaluate("window.__wa||0")) == 0)
             await page.context.close()
 
-            # ================= копия перед миграцией: Telegram =================
+            # ================= миграция: локальный снапшот (копия при новой версии — в test_rel_t1) =================
             seed_cfg(raw_dump, lastBackup=iso_ago(1), backupReminderDays=14, writeAccess=True)
-            page, st, errs = await open_ep(browser); await load(page, 3500)
-            r0 = st["reqs"][0] if st["reqs"] else None
-            hb = req_has_base(r0) if r0 else None
-            check("миграция (Telegram, writeAccess=true): до миграции в чат уходит JSON с подписью «Копия перед обновлением до %s» — данные ещё не мигрированы (нет base), 35 дней" % VER, r0 and r0["format"] == "json" and r0.get("note") == "Копия перед обновлением до " + VER and hb[0] is False and hb[1] == 35, (r0 and r0.get("note"), hb))
-            mg = await page.evaluate("({pend:migTodo(data).length, snap:lsKeys('premig_').length, base:Object.values(data.log).every(d=>d.exercises.every(e=>e.base))})")
-            check("миграция: после копии записи мигрированы, локальный снапшот premig_ сохранён", mg["pend"] == 0 and mg["snap"] >= 1 and mg["base"], mg)
-            check("миграция: отправленная перед обновлением копия учтена как последняя (lastBackup обновлён), запуск не заблокирован", await page.evaluate("Date.now()-new Date(data.cfg.lastBackup).getTime()<60000") and await page.locator("#dlg").count() == 0)
-            await page.context.close()
-            # без разрешения — только снапшот, без блокировки
-            seed_cfg(raw_dump, lastBackup=iso_ago(1), backupReminderDays=14)
             page, st, errs = await open_ep(browser); await load(page, 3000)
-            mg = await page.evaluate("({pend:migTodo(data).length, snap:lsKeys('premig_').length, dlg:!!document.getElementById('dlg'), wa:window.__wa||0})")
-            check("миграция (Telegram, нет разрешения): в чат ничего не уходит, запрос разрешения не показывается, остаётся снапшот localStorage, запуск не блокируется (записи мигрированы)", len(st["reqs"]) == 0 and mg["pend"] == 0 and mg["snap"] >= 1 and not mg["dlg"] and mg["wa"] == 0, (len(st["reqs"]), mg))
-            await page.context.close()
-            # ошибка отправки не блокирует
-            seed_cfg(raw_dump, lastBackup=iso_ago(1), backupReminderDays=14, writeAccess=True)
-            page, st, errs = await open_ep(browser, mode="fail"); await load(page, 3500)
-            check("миграция: сбой отправки копии не блокирует запуск — записи мигрированы, lastBackup не обновлён", await page.evaluate("migTodo(data).length") == 0 and await page.evaluate("Date.now()-new Date(data.cfg.lastBackup).getTime()>20*3600*1000"))
-            await page.context.close()
-
-            # ================= браузер: копия перед миграцией =================
-            page, errs = await browser_page(browser, cache_of(raw_dump, snooze=False))
-            await page.goto(BASE + "/test/index.html"); await page.wait_for_timeout(2200)
-            dlg = await page.evaluate("(()=>{ const d=document.getElementById('dlg'); return d&&{t:d.querySelector('.dlg-title').textContent, x:d.querySelector('.dlg-text').textContent, b:[...d.querySelectorAll('[data-dlg]')].map(b=>b.textContent), pend:migTodo(data).length}; })()")
-            check("браузер: блокирующий диалог «Приложение обновилось. Скачай копию данных перед обновлением» с кнопками «Скачать и продолжить» / «Продолжить без копии»; миграция ещё не применена", dlg and dlg["t"] == "Приложение обновилось" and dlg["x"] == "Скачай копию данных перед обновлением." and dlg["b"] == ["Скачать и продолжить", "Продолжить без копии"] and dlg["pend"] > 0, dlg)
-            async with page.expect_download(timeout=8000) as dl:
-                await page.click('#dlg [data-dlg="0"]')
-            f = await dl.value; path = await f.path(); body = json.load(open(path, encoding="utf-8")); await page.wait_for_timeout(500)
-            b2 = await page.evaluate("({pend:migTodo(data).length, snap:lsKeys('premig_').length, last:!!data.cfg.lastBackup})")
-            check("браузер: «Скачать и продолжить» — скачивается JSON с данными до миграции (нет base), затем миграция, снапшот localStorage, lastBackup обновлён", f.suggested_filename.endswith(".json") and not any(e.get("base") for d in body["log"].values() for e in d["exercises"]) and len(body["log"]) == 35 and b2["pend"] == 0 and b2["snap"] >= 1 and b2["last"], (f.suggested_filename, b2))
-            await page.context.close()
-            page, errs = await browser_page(browser, cache_of(raw_dump, snooze=False))
-            await page.goto(BASE + "/test/index.html"); await page.wait_for_timeout(2200)
-            n_dl = []; page.on("download", lambda d: n_dl.append(d))
-            await page.click('#dlg [data-dlg="1"]'); await page.wait_for_timeout(600)
-            b3 = await page.evaluate("({pend:migTodo(data).length, snap:lsKeys('premig_').length, dlg:!!document.getElementById('dlg')&&document.getElementById('dlg').textContent.includes('Приложение обновилось')})")
-            check("браузер: «Продолжить без копии» — ничего не скачивается, миграция применена, снапшот localStorage всё равно сохранён", not n_dl and b3["pend"] == 0 and b3["snap"] >= 1 and not b3["dlg"], b3)
-            await page.reload(); await page.wait_for_timeout(2200)
-            check("браузер: после миграции диалог больше не показывается", await page.evaluate("!document.getElementById('dlg') || !document.getElementById('dlg').textContent.includes('Приложение обновилось')"))
-            await page.context.close()
-            # мигрированные данные — без диалога
-            page, errs = await browser_page(browser, cache_of(mdump))
-            await page.goto(BASE + "/test/index.html"); await page.wait_for_timeout(2200)
-            check("браузер: нет записей на миграцию — диалога «Приложение обновилось» нет", not await page.evaluate("!!document.getElementById('dlg') && document.getElementById('dlg').textContent.includes('Приложение обновилось')"))
-            check("нет pageerror (браузер, миграция)", not errs, errs[:2])
+            mg = await page.evaluate("({pend:migTodo(data).length, snap:lsKeys('premig_').length, base:Object.values(data.log).every(d=>d.exercises.every(e=>e.base)), dlg:!!document.getElementById('dlg')})")
+            check("миграция: записи мигрированы, снапшот premig_ в localStorage есть, диалогов нет, лишних отправок в чат нет (копия при обновлении — отдельный механизм)", mg["pend"] == 0 and mg["snap"] >= 1 and mg["base"] and not mg["dlg"] and len(st["reqs"]) == 0, (mg, len(st["reqs"])))
             await page.context.close()
 
             # ================= браузер: клонирование через localStorage =================

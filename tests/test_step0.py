@@ -24,7 +24,10 @@ def seed_prod():
         STORE["w_" + d] = json.dumps({"title": "T0", "up": 5, "weekType": "work",
                                        "exercises": [{"id": "e" + d, "name": "Жим (3х8-12)", "base": "Жим", "plan": "3х8-12", "variant": None, "sets": [{"w": 50, "r": 10}]}]})
 
-MOCK = """
+APP_VER = re.search(r'APP_VERSION="([^"]+)"', open(os.path.join(REPO, "test", "index.html"), encoding="utf-8").read()).group(1)
+# копия при смене версии (задача 1 «prod»): во всех тестах версия считается «уже виденной»; тест шлюза открывает страницу с ?gate
+SEEN_JS = "if(!/[?&]gate/.test(location.search)) localStorage.setItem('tst_lastSeenVersion','%s');" % APP_VER
+MOCK = SEEN_JS + """
 (() => {
   const call = (op, a) => window.__cs(op, JSON.stringify(a)).then(r => JSON.parse(r));
   const cs = {

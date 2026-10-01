@@ -1,5 +1,5 @@
 """Фаза 11, задача 1: структура настроек и автоотправка копии. На реальном дампе."""
-import asyncio, json, os, subprocess, sys, time
+import asyncio, json, os, re, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(__file__))
 from test_step0 import STORE, MOCK, cs_handler, log_handler, check, RESULTS, REPO, BASE
 from test_task7 import seed
@@ -22,7 +22,7 @@ async def open_ep(browser, endpoint="https://worker.test/", mode="ok", getkeys_d
         resp = await route.fetch(); txt = await resp.text()
         if endpoint: txt = txt.replace('const BACKUP_ENDPOINT="";', 'const BACKUP_ENDPOINT="%s";' % endpoint)
         await route.fulfill(response=resp, body=txt)
-    await page.route("**/test/index.html", index)
+    await page.route(re.compile(r".*/test/index\.html(\?.*)?$"), index)
     async def worker(route):
         req = route.request
         cors = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Methods": "POST, OPTIONS"}
